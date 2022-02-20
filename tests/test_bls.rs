@@ -4,7 +4,7 @@ use dvf::crypto::define::{MB};
 
 
 #[test]
-fn test_sip() {
+fn test_bls() {
     let mut m_bls = Bls::new();
     m_bls.keygen();
 

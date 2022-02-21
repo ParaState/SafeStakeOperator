@@ -9,6 +9,10 @@ pub struct Bls {
     pub pk: [u8; 2*MB + 1]
 }
 
+pub struct BlsSecret {
+    pub sk: [u8; MB]
+}
+
 impl Bls {
     pub fn new() -> Bls {
         Bls {

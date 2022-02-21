@@ -11,3 +11,5 @@ miracl_core = {version = "2.7.0", features = ["bls12381"]}
 lazy_static = "1.4.0"
 num-bigint = {version = "0.4.0", features = ["rand"]}
 rand = "0.8.4"
+num-traits = "0.2.8"
+array-init = "2.0.0"

@@ -1,5 +1,6 @@
 use num_bigint::{BigInt, Sign};
-use crate::crypto::define::{BigNum, MODULUS};
+use miracl_core::bls12381::big::{BIG};
+use crate::crypto::define::{MODULUS};
 
 pub trait Ring {
     fn reduce(&self, m: &BigInt) -> Self;
@@ -16,13 +17,14 @@ impl Ring for BigInt {
     }
 }
 
-pub trait ToBigNum {
-    fn to_big_num(&self) -> BigNum;
+#[allow(non_snake_case)]
+pub trait ToBIG {
+    fn to_BIG(&self) -> BIG;
 }
 
-impl ToBigNum for BigInt {
-    fn to_big_num(&self) -> BigNum {
+impl ToBIG for BigInt {
+    fn to_BIG(&self) -> BIG {
         let reduced = self.reduce(&MODULUS);
-        BigNum::fromstring(reduced.to_str_radix(16)) 
+        BIG::fromstring(reduced.to_str_radix(16)) 
     }
 }

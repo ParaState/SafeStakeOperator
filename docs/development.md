@@ -10,7 +10,7 @@ Reference: https://alinush.github.io/2020/03/12/scalable-bls-threshold-signature
 ## Background knowledge
 Reference: https://ethos.dev/beacon-chain/
 
-## How to communicate with beason chain
+## How to communicate with beacon chain
 Lighthouse: https://lighthouse-book.sigmaprime.io/api-bn.html
 
 

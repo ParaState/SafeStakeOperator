@@ -10,6 +10,8 @@ use crate::math::polynomial::Polynomial;
 use crate::math::bigint_ext::{ToBIG};
 
 
+/// Reference: https://alinush.github.io/2020/03/12/scalable-bls-threshold-signatures.html#quadratic-time-bls-threshold-signature-aggregation
+///
 pub struct ThresholdBls {
     pub master_bls: Bls,
     pub t: usize,

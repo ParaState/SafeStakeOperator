@@ -11,7 +11,6 @@ use libp2p::{
   noise,
   mplex,
   Transport,
-  Multiaddr,
   gossipsub::{IdentTopic}
 };
 use std::error::Error;
@@ -50,12 +49,11 @@ impl BootNode {
       // subscribes to our topic
       let gossipsub_topic = IdentTopic::new("boot");
       behaviour.gossipsub.subscribe(&gossipsub_topic).unwrap();
-      // libp2p::swarm::SwarmBuilder::new(transport, behaviour, peerid)
-      //   .executor(Box::new(|fut| {
-      //     tokio::spawn(fut);
-      //   }))
-      //   .build()
-      libp2p::Swarm::new(transport, behaviour, peerid)
+      SwarmBuilder::new(transport, behaviour, peerid)
+        .executor(Box::new(|fut| {
+          tokio::spawn(fut);
+        }))
+        .build()
     };
     Self {
       key ,
@@ -66,15 +64,7 @@ impl BootNode {
 
   // start a swarm for all interfaces
   pub fn listen (&mut self) -> Result<(), Box<dyn Error>>{
-    println!("{:?}", self.key);
-    println!("{:?}", self.peerid);
-    println!("{:?}", self.swarm.listeners().count());
     self.swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?).unwrap();
-    for addr in self.swarm.listeners() {
-      info!("Listening on {}", addr);
-      let peer_id = self.swarm.local_peer_id();
-      info!("connect additional nodes with \"cargo run {addr} {peer_id} \"");
-    }
     let to_search: PeerId = Keypair::generate_ed25519().public().into();
     info!("Searching for the closest peers to {:?}", to_search);
     self.swarm.behaviour_mut().kademlia.get_closest_peers(to_search);

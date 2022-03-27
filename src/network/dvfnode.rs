@@ -19,7 +19,7 @@ use std::error::Error;
 pub struct DvfNode {
   key : Keypair,
   peerid : PeerId,
-  swarm : Swarm<DvfNetorkBehaviour>,
+  pub swarm : Swarm<DvfNetorkBehaviour>,
   topic : IdentTopic
 }
 
@@ -48,11 +48,6 @@ impl DvfNode {
       behaviour.gossipsub.subscribe(&topic).unwrap();
       // Reach out to another node
       behaviour.kademlia.add_address(&boot_peerid, boot_addr);
-      // Order Kademlia to search for a peer.
-      let to_search: PeerId = Keypair::generate_ed25519().public().into();
-      info!("Searching for the closest peers to {:?}", to_search);
-      behaviour.kademlia.get_closest_peers(to_search);
-
       SwarmBuilder::new(transport, behaviour, peerid).executor(Box::new(|fut| {
         tokio::spawn(fut);
       })).build()
@@ -68,11 +63,10 @@ impl DvfNode {
   // start a swarm for all interfaces
   pub fn listen (&mut self) -> Result<(), Box<dyn Error>>{
     self.swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?).unwrap();
-    for addr in self.swarm.listeners() {
-      info!("Listening on {}", addr);
-      let peer_id = self.swarm.local_peer_id();
-      info!("connect additional nodes with \"cargo run {addr} {peer_id} \"");
-    }
+    // Order Kademlia to search for a peer.
+    let to_search: PeerId = Keypair::generate_ed25519().public().into();
+    info!("Searching for the closest peers to {:?}", to_search);
+    self.swarm.behaviour_mut().kademlia.get_closest_peers(to_search);
     Ok(())
   }
 

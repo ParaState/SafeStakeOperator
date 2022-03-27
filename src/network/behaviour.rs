@@ -12,7 +12,7 @@ use libp2p:: {
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::{time::Duration};
-use log::{info};
+use log::{info, debug};
 #[derive(NetworkBehaviour)]
 #[behaviour(event_process = true)]
 pub struct DvfNetorkBehaviour {
@@ -61,7 +61,7 @@ impl NetworkBehaviourEventProcess<IdentifyEvent> for DvfNetorkBehaviour {
 
 impl NetworkBehaviourEventProcess<KademliaEvent> for DvfNetorkBehaviour {
   fn inject_event(&mut self, event: KademliaEvent) { 
-    println!("event {:?}", event);
+    debug!("event {:?}", event);
   }
 }
 

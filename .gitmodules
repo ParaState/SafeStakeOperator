@@ -1,0 +1,3 @@
+[submodule "src/network/hotstuff"]
+	path = src/network/hotstuff
+	url = https://github.com/jianlinjiang/hotstuff.git

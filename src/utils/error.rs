@@ -4,3 +4,20 @@ pub fn require(status: bool, msg: &'static str) {
         panic!("{}", msg);
     }
 }
+
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum DvfError {
+    /// The consensus protocol failed.
+    ConsensusFailure,
+    /// Threshold signature aggregation failed due to insufficient valid signatures.
+    InsufficientSignatures {got: usize, expected: usize},
+    /// Invalid operator signature
+    InvalidSignatureShare {id: usize},
+    /// Different length
+    DifferentLength {x: usize, y: usize},
+    /// 
+    InvalidLength,
+    ///
+    Unknown
+}

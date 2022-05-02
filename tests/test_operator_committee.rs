@@ -1,0 +1,38 @@
+use dvf::validation::operator_committee::{GenericOperatorCommittee};
+use dvf::validation::impls::fake::{FakeOperatorCommittee};
+use dvf::validation::operator::{LocalOperator};
+use dvf::crypto::{ThresholdSignature};
+use std::sync::Arc;
+use types::Hash256;
+use eth2_hashing::{Context, Sha256Context};
+
+#[test]
+fn test_fake_operator_committee() {
+    let t: usize = 5;
+    let n: usize = 10;
+
+    let mut m_threshold = ThresholdSignature::new(t);
+    let (kp, mut kps, mut ids) = m_threshold.key_gen(n);
+
+    let mut committee = GenericOperatorCommittee::<FakeOperatorCommittee>::new(0, t);
+    for i in 0..n {
+        let operator = Arc::new(
+            LocalOperator::from_keypair(Arc::new(kps[i].clone())));  
+        committee.add_operator(ids[i], operator);
+    }
+
+    let message = "hello world";
+    let mut context = Context::new();
+    context.update(message.as_bytes());
+    let message = Hash256::from_slice(&context.finalize());
+
+    let sig1 = committee.sign(message).unwrap();
+    let sig2 = kp.sk.sign(message);
+
+    let status1 = sig1.verify(&kp.pk, message);
+    let status2 = sig2.verify(&kp.pk, message);
+
+    assert!(status1, "Signature verification failed");
+    assert!(status2, "Aggregate signature verification failed");
+    assert_eq!(sig1, sig2, "Signature not match");
+}

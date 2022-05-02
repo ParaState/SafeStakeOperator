@@ -50,4 +50,3 @@ fn test_recover_sk() {
     assert_eq!(sk, m_threshold.master_bls.sk, "Faile to recover key");
 }
 
-

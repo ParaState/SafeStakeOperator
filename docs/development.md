@@ -13,6 +13,17 @@ Reference: https://ethos.dev/beacon-chain/
 ## How to communicate with beacon chain
 Lighthouse: https://lighthouse-book.sigmaprime.io/api-bn.html
 
+### Building Lighthouse
+```bash
+$ cd lighthouse
+$ git checkout stable
+$ make
+```
+
+This building process could fail many times due to a timeout error of downloading some contract ABIs from github. Just retry, retry, retry...
+
+###  
+
 
 # iBFT
 Reference: https://github.com/bloxapp/ssv/blob/main/ibft/IBFT.md

@@ -8,6 +8,8 @@ fn test_bls() {
     let mut m_bls = Bls::new();
     m_bls.keygen();
 
+    println!("{:02x?}", m_bls.sk); 
+
     let message = "hello world";
     let mut sig: [u8; MB+1] = [0; MB+1];
     m_bls.sign(&mut sig, message.as_bytes());

@@ -1,11 +1,11 @@
-use dvf::validation::operator_committee::{GenericOperatorCommittee};
-use dvf::validation::impls::fake::{FakeOperatorCommittee};
+use dvf::validation::{OperatorCommittee};
 use dvf::validation::operator::{LocalOperator};
 use dvf::crypto::{ThresholdSignature};
 use std::sync::Arc;
 use types::Hash256;
 use eth2_hashing::{Context, Sha256Context};
 
+#[cfg(feature = "fake_committee")]
 #[test]
 fn test_fake_operator_committee() {
     let t: usize = 5;
@@ -14,7 +14,7 @@ fn test_fake_operator_committee() {
     let mut m_threshold = ThresholdSignature::new(t);
     let (kp, mut kps, mut ids) = m_threshold.key_gen(n);
 
-    let mut committee = GenericOperatorCommittee::<FakeOperatorCommittee>::new(0, t);
+    let mut committee = OperatorCommittee::new(0, t);
     for i in 0..n {
         let operator = Arc::new(
             LocalOperator::from_keypair(Arc::new(kps[i].clone())));  

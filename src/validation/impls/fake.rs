@@ -7,7 +7,12 @@ use crate::validation::{
 use crate::crypto::ThresholdSignature;
 use crate::DvfOperatorTsid;
 use crate::utils::error::DvfError;
-use types::{Hash256, Signature, PublicKey};
+use lighthouse_bls::{Hash256, Signature, PublicKey};
+
+/// Provides the externally-facing operator committee type.
+pub mod types {
+    pub use super::FakeOperatorCommittee as OperatorCommittee;
+}
 
 /// Fake operator committee whose consensus protocol is dummy 
 pub struct FakeOperatorCommittee {
@@ -41,7 +46,8 @@ impl TOperatorCommittee for FakeOperatorCommittee {
         if !status {
             return Err(DvfError::ConsensusFailure);
         }
-
+        
+        // If consensus is achieved, aggregate the valid signatures
         let ids: Vec<DvfOperatorTsid> = self.operators.keys().map(|k| *k).collect();
         let operators: Vec<&Arc<dyn TOperator>> = ids.iter().map(|k| self.operators.get(&k).unwrap()).collect(); 
         let pks: Vec<&PublicKey> = operators.iter().map(|x| x.public_key().unwrap()).collect();

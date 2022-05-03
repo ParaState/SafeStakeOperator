@@ -43,11 +43,16 @@ where
     }
 
     pub fn key_gen(&mut self, n: usize) -> (Keypair, Vec<Keypair>, Vec<u32>) {
-        let mut rng = RandUtilsRng::new();
         let kp = Keypair::random();
+        let (kps, ids) = self.key_split(&kp.sk, n);
+        (kp, kps, ids)
+    }
+
+    pub fn key_split(&mut self, sk: &SecretKey, n: usize) -> (Vec<Keypair>, Vec<u32>) {
+        let mut rng = RandUtilsRng::new();
 
         let mut coeffs: Vec<BigInt> = rng.sample_vec(self.threshold(), &MODULUS);
-        coeffs[0] = BigInt::from_bytes_be(Sign::Plus, &kp.sk.serialize().as_bytes()); 
+        coeffs[0] = BigInt::from_bytes_be(Sign::Plus, &sk.serialize().as_bytes()); 
         let poly = Polynomial::new(coeffs);
 
         let mut kps: Vec<Keypair> = Vec::new();
@@ -58,7 +63,7 @@ where
             kps.push(Keypair::from_components(sk_share.public_key(), sk_share));
             ids.push((i + 1) as u32);
         }
-        (kp, kps, ids)
+        (kps, ids)
     }
 
     pub fn threshold_aggregate(&self, sigs: &[&Signature], pks: &[&PublicKey], ids: &[u32], msg: Hash256) -> Result<Signature, DvfError> {

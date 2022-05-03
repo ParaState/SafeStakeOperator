@@ -5,6 +5,7 @@ use crate::{DvfCommitteeIndex, DvfOperatorTsid};
 use crate::validation::operator::{TOperator};
 use types::{Hash256, Signature};
 
+/// Operator committee for a validator. 
 pub trait TOperatorCommittee {
     fn new(t: usize) -> Self;
     fn add_operator(&mut self, id: DvfOperatorTsid, operator: Arc<dyn TOperator>); 
@@ -14,6 +15,7 @@ pub trait TOperatorCommittee {
     fn threshold(&self) -> usize;
 }
 
+/// Generic operator committee who delegates most functionalities to an underlying committee implementation (specified through the generic type parameter)
 pub struct GenericOperatorCommittee<Committee> {
     id: DvfCommitteeIndex,
     cmt: Committee 

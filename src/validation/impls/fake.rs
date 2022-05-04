@@ -1,13 +1,14 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc};
 use crate::validation::{
     operator_committee::{TOperatorCommittee},
-    operator::{LocalOperator, TOperator},
+    operator::{TOperator},
 };
 use crate::crypto::ThresholdSignature;
 use crate::DvfOperatorTsid;
 use crate::utils::error::DvfError;
-use lighthouse_bls::{Hash256, Signature, PublicKey};
+use bls::{Hash256, Signature, PublicKey};
+use parking_lot::{RwLock};
 
 /// Provides the externally-facing operator committee type.
 pub mod types {
@@ -16,20 +17,20 @@ pub mod types {
 
 /// Fake operator committee whose consensus protocol is dummy 
 pub struct FakeOperatorCommittee {
-    operators: HashMap<DvfOperatorTsid, Arc<dyn TOperator>>,
+    operators: RwLock<HashMap<DvfOperatorTsid, Arc<dyn TOperator>>>,
     threshold_: usize
 }
 
 impl TOperatorCommittee for FakeOperatorCommittee {
     fn new(t: usize) -> Self {
         Self {
-            operators: HashMap::new(),
+            operators: <_>::default(),
             threshold_: t
         }
     }
 
     fn add_operator(&mut self, id: DvfOperatorTsid, operator: Arc<dyn TOperator>) {
-        self.operators.insert(id, operator);
+        self.operators.write().insert(id, operator);
     }
 
     fn threshold(&self) -> usize {
@@ -48,8 +49,9 @@ impl TOperatorCommittee for FakeOperatorCommittee {
         }
         
         // If consensus is achieved, aggregate the valid signatures
-        let ids: Vec<DvfOperatorTsid> = self.operators.keys().map(|k| *k).collect();
-        let operators: Vec<&Arc<dyn TOperator>> = ids.iter().map(|k| self.operators.get(&k).unwrap()).collect(); 
+        let operators = self.operators.read();
+        let ids: Vec<DvfOperatorTsid> = operators.keys().map(|k| *k).collect();
+        let operators: Vec<&Arc<dyn TOperator>> = ids.iter().map(|k| operators.get(&k).unwrap()).collect(); 
         let pks: Vec<&PublicKey> = operators.iter().map(|x| x.public_key().unwrap()).collect();
         let sigs: Vec<Signature> = operators.iter().map(|x| x.sign(msg)).collect();
         let sigs: Vec<&Signature> = sigs.iter().map(|x| x).collect();

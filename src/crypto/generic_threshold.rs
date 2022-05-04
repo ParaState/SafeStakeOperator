@@ -1,6 +1,6 @@
-use lighthouse_bls::{Signature, PublicKey, SecretKey, Keypair};
+use bls::{Signature, PublicKey, SecretKey, Keypair};
 use types::{Hash256}; 
-use crate::utils::error::{require, DvfError};
+use crate::utils::error::{DvfError};
 use crate::crypto::define::{MODULUS};
 use num_bigint::ToBigInt;
 use crate::math::polynomial::Polynomial;

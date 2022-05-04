@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 use crate::utils::error::DvfError;
 use crate::{DvfCommitteeIndex, DvfOperatorTsid};

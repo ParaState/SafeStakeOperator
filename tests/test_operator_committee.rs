@@ -12,7 +12,7 @@ fn test_fake_operator_committee() {
     let n: usize = 10;
 
     let mut m_threshold = ThresholdSignature::new(t);
-    let (kp, mut kps, mut ids) = m_threshold.key_gen(n);
+    let (kp, kps, ids) = m_threshold.key_gen(n);
 
     let mut committee = OperatorCommittee::new(0, t);
     for i in 0..n {

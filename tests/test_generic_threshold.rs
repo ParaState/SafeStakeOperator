@@ -1,7 +1,6 @@
 use dvf::crypto::{ThresholdSignature};
-use lighthouse_bls::{Signature, PublicKey, SecretKey};
+use bls::{Signature, PublicKey};
 use types::{Hash256}; 
-use std::str::FromStr;
 use eth2_hashing::{Context, Sha256Context};
 
 #[test]
@@ -9,7 +8,7 @@ fn test_generic_threshold() {
     let t = 5;
     let n = 10;
     let mut m_threshold = ThresholdSignature::new(t);
-    let (kp, mut kps, mut ids) = m_threshold.key_gen(n);
+    let (kp, kps, ids) = m_threshold.key_gen(n);
     
     let pks: Vec<&PublicKey> = kps.iter().map(|p| &p.pk).collect();
     let message = "hello world";
@@ -23,9 +22,9 @@ fn test_generic_threshold() {
     }
     let sigs_ref: Vec<&Signature> = sigs.iter().map(|s| s).collect();
     //let pks_ref: Vec<&PublicKey> = pks.iter().map(|s| s).collect();
-    let mut agg_sig = m_threshold.threshold_aggregate(&sigs_ref[..], &pks[..], &ids[..], message).unwrap();
+    let agg_sig = m_threshold.threshold_aggregate(&sigs_ref[..], &pks[..], &ids[..], message).unwrap();
 
-    let mut sig = kp.sk.sign(message);
+    let sig = kp.sk.sign(message);
 
     let status1 = agg_sig.verify(&kp.pk, message);
     let status2 = sig.verify(&kp.pk, message);

@@ -2,7 +2,7 @@ use types::{Hash256, Signature, Keypair, PublicKey};
 use std::sync::Arc;
 use crate::utils::error::DvfError;
 
-pub trait TOperator {
+pub trait TOperator: Sync + Send {
     fn sign(&self, msg: Hash256) -> Signature; 
     fn public_key(&self) -> Result<&PublicKey, DvfError>;
 }
@@ -31,13 +31,13 @@ impl LocalOperator {
 }
 
 pub struct RemoteOperator {
-    // TODO: to be updated
+    // [Zico]TODO: to be updated
     pub voting_keypair: Arc<Keypair>
 }
 
 impl TOperator for RemoteOperator {
     fn sign(&self, msg: Hash256) -> Signature { 
-        // TODO: request remote operator to sign and return the signature
+        // [Zico]TODO: request remote operator to sign and return the signature
         self.voting_keypair.sk.sign(msg)
     }
 

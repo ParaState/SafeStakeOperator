@@ -1,14 +1,11 @@
-use lighthouse_bls::{Signature, PublicKey, Hash256};
+use bls::{Signature, PublicKey, Hash256};
 use crate::{
     crypto::generic_threshold::{TThresholdSignature},
 };
-use lighthouse_bls::{INFINITY_SIGNATURE};
+use bls::{INFINITY_SIGNATURE};
 use crate::utils::error::{require, DvfError};
 pub use blst::min_pk as blst_core;
 use blst::{blst_scalar, blst_p2, blst_p2_affine};
-use rand::Rng;
-use std::iter::ExactSizeIterator;
-use std::marker::PhantomData;
 
 pub const DST: &[u8] = b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
 pub const RAND_BITS: usize = 64;

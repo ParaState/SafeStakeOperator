@@ -6,20 +6,25 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[patch]
+[patch.crates-io]
+fixed-hash = { git = "https://github.com/paritytech/parity-common", rev="df638ab0885293d21d656dc300d39236b69ce57d" }
+warp = { git = "https://github.com/macladson/warp", rev="7e75acc368229a46a236a8c991bf251fe7fe50ef" }
+eth2_ssz = { path = "lighthouse/consensus/ssz" }
+eth2_ssz_derive = { path = "lighthouse/consensus/ssz_derive" }
+eth2_ssz_types = { path = "lighthouse/consensus/ssz_types" }
+eth2_hashing = { path = "lighthouse/crypto/eth2_hashing" }
+tree_hash = { path = "lighthouse/consensus/tree_hash" }
+tree_hash_derive = { path = "lighthouse/consensus/tree_hash_derive" }
+eth2_serde_utils = { path = "lighthouse/consensus/serde_utils" }
+
+
 [dependencies]
 miracl_core = {version = "2.7.0", features = ["bls12381"]}
 num-bigint = {version = "0.4.0", features = ["rand"]}
 #rand = "0.8.4"
 num-traits = "0.2.8"
 array-init = "2.0.0"
-# network
-futures = "0.3.21"
-# tokio = { version= "1.17.0",features = ["full"] }
-log = "0.4.16"
-env_logger = "0.9.0"
-
-[dev-dependencies]
-tokio-test = "*"
 
 rayon = "1.4.1"
 blst = "0.3.3"
@@ -42,7 +47,7 @@ serde_yaml = "0.8.13"
 bincode = "1.3.1"
 serde_json = "1.0.58"
 slog = { version = "2.5.2", features = ["max_level_trace", "release_max_level_trace"] }
-tokio = { version = "1.14.0", features = ["time", "full"] }
+tokio = { version = "1.14.0", features = ["time"] }
 futures = "0.3.7"
 dirs = "3.0.1"
 directory = { path = "lighthouse/common/directory" }
@@ -81,20 +86,7 @@ regex = "1.5.5"
 rpassword = "5.0.0"
 zeroize = { version = "1.4.2", features = ["zeroize_derive"] }
 
-[patch]
-[patch.crates-io]
-fixed-hash = { git = "https://github.com/paritytech/parity-common", rev="df638ab0885293d21d656dc300d39236b69ce57d" }
-warp = { git = "https://github.com/macladson/warp", rev="7e75acc368229a46a236a8c991bf251fe7fe50ef" }
-eth2_ssz = { path = "lighthouse/consensus/ssz" }
-eth2_ssz_derive = { path = "lighthouse/consensus/ssz_derive" }
-eth2_ssz_types = { path = "lighthouse/consensus/ssz_types" }
-eth2_hashing = { path = "lighthouse/crypto/eth2_hashing" }
-tree_hash = { path = "lighthouse/consensus/tree_hash" }
-tree_hash_derive = { path = "lighthouse/consensus/tree_hash_derive" }
-eth2_serde_utils = { path = "lighthouse/consensus/serde_utils" }
-
 
 [features]
 default = ["fake_committee"]
 fake_committee = []
-

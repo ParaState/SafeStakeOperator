@@ -1,3 +1,6 @@
 [submodule "src/network/hotstuff"]
 	path = src/network/hotstuff
 	url = https://github.com/jianlinjiang/hotstuff.git
+[submodule "lighthouse"]
+	path = lighthouse
+	url = https://github.com/sigp/lighthouse

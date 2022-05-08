@@ -3,11 +3,11 @@ use crate::utils::error::DvfError;
 use crate::{DvfCommitteeIndex, DvfOperatorTsid};
 use crate::validation::operator::{TOperator};
 use types::{Hash256, Signature};
-
+use parking_lot::{RwLock};
 /// Operator committee for a validator. 
 pub trait TOperatorCommittee {
     fn new(t: usize) -> Self;
-    fn add_operator(&mut self, id: DvfOperatorTsid, operator: Arc<dyn TOperator>); 
+    fn add_operator(&mut self, id: DvfOperatorTsid, operator: Arc<RwLock<dyn TOperator>>); 
 
     fn consensus(&self, msg: Hash256) -> bool;
     fn sign(&self, msg: Hash256) -> Result<Signature, DvfError>;
@@ -31,7 +31,7 @@ where
         }
     }
 
-    pub fn add_operator(&mut self, id: DvfOperatorTsid, operator: Arc<dyn TOperator>) {
+    pub fn add_operator(&mut self, id: DvfOperatorTsid, operator: Arc<RwLock<dyn TOperator>>) {
         self.cmt.add_operator(id, operator);
     }
 

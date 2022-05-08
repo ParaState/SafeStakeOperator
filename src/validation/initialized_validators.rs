@@ -40,7 +40,7 @@ use crate::crypto::{ThresholdSignature};
 use crate::validation::{
     operator::LocalOperator,
     OperatorCommittee};
-
+use parking_lot::{RwLock};
 /// Default timeout for a request to a remote signer for a signature.
 ///
 /// Set to 12 seconds since that's the duration of a slot. A remote signer that cannot sign within
@@ -294,7 +294,7 @@ impl InitializedValidator {
                 let mut committee = OperatorCommittee::new(0, t);
                 for i in 0..n {
                     let operator = Arc::new(
-                        LocalOperator::from_keypair(Arc::new(kps[i].clone())));  
+                        RwLock::new(LocalOperator::from_keypair(Arc::new(kps[i].clone()))));  
                     committee.add_operator(ids[i], operator);
                 } 
                 SigningMethod::DistributedKeystore {

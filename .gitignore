@@ -112,3 +112,7 @@ $RECYCLE.BIN/
 
 # protobuf
 network_msgs.rs
+
+committee.json
+node_*.json
+db_*

@@ -9,7 +9,6 @@ use crate::DvfOperatorTsid;
 use crate::utils::error::DvfError;
 use bls::{Hash256, Signature, PublicKey};
 use parking_lot::{RwLock};
-
 /// Provides the externally-facing operator committee type.
 pub mod types {
     pub use super::FakeOperatorCommittee as OperatorCommittee;
@@ -17,7 +16,7 @@ pub mod types {
 
 /// Fake operator committee whose consensus protocol is dummy 
 pub struct FakeOperatorCommittee {
-    operators: RwLock<HashMap<DvfOperatorTsid, Arc<dyn TOperator>>>,
+    operators: RwLock<HashMap<DvfOperatorTsid, Arc<RwLock<dyn TOperator>>>>,
     threshold_: usize
 }
 
@@ -29,7 +28,7 @@ impl TOperatorCommittee for FakeOperatorCommittee {
         }
     }
 
-    fn add_operator(&mut self, id: DvfOperatorTsid, operator: Arc<dyn TOperator>) {
+    fn add_operator(&mut self, id: DvfOperatorTsid, operator: Arc<RwLock<dyn TOperator>>) {
         self.operators.write().insert(id, operator);
     }
 
@@ -49,15 +48,16 @@ impl TOperatorCommittee for FakeOperatorCommittee {
         }
         
         // If consensus is achieved, aggregate the valid signatures
-        let operators = self.operators.read();
-        let ids: Vec<DvfOperatorTsid> = operators.keys().map(|k| *k).collect();
-        let operators: Vec<&Arc<dyn TOperator>> = ids.iter().map(|k| operators.get(&k).unwrap()).collect(); 
-        let pks: Vec<&PublicKey> = operators.iter().map(|x| x.public_key().unwrap()).collect();
-        let sigs: Vec<Signature> = operators.iter().map(|x| x.sign(msg)).collect();
-        let sigs: Vec<&Signature> = sigs.iter().map(|x| x).collect();
+        // let operators = self.operators.read();
+        // let ids: Vec<DvfOperatorTsid> = operators.keys().map(|k| *k).collect();
+        // let operators: Vec<&Arc<dyn TOperator>> = ids.iter().map(|k| operators.get(&k).unwrap()).collect(); 
+        // let pks: Vec<&PublicKey> = operators.iter().map(|x| x.public_key().unwrap()).collect();
+        // let sigs: Vec<Signature> = operators.iter().map(|x| x.sign(msg)).collect();
+        // let sigs: Vec<&Signature> = sigs.iter().map(|x| x).collect();
 
-        let threshold_sig = ThresholdSignature::new(self.threshold());
+        // let threshold_sig = ThresholdSignature::new(self.threshold());
         
-        threshold_sig.threshold_aggregate(&sigs[..], &pks[..], &ids[..], msg)
+        // threshold_sig.threshold_aggregate(&sigs[..], &pks[..], &ids[..], msg)
+        return Err(DvfError::ConsensusFailure);
     }
 }

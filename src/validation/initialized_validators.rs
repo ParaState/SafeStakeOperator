@@ -16,6 +16,8 @@ use crate::validation::account_utils::{
     },
     ZeroizeString,
 };
+use crate::validation::operator_committee_definitions::{self, OperatorCommitteeDefinition};
+use crate::validation::eth2_keystore_share::keystore_share::{KeystoreShare};
 use eth2::lighthouse_vc::std_types::DeleteKeystoreStatus;
 use eth2_keystore::Keystore;
 use lighthouse_metrics::set_gauge;
@@ -97,6 +99,10 @@ pub enum Error {
     InvalidWeb3SignerRootCertificateFile(io::Error),
     InvalidWeb3SignerRootCertificate(ReqwestError),
     UnableToBuildWeb3SignerClient(ReqwestError),
+
+    NoCommitteeDefinition,
+    UnableToParseCommitteeDefinition(operator_committee_definitions::Error),
+    UnableToBuildCommittee,
     /// Unable to apply an action to a validator because it is using a remote signer.
     InvalidActionOnRemoteValidator,
 }
@@ -144,6 +150,11 @@ impl InitializedValidator {
 fn open_keystore(path: &Path) -> Result<Keystore, Error> {
     let keystore_file = File::open(path).map_err(Error::UnableToOpenVotingKeystore)?;
     Keystore::from_json_reader(keystore_file).map_err(Error::UnableToParseVotingKeystore)
+}
+
+fn open_keystore_share(path: &Path) -> Result<KeystoreShare, Error> {
+    let keystore_share_file = File::open(path).map_err(Error::UnableToOpenVotingKeystore)?;
+    KeystoreShare::from_json_reader(keystore_share_file).map_err(Error::UnableToParseVotingKeystore)
 }
 
 fn get_lockfile_path(file_path: &Path) -> Option<PathBuf> {
@@ -283,23 +294,92 @@ impl InitializedValidator {
 
             // [Zico]TODO: To be revised 
             SigningDefinition::DistributedKeystore {
-                .. 
+                voting_keystore_share_path,
+                voting_keystore_share_password_path,
+                voting_keystore_share_password,
+                operator_committee_definition_path, 
+                operator_committee_index,
+                operator_id,
             } => {
-                let t: usize = 5;
-                let n: usize = 10;
+                // [TODO] Zico: Start copying from LocalKeystore. Find a way to reuse.
+                use std::collections::hash_map::Entry::*;
+                let voting_keystore = match key_stores.entry(voting_keystore_share_path.clone()) {
+                    Vacant(entry) => entry.insert(open_keystore_share(&voting_keystore_share_path)?.keystore),
+                    Occupied(entry) => entry.into_mut(),
+                };
 
-                let mut m_threshold = ThresholdSignature::new(t);
-                let (kp, kps, ids) = m_threshold.key_gen(n);
+                let voting_keypair = if let Some(keypair) = key_cache.get(voting_keystore.uuid()) {
+                    keypair
+                } else {
+                    let keystore = voting_keystore.clone();
+                    let keystore_path = voting_keystore_share_path.clone();
+                    // Decoding a keystore can take several seconds, therefore it's best
+                    // to keep if off the core executor. This also has the fortunate effect of
+                    // interrupting the potentially long-running task during shut down.
+                    let (password, keypair) = tokio::task::spawn_blocking(move || {
+                        Result::<_, Error>::Ok(
+                            match (voting_keystore_share_password_path, voting_keystore_share_password) {
+                                // If the password is supplied, use it and ignore the path
+                                // (if supplied).
+                                (_, Some(password)) => (
+                                    password.as_ref().to_vec().into(),
+                                    keystore
+                                        .decrypt_keypair(password.as_ref())
+                                        .map_err(Error::UnableToDecryptKeystore)?,
+                                ),
+                                // If only the path is supplied, use the path.
+                                (Some(path), None) => {
+                                    let password = read_password(path)
+                                        .map_err(Error::UnableToReadVotingKeystorePassword)?;
+                                    let keypair = keystore
+                                        .decrypt_keypair(password.as_bytes())
+                                        .map_err(Error::UnableToDecryptKeystore)?;
+                                    (password, keypair)
+                                }
+                                // If there is no password available, maybe prompt for a password.
+                                (None, None) => {
+                                    let (password, keypair) = unlock_keystore_via_stdin_password(
+                                        &keystore,
+                                        &keystore_path,
+                                    )?;
+                                    (password.as_ref().to_vec().into(), keypair)
+                                }
+                            },
+                        )
+                    })
+                    .await
+                    .map_err(Error::TokioJoin)??;
+                    key_cache.add(keypair.clone(), voting_keystore.uuid(), password);
+                    keypair
+                };
 
-                let mut committee = OperatorCommittee::new(0, t);
-                for i in 0..n {
-                    let operator = Arc::new(
-                        LocalOperator::from_keypair(Arc::new(kps[i].clone())));  
-                    committee.add_operator(ids[i], operator);
-                } 
+                // [TODO] Zico: revisit this check, because def.voting_public_key is the master public key, while voting_keypair is a share.
+                //if voting_keypair.pk != def.voting_public_key {
+                    //return Err(Error::VotingPublicKeyMismatch {
+                        //definition: Box::new(def.voting_public_key),
+                        //keystore: Box::new(voting_keypair.pk),
+                    //});
+                //}
+
+                // Append a `.lock` suffix to the voting keystore.
+                let lockfile_path = get_lockfile_path(&voting_keystore_share_path)
+                    .ok_or_else(|| Error::BadVotingKeystorePath(voting_keystore_share_path.clone()))?;
+
+                let voting_keystore_share_lockfile = Mutex::new(Some(Lockfile::new(lockfile_path)?));
+                // [TODO] Zico: End copying from LocalKeystore. Find a way to reuse.
+
+
+                let committee_def_path = operator_committee_definition_path.ok_or(Error::NoCommitteeDefinition)?;
+                let committee_def = OperatorCommitteeDefinition::from_file(committee_def_path).map_err(Error::UnableToParseCommitteeDefinition)?; 
+                let mut committee = OperatorCommittee::from_definition(committee_def.clone()).map_err(|_| Error::UnableToBuildCommittee)?;
+
+                let local_operator = Arc::new(
+                    LocalOperator::new(operator_id, Arc::new(voting_keypair)));  
+                committee.add_operator(operator_id, local_operator);
+
                 SigningMethod::DistributedKeystore {
                     voting_keystore_lockfile: <_>::default(),
-                    voting_public_key: kp.pk,
+                    voting_public_key: committee_def.voting_public_key,
                     operator_committee: Arc::new(committee),
                 }
             }

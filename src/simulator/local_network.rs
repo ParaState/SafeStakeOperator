@@ -1,10 +1,11 @@
 //! Reference: lighthouse/testing/simulator/src/local_network.rs 
 
-use node_test_rig::{
-    environment::RuntimeContext,
-    eth2::{types::StateId, BeaconNodeHttpClient},
-    ClientConfig, LocalBeaconNode, LocalValidatorClient, ValidatorConfig, ValidatorFiles,
-};
+use environment::RuntimeContext;
+use eth2::{types::StateId, BeaconNodeHttpClient};
+use beacon_node::ClientConfig;
+use crate::simulator::local_validator_client::LocalValidatorClient;
+use crate::simulator::local_beacon_node::LocalBeaconNode;
+use crate::simulator::validator_files::ValidatorFiles;
 use parking_lot::RwLock;
 use sensitive_url::SensitiveUrl;
 use std::{
@@ -13,6 +14,8 @@ use std::{
 };
 use std::{sync::Arc, time::Duration};
 use types::{Epoch, EthSpec};
+
+use crate::simulator::ValidatorConfig;
 
 const BOOTNODE_PORT: u16 = 42424;
 pub const INVALID_ADDRESS: &str = "http://127.0.0.1:42423";

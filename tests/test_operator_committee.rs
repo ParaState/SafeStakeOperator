@@ -17,7 +17,7 @@ fn test_fake_operator_committee() {
     let mut committee = OperatorCommittee::new(0, t);
     for i in 0..n {
         let operator = Arc::new(
-            LocalOperator::from_keypair(Arc::new(kps[i].clone())));  
+            LocalOperator::new(ids[i], Arc::new(kps[i].clone())));  
         committee.add_operator(ids[i], operator);
     }
 
@@ -35,4 +35,7 @@ fn test_fake_operator_committee() {
     assert!(status1, "Signature verification failed");
     assert!(status2, "Aggregate signature verification failed");
     assert_eq!(sig1, sig2, "Signature not match");
+
+    //let a = Arc<RwLock<dyn TOperator>>> = Arc::new(RwLock::new(
+            //LocalOperator::from_keypair(Arc::new(kps[0].clone()))));
 }

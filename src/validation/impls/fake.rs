@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::sync::{Arc};
 use crate::validation::{
-    operator_committee::{TOperatorCommittee},
+    generic_operator_committee::{TOperatorCommittee},
     operator::{TOperator},
 };
 use crate::crypto::ThresholdSignature;
-use crate::DvfOperatorTsid;
+use crate::{DvfCommitteeIndex, DvfOperatorTsid};
 use crate::utils::error::DvfError;
 use bls::{Hash256, Signature, PublicKey};
 use parking_lot::{RwLock};
@@ -17,13 +17,17 @@ pub mod types {
 
 /// Fake operator committee whose consensus protocol is dummy 
 pub struct FakeOperatorCommittee {
+    id: DvfCommitteeIndex,
+    voting_public_key: PublicKey,
     operators: RwLock<HashMap<DvfOperatorTsid, Arc<dyn TOperator>>>,
-    threshold_: usize
+    threshold_: usize,
 }
 
 impl TOperatorCommittee for FakeOperatorCommittee {
-    fn new(t: usize) -> Self {
+    fn new(id: DvfCommitteeIndex, voting_public_key: PublicKey, t: usize) -> Self {
         Self {
+            id,
+            voting_public_key,
             operators: <_>::default(),
             threshold_: t
         }
@@ -53,7 +57,13 @@ impl TOperatorCommittee for FakeOperatorCommittee {
         let ids: Vec<DvfOperatorTsid> = operators.keys().map(|k| *k).collect();
         let operators: Vec<&Arc<dyn TOperator>> = ids.iter().map(|k| operators.get(&k).unwrap()).collect(); 
         let pks: Vec<&PublicKey> = operators.iter().map(|x| x.public_key().unwrap()).collect();
-        let sigs: Vec<Signature> = operators.iter().map(|x| x.sign(msg)).collect();
+        let mut sigs: Vec<Signature> = Vec::<_>::new();
+        for op in operators {
+            match op.sign(msg) {
+                Ok(sig) => sigs.push(sig),
+                Err(_) => {} 
+            }
+        }
         let sigs: Vec<&Signature> = sigs.iter().map(|x| x).collect();
 
         let threshold_sig = ThresholdSignature::new(self.threshold());

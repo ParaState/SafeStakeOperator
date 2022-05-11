@@ -1,7 +1,7 @@
 //! Reference: lighthouse/testing/simulator/src/checks.rs 
 
 use super::local_network::LocalNetwork;
-use node_test_rig::eth2::types::{BlockId, StateId};
+use eth2::types::{BlockId, StateId};
 use std::time::Duration;
 use types::{Epoch, EthSpec, Slot, Unsigned};
 

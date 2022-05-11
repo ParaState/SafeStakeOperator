@@ -1,6 +1,8 @@
 //! Provides functions that are used for key/account management across multiple crates in the
 //! Lighthouse project.
 
+use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
+use crate::validation::operator_committee_definitions::{OPERATOR_COMMITTEE_DEFINITION_FILENAME};
 use eth2_keystore::Keystore;
 use eth2_wallet::{
     bip39::{Language, Mnemonic, MnemonicType},
@@ -12,6 +14,7 @@ use std::fs::{self, File};
 use std::io;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
+use types::{PublicKey};
 
 pub mod validator_definitions;
 
@@ -50,6 +53,27 @@ pub fn default_keystore_password_path<P: AsRef<Path>>(
     secrets_dir
         .as_ref()
         .join(format!("0x{}", keystore.pubkey()))
+}
+
+/// Returns the "default" path where a keystore should store its password file.
+pub fn default_keystore_share_password_path<P: AsRef<Path>>(
+    keystore_share: &KeystoreShare,
+    secrets_dir: P,
+) -> PathBuf {
+    secrets_dir
+        .as_ref()
+        .join(format!("{}", &keystore_share.master_public_key))
+}
+
+/// Returns the default path where an operator committee definition should be stored.
+pub fn default_operator_committee_definition_path<P: AsRef<Path>>(
+    public_key: &PublicKey,
+    validators_dir: P,
+) -> PathBuf {
+    validators_dir
+        .as_ref()
+        .join(format!("{}", public_key))
+        .join(format!("{}", OPERATOR_COMMITTEE_DEFINITION_FILENAME))
 }
 
 /// Reads a password file into a Zeroize-ing `PlainText` struct, with new-lines removed.

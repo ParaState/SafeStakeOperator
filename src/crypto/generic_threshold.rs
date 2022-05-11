@@ -8,6 +8,7 @@ use num_bigint::{BigInt, Sign};
 use crate::math::bigint_ext::Ring;
 use crate::utils::rand_utils::RandUtilsRng;
 use crate::utils::rand_utils::Sample;
+use std::collections::HashSet;
 
 
 pub trait TThresholdSignature: Sized + Clone {
@@ -108,14 +109,19 @@ where
         let mut pks_valid: Vec<&PublicKey> = Vec::new();
         let mut sigs_valid: Vec<&Signature> = Vec::new();
         let mut ids_valid: Vec<u64> = Vec::new();
+        let mut valid_set: HashSet<u64> = HashSet::new();
 
         let total = sigs.len();
         for i in 0..total {
+            if valid_set.contains(&ids[i]) {
+                continue;
+            }
             let status = sigs[i].verify(pks[i], msg);
             if status {
                 pks_valid.push(pks[i]);
                 sigs_valid.push(sigs[i]);
                 ids_valid.push(ids[i]);
+                valid_set.insert(ids[i]);
                 if pks_valid.len() >= self.threshold() {
                     break
                 }

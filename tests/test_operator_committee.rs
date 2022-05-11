@@ -14,7 +14,7 @@ fn test_fake_operator_committee() {
     let mut m_threshold = ThresholdSignature::new(t);
     let (kp, kps, ids) = m_threshold.key_gen(n);
 
-    let mut committee = OperatorCommittee::new(0, t);
+    let mut committee = OperatorCommittee::new(0, kp.pk.clone(), t);
     for i in 0..n {
         let operator = Arc::new(
             LocalOperator::new(ids[i], Arc::new(kps[i].clone())));  

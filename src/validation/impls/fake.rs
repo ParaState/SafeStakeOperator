@@ -46,6 +46,7 @@ impl TOperatorCommittee for FakeOperatorCommittee {
     }
 
     fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> {
+        println!("[Committee Sign]>>>>>>>>>>>>>>>>>>>>>");
         // Run consensus protocol 
         let status = self.consensus(msg);
         if !status {

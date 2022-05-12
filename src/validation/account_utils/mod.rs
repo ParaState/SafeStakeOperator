@@ -62,7 +62,7 @@ pub fn default_keystore_share_password_path<P: AsRef<Path>>(
 ) -> PathBuf {
     secrets_dir
         .as_ref()
-        .join(format!("{}", &keystore_share.master_public_key))
+        .join(format!("{}_{}", &keystore_share.master_public_key, keystore_share.share_id))
 }
 
 /// Returns the default path where an operator committee definition should be stored.

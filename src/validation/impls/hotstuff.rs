@@ -56,7 +56,7 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
         let mut operator = operators.get(&id).unwrap().write();
         let hotstuff_operator = operator.downcast_mut::<HotStuffOperator>().unwrap(); 
         println!("propose msg by id { }", id);
-        if id == 0 {
+        if id == 1 {
             println!("propose msg by id { }", id);
             block_on(hotstuff_operator.propose(msg));
         }
@@ -71,19 +71,20 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
 
         let operators = self.operators.write();
         let ids : Vec<DvfOperatorTsid> = operators.keys().map(|k| *k).collect();
-        let id = ids[0];
+
+        let id :u32 = ids[0];
         let mut operator = operators.get(&id).unwrap().write();
         let hotstuff_operator = operator.downcast_mut::<HotStuffOperator>().unwrap();
         // wait 
         let signatures = block_on(hotstuff_operator.wait_signature());
-        let self_pk = operator.public_key();
-        println!("wait for signature");
-        let self_signature = operator.sign(msg)?;
 
-        let mut pks: Vec<&PublicKey> = signatures.iter().map(|x| &x.from).collect();
-        pks.push(&self_pk);
-        let mut sigs: Vec<&Signature> = signatures.iter().map(|x| &x.signature).collect();
-        sigs.push(&self_signature);
+        let ids : Vec<DvfOperatorTsid> = signatures.iter().map(|x| x.id as u32).collect();
+        // ids.push(id);
+        println!("{:?}", &ids);
+        let pks: Vec<&PublicKey> = signatures.iter().map(|x| &x.from).collect();
+        // pks.push(self_pk);
+        let sigs: Vec<&Signature> = signatures.iter().map(|x| &x.signature).collect();
+        // sigs.push(&self_signature);
         let threshold_sig = ThresholdSignature::new(self.threshold());
         threshold_sig.threshold_aggregate(&sigs[..], &pks[..], &ids[..], msg)
     }

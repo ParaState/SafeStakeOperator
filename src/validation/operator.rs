@@ -7,7 +7,7 @@ use network::SimpleSender;
 use bytes::Bytes;
 use tokio::sync::mpsc::{self, Receiver};
 use futures::executor::block_on;
-
+use std::collections::HashSet;
 use downcast_rs::DowncastSync;
 
 pub enum OperatorMessage {
@@ -91,15 +91,21 @@ impl HotStuffOperator {
 
     pub async fn wait_signature(&mut self) -> Vec<SignatureInfo>{
         let mut received = 0;
+        let mut ids = HashSet::<u32>::new();
         let mut res = Vec::new();
         loop {
             if let Some(signature_info) = self.rx_signature.recv().await {
-                println!("receive signature info");
-                res.push(signature_info);
-                received += 1;
-                if received == 7 {
+                if ids.contains(&signature_info.id)  {
+                    continue;
+                } else {
+                    ids.insert(signature_info.id);
+                    res.push(signature_info);
+                    received+=1;
+                }
+                if received == 10 {
                     break;
                 }
+                    
             }
         }
         res

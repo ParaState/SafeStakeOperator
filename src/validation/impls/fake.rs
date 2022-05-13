@@ -9,7 +9,6 @@ use crate::{DvfCommitteeIndex, DvfOperatorTsid};
 use crate::utils::error::DvfError;
 use bls::{Hash256, Signature, PublicKey};
 use parking_lot::{RwLock};
-
 /// Provides the externally-facing operator committee type.
 pub mod types {
     pub use super::FakeOperatorCommittee as OperatorCommittee;
@@ -19,7 +18,7 @@ pub mod types {
 pub struct FakeOperatorCommittee {
     id: DvfCommitteeIndex,
     voting_public_key: PublicKey,
-    operators: RwLock<HashMap<DvfOperatorTsid, Arc<dyn TOperator>>>,
+    operators: RwLock<HashMap<DvfOperatorTsid, Arc<RwLock<dyn TOperator>>>>,
     threshold_: usize,
 }
 
@@ -33,7 +32,7 @@ impl TOperatorCommittee for FakeOperatorCommittee {
         }
     }
 
-    fn add_operator(&mut self, id: DvfOperatorTsid, operator: Arc<dyn TOperator>) {
+    fn add_operator(&mut self, id: DvfOperatorTsid, operator: Arc<RwLock<dyn TOperator>>) {
         self.operators.write().insert(id, operator);
     }
 
@@ -56,11 +55,13 @@ impl TOperatorCommittee for FakeOperatorCommittee {
         // If consensus is achieved, aggregate the valid signatures
         let operators = self.operators.read();
         let ids: Vec<DvfOperatorTsid> = operators.keys().map(|k| *k).collect();
-        let operators: Vec<&Arc<dyn TOperator>> = ids.iter().map(|k| operators.get(&k).unwrap()).collect(); 
-        let pks: Vec<&PublicKey> = operators.iter().map(|x| x.public_key().unwrap()).collect();
+        let operators: Vec<&Arc<RwLock<dyn TOperator>>> = ids.iter().map(|k| operators.get(&k).unwrap()).collect(); 
+        let mut pks: Vec<PublicKey> = operators.iter().map(|x| x.read().public_key()).collect();
+        let mut pk_refs: Vec<&PublicKey> = pks.iter().map(|x| x).collect();
+
         let mut sigs: Vec<Signature> = Vec::<_>::new();
         for op in operators {
-            match op.sign(msg) {
+            match op.read().sign(msg) {
                 Ok(sig) => sigs.push(sig),
                 Err(_) => {} 
             }
@@ -69,6 +70,7 @@ impl TOperatorCommittee for FakeOperatorCommittee {
 
         let threshold_sig = ThresholdSignature::new(self.threshold());
         
-        threshold_sig.threshold_aggregate(&sigs[..], &pks[..], &ids[..], msg)
+        // threshold_sig.threshold_aggregate(&sigs[..], &pks[..], &ids[..], msg)
+        return Err(DvfError::ConsensusFailure);
     }
 }

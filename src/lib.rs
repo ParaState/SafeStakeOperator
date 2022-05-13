@@ -1,3 +1,5 @@
+#[macro_use]
+extern crate downcast_rs;
 pub mod crypto;
 pub mod math;
 pub mod utils;

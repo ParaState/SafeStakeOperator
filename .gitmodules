@@ -1,3 +1,6 @@
 [submodule "lighthouse"]
 	path = lighthouse
 	url = https://github.com/sigp/lighthouse
+[submodule "hotstuff"]
+	path = hotstuff
+	url = https://github.com/jianlinjiang/hotstuff.git

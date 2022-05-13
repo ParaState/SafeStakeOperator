@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::convert::TryInto;
 use std::path::PathBuf;
 use std::collections::HashMap;
+use parking_lot::{RwLock};
 
 impl OperatorCommittee { 
     pub fn from_definition(
@@ -19,7 +20,7 @@ impl OperatorCommittee {
                 public_key: def.public_keys[i].clone(),
                 socket_address: def.socket_addresses[i],
             };
-            committee.add_operator(def.ids[i], Arc::new(operator));
+            committee.add_operator(def.ids[i], Arc::new(RwLock::new(operator)));
         }
         Ok(committee)
     }

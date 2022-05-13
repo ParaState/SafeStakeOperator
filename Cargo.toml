@@ -2,7 +2,7 @@
 name = "dvf"
 version = "0.1.0"
 authors = ["Zico <zhicong303@gmail.com"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -22,6 +22,19 @@ eth2_hashing = "0.3.0"
 #simulator = { path = "lighthouse/testing/simulator" }
 types = { path = "lighthouse/consensus/types" }
 #lighthouse_bls = { path = "lighthouse/crypto/bls", package="bls"}
+
+# hotstuff
+crypto = { path = "hotstuff/crypto" }
+store = { path = "hotstuff/store" }
+consensus = { path = "hotstuff/consensus" }
+mempool = { path = "hotstuff/mempool" }
+network = { path = "hotstuff/network"}
+node = { path = "hotstuff/node"}
+env_logger = "0.8.2"
+log = "0.4.0"
+tokio-util = { version = "0.6.2", features = ["codec"] }
+bytes = "1.0.1"
+downcast-rs = "1.2.0"
 
 
 tree_hash = "0.4.1"
@@ -77,10 +90,6 @@ zeroize = { version = "1.4.2", features = ["zeroize_derive"] }
 beacon_node = { path = "lighthouse/beacon_node" }
 
 
-[features]
-default = ["fake_committee"]
-fake_committee = []
-
 [patch]
 [patch.crates-io]
 fixed-hash = { git = "https://github.com/paritytech/parity-common", rev="df638ab0885293d21d656dc300d39236b69ce57d" }
@@ -93,4 +102,13 @@ tree_hash = { path = "lighthouse/consensus/tree_hash" }
 tree_hash_derive = { path = "lighthouse/consensus/tree_hash_derive" }
 eth2_serde_utils = { path = "lighthouse/consensus/serde_utils" }
 
+
+
+[features]
+default = ["hotstuff_committee"]
+fake_committee = []
+hotstuff_committee = []
+
+[dev-dependencies]
+tokio-test = "*"
 

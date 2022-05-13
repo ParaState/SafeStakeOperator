@@ -108,3 +108,11 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,vim,rust,linux,windows
+
+
+# protobuf
+network_msgs.rs
+
+committee.json
+node_*.json
+db_*

@@ -22,6 +22,7 @@ pub mod account_utils;
 pub mod validator_dir;
 pub mod eth2_keystore_share;
 
+
 //pub use cli::cli_app;
 pub use config::Config;
 use initialized_validators::InitializedValidators;
@@ -732,3 +733,9 @@ define_mod!(fake_committee_implementations, crate::validation::impls::fake::type
 
 #[cfg(feature = "fake_committee")]
 pub use fake_committee_implementations::*;
+
+#[cfg(feature = "hotstuff_committee")]
+define_mod!(hotstuff_committee_implementations, crate::validation::impls::hotstuff::types);
+
+#[cfg(feature = "hotstuff_committee")]
+pub use hotstuff_committee_implementations::*;

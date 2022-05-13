@@ -17,7 +17,7 @@ fn test_fake_operator_committee() {
     let mut committee = OperatorCommittee::new(0, kp.pk.clone(), t);
     for i in 0..n {
         let operator = Arc::new(
-            LocalOperator::new(ids[i], Arc::new(kps[i].clone())));  
+            RwLock::new(LocalOperator::new(ids[i], Arc::new(kps[i].clone()))));  
         committee.add_operator(ids[i], operator);
     }
 

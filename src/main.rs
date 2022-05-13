@@ -223,27 +223,7 @@ async fn main() {
     if n > 1 {
       match deploy_testbed(n, &kps, tx_signature, &ids) {
         Ok(handles) => {
-          // read committee from file 
-          let committee_file = "committee.json";
-          let mut network = SimpleSender::new();
-          let committee = Committee::read(&committee_file).unwrap();
-          let mut addresses : Vec<SocketAddr>= Vec::new();
-          for (key, authority) in &committee.mempool.authorities {
-            addresses.push(authority.dvf_address.clone());
-          }
-          let validator_vec : Vec<u8>= vec![50; 88];
-          let validator_id = String::from_utf8(validator_vec).unwrap();
-          let dvfinfo = DvfInfo { validator_id, committee };
 
-          let empty_vec : Vec<u8>= vec![48;88];
-          let mut prefix_msg : Vec<u8> = Vec::new();
-          prefix_msg.extend(empty_vec);
-          let dvfinfo_bytes = serde_json::to_vec(&dvfinfo).unwrap();
-          prefix_msg.extend(dvfinfo_bytes);
-
-
-          // block_on(network.broadcast(addresses, Bytes::from(prefix_msg)));
-          // wait for network
           let ten_millis = time::Duration::from_millis(10);
           thread::sleep(ten_millis);
           info!("committee sign");

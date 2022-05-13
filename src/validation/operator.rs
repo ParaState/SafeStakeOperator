@@ -91,7 +91,7 @@ impl HotStuffOperator {
 
     pub async fn wait_signature(&mut self) -> Vec<SignatureInfo>{
         let mut received = 0;
-        let mut ids = HashSet::<u32>::new();
+        let mut ids = HashSet::<u64>::new();
         let mut res = Vec::new();
         loop {
             if let Some(signature_info) = self.rx_signature.recv().await {

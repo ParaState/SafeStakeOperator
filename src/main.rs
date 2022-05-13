@@ -29,7 +29,7 @@ use types::Keypair;
 use std::{thread, time};
 use env_logger::Env;
 
-fn deploy_testbed(nodes: usize, kps: &Vec<Keypair>, tx_signature: Sender<SignatureInfo>, ids: &Vec<u32>) -> Result<Vec<JoinHandle<()>>, Box<dyn std::error::Error>> {
+fn deploy_testbed(nodes: usize, kps: &Vec<Keypair>, tx_signature: Sender<SignatureInfo>, ids: &Vec<u64>) -> Result<Vec<JoinHandle<()>>, Box<dyn std::error::Error>> {
 
   let mut logger = env_logger::Builder::from_env(Env::default().default_filter_or("error"));
   logger.format_timestamp_millis();
@@ -153,8 +153,8 @@ fn deploy_testbed(nodes: usize, kps: &Vec<Keypair>, tx_signature: Sender<Signatu
       .collect::<Result<_, Box<dyn std::error::Error>>>()
 }
 
-async fn process_consensus_block(dvfcore: &mut DvfCore, keypair: Arc<Keypair>, id: u32) {
-  let operator = LocalOperator::from_keypair(keypair);
+async fn process_consensus_block(dvfcore: &mut DvfCore, keypair: Arc<Keypair>, id: u64) {
+  let operator = LocalOperator::new(id.into(), keypair);
   let mut network = SimpleSender::new();
   let boradcast_address = dvfcore.broadcast_signature_addresses.clone();
   
@@ -172,9 +172,9 @@ async fn process_consensus_block(dvfcore: &mut DvfCore, keypair: Arc<Keypair>, i
                     for batch in batches {
                       let msg = Hash256::from_slice(&batch[..]);
                       println!(" broadcast msg {:02x?}", msg);
-                      let sig = operator.sign(msg.clone());
-                      let pk = operator.public_key().unwrap();
-                      let sig_info = SignatureInfo { from: pk.clone(), signature: sig, msg: msg, id: id};
+                      let sig = operator.sign(msg.clone()).unwrap();
+                      let pk = operator.public_key();
+                      let sig_info = SignatureInfo { from: pk, signature: sig, msg: msg, id: id};
                       let siginfo_data = serde_json::to_vec(&sig_info).unwrap();
                       let mut prefix_msg : Vec<u8> = Vec::new();
                       prefix_msg.extend(dvfcore.validator_id.clone().into_bytes());
@@ -211,8 +211,8 @@ async fn start_dvf_committee(node: &mut Node, tx_signature: Sender<SignatureInfo
     
 } 
 
-// #[tokio::main(worker_threads = 2000)]
-#[tokio::main]
+#[tokio::main(worker_threads = 200)]
+//#[tokio::main]
 async fn main() {
     let t: usize = 5;
     let n: usize = 10;
@@ -247,7 +247,7 @@ async fn main() {
           let ten_millis = time::Duration::from_millis(10);
           thread::sleep(ten_millis);
           info!("committee sign");
-          let mut committee = OperatorCommittee::new(0, t);
+          let mut committee = OperatorCommittee::new(0, kp.pk.clone(), t);
       //     // transaction address
           let address = "127.0.0.1:25001".parse::<SocketAddr>().unwrap();
           let operator = Arc::new(

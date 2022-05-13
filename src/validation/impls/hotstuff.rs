@@ -72,13 +72,13 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
         let operators = self.operators.write();
         let ids : Vec<DvfOperatorTsid> = operators.keys().map(|k| *k).collect();
 
-        let id :u32 = ids[0];
+        let id :u64 = ids[0];
         let mut operator = operators.get(&id).unwrap().write();
         let hotstuff_operator = operator.downcast_mut::<HotStuffOperator>().unwrap();
         // wait 
         let signatures = block_on(hotstuff_operator.wait_signature());
 
-        let ids : Vec<DvfOperatorTsid> = signatures.iter().map(|x| x.id as u32).collect();
+        let ids : Vec<DvfOperatorTsid> = signatures.iter().map(|x| x.id as u64).collect();
         // ids.push(id);
         println!("{:?}", &ids);
         let pks: Vec<&PublicKey> = signatures.iter().map(|x| &x.from).collect();

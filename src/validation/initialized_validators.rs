@@ -177,6 +177,7 @@ impl InitializedValidator {
         def: ValidatorDefinition,
         key_cache: &mut KeyCache,
         key_stores: &mut HashMap<PathBuf, Keystore>,
+        committee_cache: &mut HashMap<u64, Arc<RwLock<OperatorCommittee>>>,
     ) -> Result<Self, Error> {
         if !def.enabled {
             return Err(Error::UnableToInitializeDisabledValidator);
@@ -371,16 +372,25 @@ impl InitializedValidator {
 
                 let committee_def_path = operator_committee_definition_path.ok_or(Error::NoCommitteeDefinition)?;
                 let committee_def = OperatorCommitteeDefinition::from_file(committee_def_path).map_err(Error::UnableToParseCommitteeDefinition)?; 
-                let mut committee = OperatorCommittee::from_definition(committee_def.clone()).map_err(|_| Error::UnableToBuildCommittee)?;
+
+                let committee = match committee_cache.entry(committee_def.committee_index) {
+                    Vacant(entry) => {
+                        let committee = OperatorCommittee::from_definition(committee_def.clone()).map_err(|_| Error::UnableToBuildCommittee)?;
+                        let committee = Arc::new(RwLock::new(committee));
+                        entry.insert(committee)
+                    },
+                    Occupied(entry) => entry.into_mut(),
+                };
 
                 let local_operator = Arc::new(
                     RwLock::new(LocalOperator::new(operator_id, Arc::new(voting_keypair))));  
-                committee.add_operator(operator_id, local_operator);
+                committee.write().add_operator(operator_id, local_operator);
+
 
                 SigningMethod::DistributedKeystore {
                     voting_keystore_lockfile: <_>::default(),
                     voting_public_key: committee_def.voting_public_key,
-                    operator_committee: Arc::new(committee),
+                    operator_committee: committee.clone(),
                 }
             }
         };
@@ -817,6 +827,7 @@ impl InitializedValidators {
     pub(crate) async fn update_validators(&mut self) -> Result<(), Error> {
         //use key cache if available
         let mut key_stores = HashMap::new();
+        let mut committee_cache = HashMap::new();
 
         // Create a lock file for the cache
         let key_cache_path = KeyCache::cache_file_path(&self.validators_dir);
@@ -850,6 +861,7 @@ impl InitializedValidators {
                             def.clone(),
                             &mut key_cache,
                             &mut key_stores,
+                            &mut committee_cache,
                         )
                         .await
                         {
@@ -899,6 +911,7 @@ impl InitializedValidators {
                             def.clone(),
                             &mut key_cache,
                             &mut key_stores,
+                            &mut committee_cache,
                         )
                         .await
                         {
@@ -934,9 +947,10 @@ impl InitializedValidators {
                     } => {
                         let pubkey_bytes = def.voting_public_key.compress();
 
-                        if self.validators.contains_key(&pubkey_bytes) {
-                            continue;
-                        }
+                        // [TODO] Zico: revisit here
+                        //if self.validators.contains_key(&pubkey_bytes) {
+                            //continue;
+                        //}
 
                         if let Some(key_store) = key_stores.get(voting_keystore_share_path) {
                             disabled_uuids.remove(key_store.uuid());
@@ -946,6 +960,7 @@ impl InitializedValidators {
                             def.clone(),
                             &mut key_cache,
                             &mut key_stores,
+                            &mut committee_cache,
                         )
                         .await
                         {

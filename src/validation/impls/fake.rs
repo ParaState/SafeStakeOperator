@@ -45,12 +45,15 @@ impl TOperatorCommittee for FakeOperatorCommittee {
     }
 
     fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> {
-        println!("[Committee Sign]>>>>>>>>>>>>>>>>>>>>>");
+        println!("<<<<<<<[Duty]: {:02x?}>>>>>>", msg);
+        println!("<<<<<<<[Committee Sign]>>>>>>");
+        println!("<<<<<<<[Start Consensus]>>>>>>");
         // Run consensus protocol 
         let status = self.consensus(msg);
         if !status {
             return Err(DvfError::ConsensusFailure);
         }
+        println!("<<<<<<<[Consensus Succeeds]>>>>>>");
         
         // If consensus is achieved, aggregate the valid signatures
         let operators = self.operators.read();
@@ -67,10 +70,13 @@ impl TOperatorCommittee for FakeOperatorCommittee {
             }
         }
         let sigs: Vec<&Signature> = sigs.iter().map(|x| x).collect();
+        println!("<<<<<<<[Got {} signatures]>>>>>>", sigs.len());
 
         let threshold_sig = ThresholdSignature::new(self.threshold());
         
-        // threshold_sig.threshold_aggregate(&sigs[..], &pks[..], &ids[..], msg)
-        return Err(DvfError::ConsensusFailure);
+        let sig = threshold_sig.threshold_aggregate(&sigs[..], &pk_refs[..], &ids[..], msg)?;
+
+        println!("<<<<<<<[Threshold Committee Signing Succeeds]>>>>>>");
+        return Ok(sig)
     }
 }

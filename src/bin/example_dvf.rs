@@ -45,14 +45,14 @@ pub fn simple_integration_example() -> Result<(), String> {
         })
         .collect::<Vec<_>>();
 
-    let log_level = "debug";
+    let log_level = "error";
     let log_format = None;
 
     let mut env = EnvironmentBuilder::mainnet()
         .initialize_logger(LoggerConfig {
             path: None,
             debug_level: log_level,
-            logfile_debug_level: "debug",
+            logfile_debug_level: "error",
             log_format,
             max_log_size: 0,
             max_log_number: 0,

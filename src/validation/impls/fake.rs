@@ -74,9 +74,9 @@ impl TOperatorCommittee for FakeOperatorCommittee {
 
         let threshold_sig = ThresholdSignature::new(self.threshold());
         
-        let sig = threshold_sig.threshold_aggregate(&sigs[..], &pk_refs[..], &ids[..], msg)?;
+        let sig = threshold_sig.threshold_aggregate(&sigs[..], &pk_refs[..], &ids[..], msg);
 
         println!("<<<<<<<[Threshold Committee Signing Succeeds]>>>>>>");
-        return Ok(sig)
+        sig
     }
 }

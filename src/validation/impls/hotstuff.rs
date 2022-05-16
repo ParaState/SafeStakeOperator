@@ -66,8 +66,11 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
 
     fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> {
         // Run consensus protocol 
-        println!("propose msg");
+        println!("<<<<<<<[Duty]: {:02x?}>>>>>>", msg);
+        println!("<<<<<<<[Committee Sign]>>>>>>");
+        println!("<<<<<<<[Start Consensus]>>>>>>");
         let status = self.consensus(msg);
+        println!("<<<<<<<[Consensus Succeeds]>>>>>>");
 
         let operators = self.operators.write();
         let ids : Vec<DvfOperatorTsid> = operators.keys().map(|k| *k).collect();
@@ -84,9 +87,12 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
         let pks: Vec<&PublicKey> = signatures.iter().map(|x| &x.from).collect();
         // pks.push(self_pk);
         let sigs: Vec<&Signature> = signatures.iter().map(|x| &x.signature).collect();
+        println!("<<<<<<<[Got {} signatures]>>>>>>", sigs.len());
         // sigs.push(&self_signature);
         let threshold_sig = ThresholdSignature::new(self.threshold());
-        threshold_sig.threshold_aggregate(&sigs[..], &pks[..], &ids[..], msg)
+        let sig = threshold_sig.threshold_aggregate(&sigs[..], &pks[..], &ids[..], msg);
+        println!("<<<<<<<[Threshold Committee Signing Succeeds]>>>>>>");
+        sig
     }
 
     

@@ -41,7 +41,8 @@ store = { path = "hotstuff/store" }
 consensus = { path = "hotstuff/consensus" }
 mempool = { path = "hotstuff/mempool" }
 network = { path = "hotstuff/network"}
-node = { path = "hotstuff/node"}
+hotstuff_config = { path = "hotstuff/config"}
+async-trait = "0.1.50"
 env_logger = "0.8.2"
 log = "0.4.0"
 tokio-util = { version = "0.6.2", features = ["codec"] }

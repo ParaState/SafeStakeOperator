@@ -5,7 +5,7 @@ pub mod math;
 pub mod utils;
 pub mod simulator;
 pub mod validation;
-
+pub mod node;
 
 pub type DvfCommitteeIndex = u32;
 

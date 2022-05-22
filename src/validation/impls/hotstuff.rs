@@ -9,12 +9,8 @@ use crate::DvfOperatorTsid;
 use crate::utils::error::DvfError;
 use bls::{Hash256, Signature, PublicKey};
 use parking_lot::{RwLock};
-use std::net::SocketAddr;
-use tokio::net::TcpStream;
 use futures::executor::block_on;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
-use bytes::Bytes;
-use futures::sink::SinkExt as _;
 /// Provides the externally-facing operator committee type.
 pub mod types {
     pub use super::HotstuffOperatorCommittee as OperatorCommittee;
@@ -45,16 +41,18 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
 
     fn consensus(&self, msg: Hash256) -> bool {
         // send network request
-        let operators = self.operators.write();
-        let ids : Vec<DvfOperatorTsid> = operators.keys().map(|k| *k).collect();
-        let id = ids[0];
-        let mut operator = operators.get(&id).unwrap().write();
-        let hotstuff_operator = operator.downcast_mut::<HotStuffOperator>().unwrap(); 
-        println!("propose msg by id { }", id);
-        if id == 1 {
-            println!("propose msg by id { }", id);
-            block_on(hotstuff_operator.propose(msg));
-        }
+        // let operators = self.operators.write();
+        // let ids : Vec<DvfOperatorTsid> = operators.keys().map(|k| *k).collect();
+        // let id = ids[0];
+        // let mut operator = operators.get(&id).unwrap().write();
+        // let hotstuff_operator = operator.downcast_mut::<HotStuffOperator>().unwrap(); 
+        // println!("propose msg by id { }", id);
+        // if id == 1 {
+        //     println!("propose msg by id { }", id);
+        //     block_on(hotstuff_operator.propose(msg));
+        // }
+
+        // TODO: send transaction request to self node
             
         return true;
     }
@@ -64,23 +62,26 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
         println!("propose msg");
         let status = self.consensus(msg);
 
-        let operators = self.operators.write();
-        let ids : Vec<DvfOperatorTsid> = operators.keys().map(|k| *k).collect();
+        // let operators = self.operators.write();
+        // let ids : Vec<DvfOperatorTsid> = operators.keys().map(|k| *k).collect();
 
-        let id :u32 = ids[0];
-        let mut operator = operators.get(&id).unwrap().write();
-        let hotstuff_operator = operator.downcast_mut::<HotStuffOperator>().unwrap();
-        // wait 
-        let signatures = block_on(hotstuff_operator.wait_signature());
-        let ids : Vec<DvfOperatorTsid> = signatures.iter().map(|x| x.id as u32).collect();
-        // ids.push(id);
-        println!("{:?}", &ids);
-        let pks: Vec<&PublicKey> = signatures.iter().map(|x| &x.from).collect();
-        // pks.push(self_pk);
-        let sigs: Vec<&Signature> = signatures.iter().map(|x| &x.signature).collect();
-        // sigs.push(&self_signature);
-        let threshold_sig = ThresholdSignature::new(self.threshold());
-        threshold_sig.threshold_aggregate(&sigs[..], &pks[..], &ids[..], msg)
+        // let id :u32 = ids[0];
+        // let mut operator = operators.get(&id).unwrap().write();
+        // let hotstuff_operator = operator.downcast_mut::<HotStuffOperator>().unwrap();
+        // // wait 
+        // let signatures = block_on(hotstuff_operator.wait_signature());
+        // let ids : Vec<DvfOperatorTsid> = signatures.iter().map(|x| x.id as u32).collect();
+        // // ids.push(id);
+        // println!("{:?}", &ids);
+        // let pks: Vec<&PublicKey> = signatures.iter().map(|x| &x.from).collect();
+        // // pks.push(self_pk);
+        // let sigs: Vec<&Signature> = signatures.iter().map(|x| &x.signature).collect();
+        // // sigs.push(&self_signature);
+        // let threshold_sig = ThresholdSignature::new(self.threshold());
+        // threshold_sig.threshold_aggregate(&sigs[..], &pks[..], &ids[..], msg)
+
+        let operators = self.operators.write();
+        let local_operator = operators[0];
     }
 
     

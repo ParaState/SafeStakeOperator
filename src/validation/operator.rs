@@ -5,35 +5,46 @@ use crate::node::dvfcore::BlsSignature;
 use network::ReliableSender;
 use std::net::SocketAddr;
 use bytes::Bytes;
-use tokio::sync::mpsc::{Receiver};
 use std::collections::HashSet;
 use downcast_rs::DowncastSync;
 use futures::executor::block_on;
+use tokio::sync::mpsc::{self, Receiver};
+
+pub enum OperatorMessage {
+}
+
 pub trait TOperator: DowncastSync + Sync + Send {
-    fn sign(&self, msg: Hash256) -> Signature; 
-    fn public_key(&self) -> Result<&PublicKey, DvfError>;
+    fn sign(&self, msg: Hash256) -> Result<Signature, DvfError>; 
+    fn public_key(&self) -> PublicKey;
 }
 impl_downcast!(sync TOperator);
 
 pub struct LocalOperator {
-    pub voting_keypair: Arc<Keypair>
+    pub id: u64,
+    pub voting_keypair: Arc<Keypair>,
+    pub send_channel: mpsc::UnboundedSender<OperatorMessage>,
+    pub recv_channel: mpsc::UnboundedReceiver<OperatorMessage>,
 }
 
 impl TOperator for LocalOperator {
 
-    fn sign(&self, msg: Hash256) -> Signature {
-        self.voting_keypair.sk.sign(msg)
+    fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> {
+        Ok(self.voting_keypair.sk.sign(msg))
     }
 
-    fn public_key(&self) -> Result<&PublicKey, DvfError> {
-        Ok(&self.voting_keypair.pk)
+    fn public_key(&self) -> PublicKey {
+        self.voting_keypair.pk.clone()
     }
 }
 
 impl LocalOperator {
-    pub fn from_keypair(keypair: Arc<Keypair>) -> Self {
+    pub fn new(id: u64, keypair: Arc<Keypair>) -> Self {
+        let (send_channel, recv_channel) = mpsc::unbounded_channel(); 
         Self {
-            voting_keypair: keypair
+            id,
+            voting_keypair: keypair,
+            send_channel,
+            recv_channel
         }
     }
 }
@@ -47,12 +58,12 @@ pub struct HotStuffOperator {
 
 impl TOperator for HotStuffOperator {
 
-    fn sign(&self, msg: Hash256) -> Signature {
-        self.voting_keypair.sk.sign(msg)
+    fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> {
+        Ok(self.voting_keypair.sk.sign(msg))
     }
 
-    fn public_key(&self) -> Result<&PublicKey, DvfError> {
-        Ok(&self.voting_keypair.pk)
+    fn public_key(&self) -> PublicKey {
+        self.voting_keypair.pk.clone()
     }
 }
 
@@ -123,18 +134,18 @@ impl HotStuffOperator {
 }
 
 pub struct RemoteOperator {
-    // [Zico]TODO: to be updated
-    pub voting_keypair: Arc<Keypair>
+    pub id: u64,
+    pub public_key: PublicKey,
+    pub socket_address: SocketAddr,
 }
 
 impl TOperator for RemoteOperator {
-    fn sign(&self, msg: Hash256) -> Signature { 
-        // [Zico]TODO: request remote operator to sign and return the signature
-        self.voting_keypair.sk.sign(msg)
+    fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> { 
+        Err(DvfError::Unknown)
     }
 
-    fn public_key(&self) -> Result<&PublicKey, DvfError> {
-        Err(DvfError::Unknown)  
+    fn public_key(&self) -> PublicKey {
+        self.public_key.clone()
     }
 }
 

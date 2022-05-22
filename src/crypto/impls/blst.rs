@@ -16,23 +16,23 @@ pub mod types {
 }
 
 
-fn u32_to_blst_scalar (v: u32) -> blst_scalar {
+fn u64_to_blst_scalar (v: u64) -> blst_scalar {
     let mut x = std::mem::MaybeUninit::<blst_scalar>::uninit();
     unsafe {
-        blst::blst_scalar_from_uint32(x.as_mut_ptr(), vec![v, 0, 0, 0, 0, 0, 0, 0].as_ptr());
+        blst::blst_scalar_from_uint64(x.as_mut_ptr(), vec![v, 0, 0, 0].as_ptr());
         x.assume_init()
     }
 }
 
-fn lagrange_coeffs(coeffs: &mut [blst_scalar], x: &[u32]) {
+fn lagrange_coeffs(coeffs: &mut [blst_scalar], x: &[u64]) {
     require(coeffs.len() == x.len(), "Different length");
     let n = coeffs.len();
     for i in 0..n {
-        let mut p = u32_to_blst_scalar(1);
-        let xi = u32_to_blst_scalar(x[i]);
+        let mut p = u64_to_blst_scalar(1);
+        let xi = u64_to_blst_scalar(x[i]);
         for j in 0..n {
             if i!=j {
-                let xj = u32_to_blst_scalar(x[j]); 
+                let xj = u64_to_blst_scalar(x[j]); 
                 let mut tmp = std::mem::MaybeUninit::<blst_scalar>::uninit();
                 unsafe {
                     blst::blst_sk_sub_n_check(tmp.as_mut_ptr(), &xj, &xi);
@@ -72,7 +72,7 @@ impl TThresholdSignature for BlstThresholdSignature {
         self.1
     }
 
-    fn unsafe_aggregate(&self, sigs: &[&Signature], ids: &[u32]) -> Signature {
+    fn unsafe_aggregate(&self, sigs: &[&Signature], ids: &[u64]) -> Signature {
         let mut coeffs = vec![blst_scalar::default(); self.threshold()];
         lagrange_coeffs(&mut coeffs, &ids);
 

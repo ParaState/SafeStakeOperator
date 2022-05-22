@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::sync::{Arc};
 use crate::validation::{
-    operator_committee::{TOperatorCommittee},
+    generic_operator_committee::{TOperatorCommittee},
     operator::{TOperator, HotStuffOperator},
 };
 use crate::crypto::ThresholdSignature;
 use crate::DvfOperatorTsid;
+use crate::DvfCommitteeIndex;
 use crate::utils::error::DvfError;
 use bls::{Hash256, Signature, PublicKey};
 use parking_lot::{RwLock};
@@ -18,13 +19,17 @@ pub mod types {
 
 /// Hotstuff operator committee whose consensus protocol is dummy 
 pub struct HotstuffOperatorCommittee {
+    id: DvfCommitteeIndex,
+    voting_public_key: PublicKey,
     operators: RwLock<HashMap<DvfOperatorTsid, Arc<RwLock<dyn TOperator>>>>,
     threshold_: usize,
 }
 
 impl TOperatorCommittee for HotstuffOperatorCommittee {
-    fn new(t: usize) -> Self {
+    fn new(id: DvfCommitteeIndex, voting_public_key: PublicKey, t: usize) -> Self {
         Self {
+            id,
+            voting_public_key,
             operators: <_>::default(),
             threshold_: t,
         }
@@ -59,8 +64,11 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
 
     fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> {
         // Run consensus protocol 
-        println!("propose msg");
+        println!("<<<<<<<[Duty]: {:02x?}>>>>>>", msg);
+        println!("<<<<<<<[Committee Sign]>>>>>>");
+        println!("<<<<<<<[Start Consensus]>>>>>>");
         let status = self.consensus(msg);
+        println!("<<<<<<<[Consensus Succeeds]>>>>>>");
 
         // let operators = self.operators.write();
         // let ids : Vec<DvfOperatorTsid> = operators.keys().map(|k| *k).collect();

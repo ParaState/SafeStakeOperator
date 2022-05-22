@@ -39,6 +39,12 @@ impl RandUtilsRng {
             rng: Self::get_rng()
         }
     }
+
+    pub fn from_seed(seed: &[u8; 32]) -> Self {
+        Self {
+            rng: Self::get_seeded_rng(seed)
+        }
+    }
 }
 
 impl RandUtils for RandUtilsRng {

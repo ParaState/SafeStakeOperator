@@ -19,6 +19,8 @@ pub mod http_api;
 pub mod initialized_validators;
 pub mod validator_store;
 pub mod account_utils;
+pub mod validator_dir;
+pub mod eth2_keystore_share;
 
 
 //pub use cli::cli_app;
@@ -162,16 +164,20 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             .map_err(|e| format!("Unable to open or create validator definitions: {:?}", e))?;
 
         if !config.disable_auto_discover {
-            let new_validators = validator_defs
+            let new_local_validators = validator_defs
                 .discover_local_keystores(&config.validator_dir, &config.secrets_dir, &log)
                 .map_err(|e| format!("Unable to discover local validator keystores: {:?}", e))?;
+            let new_distributed_validators = validator_defs
+                .discover_distributed_keystores(&config.validator_dir, &config.secrets_dir, &log)
+                .map_err(|e| format!("Unable to discover distributed validator keystores: {:?}", e))?;
             validator_defs
                 .save(&config.validator_dir)
                 .map_err(|e| format!("Unable to update validator definitions: {:?}", e))?;
             info!(
                 log,
                 "Completed validator discovery";
-                "new_validators" => new_validators,
+                "new_local_validators" => new_local_validators,
+                "new_distributed_validators" => new_distributed_validators,
             );
         }
 
@@ -703,15 +709,17 @@ pub fn load_pem_certificate<P: AsRef<Path>>(pem_path: P) -> Result<Certificate, 
 
 // DVF
 pub mod operator;
-pub mod operator_committee;
+pub mod generic_operator_committee;
 pub mod impls;
+pub mod operator_committee_definitions;
+pub mod operator_committees;
 
 macro_rules! define_mod {
     ($name: ident, $mod: path) => {
         pub mod $name {
             use $mod as committee_variant;
 
-            use crate::validation::operator_committee::*;
+            use crate::validation::generic_operator_committee::*;
 
             pub type OperatorCommittee = GenericOperatorCommittee<
                 committee_variant::OperatorCommittee,

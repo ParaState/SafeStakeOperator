@@ -18,6 +18,7 @@ use task_executor::TaskExecutor;
 use types::*;
 use url::Url;
 use web3signer::{ForkInfo, SigningRequest, SigningResponse};
+use parking_lot::{RwLock};
 
 pub use web3signer::Web3SignerObject;
 
@@ -96,7 +97,7 @@ pub enum SigningMethod {
         voting_keystore_lockfile: Mutex<Option<Lockfile>>,
         //voting_keystore: Keystore,
         voting_public_key: PublicKey,
-        operator_committee: Arc<OperatorCommittee>,
+        operator_committee: Arc<RwLock<OperatorCommittee>>,
     },
 }
 
@@ -238,7 +239,7 @@ impl SigningMethod {
                 // tokio executor.
                 let signature = executor
                     .spawn_blocking_handle(
-                        move || operator_committee.sign(signing_root),
+                        move || operator_committee.read().sign(signing_root),
                         "distributed_keystore_signer",
                     )
                     .ok_or(Error::ShuttingDown)?

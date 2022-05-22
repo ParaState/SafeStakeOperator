@@ -204,8 +204,8 @@ async fn start_dvf_committee(node: &mut Node, tx_signature: Sender<SignatureInfo
     
 } 
 
-// #[tokio::main(worker_threads = 2000)]
-#[tokio::main]
+#[tokio::main(worker_threads = 200)]
+//#[tokio::main]
 async fn main() {
     let t: usize = 5;
     let n: usize = 10;
@@ -213,6 +213,14 @@ async fn main() {
     let (kp, kps, ids) = m_threshold.key_gen(n);
     let (tx_signature, mut rx_signature) = channel(n + 1);
     let self_kp = kps[0].clone();
+
+          let mut committee = OperatorCommittee::new(0, kp.pk.clone(), t);
+      //     // transaction address
+          let address = "127.0.0.1:25001".parse::<SocketAddr>().unwrap();
+          let operator = Arc::new(
+            RwLock::new(HotStuffOperator::new(Arc::new(self_kp), address, rx_signature)));  
+          committee.add_operator(ids[0], operator);
+
     if n > 1 {
       match deploy_testbed(n, &kps, tx_signature, &ids) {
         Ok(handles) => {
@@ -239,12 +247,7 @@ async fn main() {
           let ten_millis = time::Duration::from_millis(20);
           thread::sleep(ten_millis);
           info!("committee sign");
-          let mut committee = OperatorCommittee::new(0, t);
-      //     // transaction address
-          let address = "127.0.0.1:25001".parse::<SocketAddr>().unwrap();
-          let operator = Arc::new(
-            RwLock::new(HotStuffOperator::new(Arc::new(self_kp), address, rx_signature)));  
-          committee.add_operator(ids[0], operator);
+
           let message = "hello world";
           let mut context = Context::new();
           context.update(message.as_bytes());

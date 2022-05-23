@@ -44,7 +44,7 @@ pub struct DvfReceiverHandler {
 
 #[async_trait]
 impl MessageHandler for DvfReceiverHandler {
-    async fn dispatch(&self, _writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
+    async fn dispatch(&mut self, _writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
         let dvfinfo = serde_json::from_slice(&message.to_vec())?;
         self.tx_dvfinfo.send(dvfinfo).await.unwrap();
         // Give the change to schedule other tasks.
@@ -83,15 +83,14 @@ impl fmt::Debug for SignatureInfo {
 
 #[derive(Clone)]
 pub struct DvfSignatureReceiverHandler {
-  pub store_path : String
+  pub store : Store
 }
 
 #[async_trait]
 impl MessageHandler for DvfSignatureReceiverHandler {
-    async fn dispatch(&self, writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
+    async fn dispatch(&mut self, writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
       let msg: Vec<u8> = message.slice(..).to_vec();  
-      let mut store = Store::new(&self.store_path).unwrap(); 
-      match store.read(msg).await {
+      match self.store.read(msg).await {
         Ok(value) => {
           match value {
             Some(data) => {
@@ -117,7 +116,7 @@ pub struct DvfCore {
   pub commit: Receiver<Block>,
   pub validator_id: u64, 
   pub bls_keypair: Keypair,
-  pub bls_id: u32
+  pub bls_id: u64
 }
 
 impl DvfCore {
@@ -132,7 +131,7 @@ impl DvfCore {
     consensus_handler_map: Arc<RwLock<HashMap<u64, ConsensusReceiverHandler>>>,
     signature_handler_map: Arc<RwLock<HashMap<u64, DvfSignatureReceiverHandler>>>,
     keypair: Keypair,
-    id : u32
+    bls_id : u64
   ) -> Result<Self, ConfigError> {
     let (tx_commit, rx_commit) = channel(CHANNEL_CAPACITY);
     let (tx_consensus_to_mempool, rx_consensus_to_mempool) = channel(CHANNEL_CAPACITY);
@@ -152,7 +151,7 @@ impl DvfCore {
 
     {
       let mut handler_map = signature_handler_map.write().await;
-      handler_map.insert(validator_id, DvfSignatureReceiverHandler{store_path : store_path});
+      handler_map.insert(validator_id, DvfSignatureReceiverHandler{store : store.clone()});
       info!("insert into signature handler_map");
     }
 
@@ -181,16 +180,16 @@ impl DvfCore {
       Arc::clone(&consensus_handler_map)
     );
     info!("dvfcore {} successfully booted", validator_id);
-    Ok(Self { commit: rx_commit, store: store, validator_id: validator_id, bls_keypair: keypair, bls_id : id})
+    Ok(Self { commit: rx_commit, store: store, validator_id: validator_id, bls_keypair: keypair, bls_id : bls_id})
     
   }
 
   pub async fn save_committed_block(&mut self) {
-    let operator = LocalOperator::from_keypair(Arc::new(self.bls_keypair.clone()));
-    let pk = operator.public_key().unwrap();
+    let operator = LocalOperator::new(self.validator_id ,Arc::new(self.bls_keypair.clone()));
     while let Some(block) = self.commit.recv().await {
         // This is where we can further process committed block.
         if !block.payload.is_empty() {
+          println!("committed block");
           for payload in block.payload {
             match self.store.read(payload.to_vec()).await {
               Ok(value) => {
@@ -202,11 +201,10 @@ impl DvfCore {
                         for batch in batches {
                           // construct hash256
                           let msg = Hash256::from_slice(&batch[..]);
-                          let signature = operator.sign(msg.clone());
-                          let bls_signature = BlsSignature { pk: pk.clone() ,signature: signature, id : self.bls_id};
-                          let serialized_bls_signature = bincode::serialize(&bls_signature).unwrap();
+                          let signature = operator.sign(msg.clone()).unwrap();
+                          let serialized_signature = bincode::serialize(&signature).unwrap();
                           // save to local db
-                          self.store.write(batch, serialized_bls_signature).await;
+                          self.store.write(batch, serialized_signature).await;
                         }
                       }
                       MempoolMessage::BatchRequest(_, _) => { }

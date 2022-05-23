@@ -10,8 +10,6 @@ use crate::DvfCommitteeIndex;
 use crate::utils::error::DvfError;
 use bls::{Hash256, Signature, PublicKey};
 use parking_lot::{RwLock};
-use futures::executor::block_on;
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
 /// Provides the externally-facing operator committee type.
 pub mod types {
     pub use super::HotstuffOperatorCommittee as OperatorCommittee;
@@ -44,6 +42,7 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
         self.threshold_
     }
 
+    // assumt operators are already sorted
     fn consensus(&self, msg: Hash256) -> bool {
         // send network request
         // let operators = self.operators.write();
@@ -56,8 +55,12 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
         //     println!("propose msg by id { }", id);
         //     block_on(hotstuff_operator.propose(msg));
         // }
-
-        // TODO: send transaction request to self node
+        let operators = self.operators.read();
+        let select_order = msg.to_fixed_bytes()[0] as u64 % operators.len() as u64;
+        let ids : Vec<DvfOperatorTsid> = operators.keys().map(|k| *k).collect();
+        let selected_id = ids[select_order as usize];
+        let mut operator = operators.get(&selected_id).unwrap().write();
+        operator.propose(msg);
             
         return true;
     }
@@ -68,7 +71,7 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
         println!("<<<<<<<[Committee Sign]>>>>>>");
         println!("<<<<<<<[Start Consensus]>>>>>>");
         let status = self.consensus(msg);
-        println!("<<<<<<<[Consensus Succeeds]>>>>>>");
+        println!("<<<<<<<[Request Other Signature]>>>>>>");
 
         // let operators = self.operators.write();
         // let ids : Vec<DvfOperatorTsid> = operators.keys().map(|k| *k).collect();
@@ -89,7 +92,26 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
         // threshold_sig.threshold_aggregate(&sigs[..], &pks[..], &ids[..], msg)
 
         let operators = self.operators.write();
-        let local_operator = operators[0];
+        let ids: Vec<DvfOperatorTsid> = operators.keys().map(|k| *k).collect();
+        let operators: Vec<&Arc<RwLock<dyn TOperator>>> = ids.iter().map(|k| operators.get(&k).unwrap()).collect();
+        let mut pks: Vec<PublicKey> = operators.iter().map(|x| x.read().public_key()).collect();
+        let mut pk_refs: Vec<&PublicKey> = pks.iter().map(|x| x).collect();
+        let mut sigs: Vec<Signature> = Vec::<_>::new();
+        // TODO use multiple threads to do this
+        for op in operators {
+            match op.read().sign(msg) {
+                Ok(sig) => sigs.push(sig),
+                Err(_) => {} 
+            }
+        }
+        let sigs: Vec<&Signature> = sigs.iter().map(|x| x).collect();
+        println!("<<<<<<<[Got {} signatures]>>>>>>", sigs.len());
+        let threshold_sig = ThresholdSignature::new(self.threshold());
+
+        let sig = threshold_sig.threshold_aggregate(&sigs[..], &pk_refs[..], &ids[..], msg);
+
+        println!("<<<<<<<[Threshold Committee Signing Succeeds]>>>>>>");
+        sig
     }
 
     

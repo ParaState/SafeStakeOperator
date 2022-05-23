@@ -1,21 +1,22 @@
 use types::{Hash256, Signature, Keypair, PublicKey};
 use std::sync::Arc;
 use crate::utils::error::DvfError;
-use crate::node::dvfcore::BlsSignature;
-use network::ReliableSender;
+use network::{ReliableSender, SimpleSender, DvfMessage};
 use std::net::SocketAddr;
 use bytes::Bytes;
 use std::collections::HashSet;
 use downcast_rs::DowncastSync;
 use futures::executor::block_on;
 use tokio::sync::mpsc::{self, Receiver};
-
+use std::time::Duration;
+use tokio::time::timeout;
 pub enum OperatorMessage {
 }
 
 pub trait TOperator: DowncastSync + Sync + Send {
     fn sign(&self, msg: Hash256) -> Result<Signature, DvfError>; 
     fn public_key(&self) -> PublicKey;
+    fn propose(&self, msg: Hash256);
 }
 impl_downcast!(sync TOperator);
 
@@ -23,7 +24,7 @@ pub struct LocalOperator {
     pub id: u64,
     pub voting_keypair: Arc<Keypair>,
     pub send_channel: mpsc::UnboundedSender<OperatorMessage>,
-    pub recv_channel: mpsc::UnboundedReceiver<OperatorMessage>,
+    pub recv_channel: mpsc::UnboundedReceiver<OperatorMessage>, 
 }
 
 impl TOperator for LocalOperator {
@@ -34,6 +35,14 @@ impl TOperator for LocalOperator {
 
     fn public_key(&self) -> PublicKey {
         self.voting_keypair.pk.clone()
+    }
+
+    fn propose(&self, msg: Hash256) {
+        // TODO add transaction port for local operator
+        let transaction_address = format!("127.0.0.1:{}", 25_000).parse().unwrap();
+        let mut sender = SimpleSender::new();
+        let dvf_message = DvfMessage { validator_id: self.id, message: msg.to_fixed_bytes().to_vec()};
+        block_on(sender.send(transaction_address, Bytes::from(bincode::serialize(&dvf_message).unwrap())));
     }
 }
 
@@ -56,6 +65,7 @@ pub struct HotStuffOperator {
     // bls_signature: Option<BlsSignature>,
 }
 
+/// hotstuff remote operator
 impl TOperator for HotStuffOperator {
 
     fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> {
@@ -65,40 +75,41 @@ impl TOperator for HotStuffOperator {
     fn public_key(&self) -> PublicKey {
         self.voting_keypair.pk.clone()
     }
+
+    fn propose(&self, msg: Hash256) {
+    }
 }
 
-// hotstuff remote operator
 impl HotStuffOperator {
-    pub fn new(keypair: Arc<Keypair>, address: SocketAddr) -> Self {
-        Self {
-            voting_keypair: keypair,
-            network: ReliableSender::new(),
-            signature_address: address
-        }
-    }
+    // pub fn new(keypair: Arc<Keypair>, address: SocketAddr) -> Self {
+    //     Self {
+    //         voting_keypair: keypair,
+    //         network: ReliableSender::new(),
+    //         signature_address: address
+    //     }
+    // }
 
-    pub async fn request_signature(&mut self, msg: Hash256) -> Option<BlsSignature> {
-        let receiver = self.network.send(self.signature_address, Bytes::from(msg.to_fixed_bytes().to_vec())).await;
-        match receiver.await {
-            Ok(data) => {
-                println!("got = {:?}", data);
-                match bincode::deserialize::<BlsSignature>(&data) {
-                    Ok(bls_signature) =>{
-                        Some(bls_signature)
-                    },
-                    Err(e) => {
-                        None
-                    }
-                }
-            },
-            Err(_) => {
-                println!("the sender dropped");
-                None
-            }
-        }
-    }
+    // pub async fn request_signature(&mut self, msg: Hash256) -> Option<BlsSignature> {
+    //     let receiver = self.network.send(self.signature_address, Bytes::from(msg.to_fixed_bytes().to_vec())).await;
+    //     match receiver.await {
+    //         Ok(data) => {
+    //             println!("got = {:?}", data);
+    //             match bincode::deserialize::<BlsSignature>(&data) {
+    //                 Ok(bls_signature) =>{
+    //                     Some(bls_signature)
+    //                 },
+    //                 Err(e) => {
+    //                     None
+    //                 }
+    //             }
+    //         },
+    //         Err(_) => {
+    //             println!("the sender dropped");
+    //             None
+    //         }
+    //     }
+    // }
 
-    /// send msg to network for consensus
     // pub async fn propose(&mut self, msg: Hash256) {
     //     // prefix id is fixed 
     //     // update
@@ -141,11 +152,62 @@ pub struct RemoteOperator {
 
 impl TOperator for RemoteOperator {
     fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> { 
+        let timeout_mill :u64 = 1000;
+        // Err(DvfError::Unknown)
+        let mut sender = ReliableSender::new();
+        let dvf_message = DvfMessage { validator_id: self.id, message: msg.to_fixed_bytes().to_vec()};
+        let serialize_msg = bincode::serialize(&dvf_message).unwrap();
+        for retry in 0..5 {
+            let receiver = block_on(sender.send(self.socket_address, Bytes::from(serialize_msg.clone())));
+            let result = block_on(timeout(Duration::from_millis(timeout_mill), receiver)); 
+            match result {
+                Ok(output) => {
+                    match output {
+                        Ok(data) => {
+                            println!("got = {:?}", data);
+                            match bincode::deserialize::<Signature>(&data) {
+                                Ok(bls_signature) =>{
+                                    return Ok(bls_signature);
+                                }
+                                Err(e) => {
+                                    println!("deserialize failed, retry...");
+                                }
+                            }
+                        },
+                        Err(e) => {
+                            println!("recv is interrupted.");
+                        }
+                    }
+                },
+                Err(_) => {
+                    println!("did not receive value within {} ms", timeout_mill);
+                }
+            }
+        }
         Err(DvfError::Unknown)
     }
 
     fn public_key(&self) -> PublicKey {
         self.public_key.clone()
     }
+
+    fn propose(&self, msg: Hash256) {
+        // TODO add transaction port for local operator
+        let transaction_address = format!("127.0.0.1:{}", 25_000).parse().unwrap();
+        let mut sender = SimpleSender::new();
+        let dvf_message = DvfMessage { validator_id: self.id, message: msg.to_fixed_bytes().to_vec()};
+        block_on(sender.send(transaction_address, Bytes::from(bincode::serialize(&dvf_message).unwrap())));
+    }
+}
+
+impl RemoteOperator {
+    pub fn new(id: u64, public_key: PublicKey, socket_address: SocketAddr) -> Self {
+        Self {
+            id,
+            public_key: public_key,
+            socket_address : socket_address
+        }
+    }
+
 }
 

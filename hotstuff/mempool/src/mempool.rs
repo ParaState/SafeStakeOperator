@@ -227,7 +227,7 @@ pub struct TxReceiverHandler {
 
 #[async_trait]
 impl MessageHandler for TxReceiverHandler {
-    async fn dispatch(&self, _writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
+    async fn dispatch(&mut self, _writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
         println!("receive a transaction");
         // Send the transaction to the batch maker.
         self.tx_batch_maker
@@ -250,7 +250,7 @@ pub struct MempoolReceiverHandler {
 
 #[async_trait]
 impl MessageHandler for MempoolReceiverHandler {
-    async fn dispatch(&self, writer: &mut Writer, serialized: Bytes) -> Result<(), Box<dyn Error>> {
+    async fn dispatch(&mut self, writer: &mut Writer, serialized: Bytes) -> Result<(), Box<dyn Error>> {
         // Reply with an ACK.
         let _ = writer.send(Bytes::from("Ack")).await;
 

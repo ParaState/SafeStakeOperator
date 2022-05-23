@@ -147,7 +147,7 @@ pub struct ConsensusReceiverHandler {
 
 #[async_trait]
 impl MessageHandler for ConsensusReceiverHandler {
-    async fn dispatch(&self, writer: &mut Writer, serialized: Bytes) -> Result<(), Box<dyn Error>> {
+    async fn dispatch(&mut self, writer: &mut Writer, serialized: Bytes) -> Result<(), Box<dyn Error>> {
         // Deserialize and parse the message.
         match bincode::deserialize(&serialized).map_err(ConsensusError::SerializationError)? {
             ConsensusMessage::SyncRequest(missing, origin) => self

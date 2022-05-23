@@ -25,7 +25,7 @@ pub trait MessageHandler: Clone + Send + Sync + 'static {
     /// number of `Sender<T>` channels. Then implement `dispatch` to deserialize incoming messages and
     /// forward them through the appropriate delivery channel. Then `writer` can be used to send back
     /// responses or acknowledgements to the sender machine (see unit tests for examples).
-    async fn dispatch(&self, writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>>;
+    async fn dispatch(&mut self, writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>>;
 }
 
 /// For each incoming request, we spawn a new runner responsible to receive messages and forward them
@@ -75,8 +75,8 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                         // get validator
                         let dvf_message : DvfMessage = bincode::deserialize(&message[..]).unwrap();
                         let validator_id = dvf_message.validator_id;
-                        let handlers = handler_map.read().await;
-                        match handlers.get(&validator_id) {
+                        let mut handlers = handler_map.write().await;
+                        match handlers.get_mut(&validator_id) {
                             Some(handler) => {
                                 // trunctate the prefix
                                 let msg = dvf_message.message;
@@ -87,7 +87,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                             },
                             None => {
                                 error!("{:?}", message);
-                                error!("there is no handler for this prefix, some error happen!");
+                                error!("there is no handler for this validator id, some error happen!");
                             } 
                         }
                     }

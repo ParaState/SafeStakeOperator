@@ -106,7 +106,7 @@ eth2_serde_utils = { path = "lighthouse/consensus/serde_utils" }
 
 
 [features]
-default = ["fake_committee"]
+default = ["hotstuff_committee"]
 fake_committee = []
 hotstuff_committee = []
 

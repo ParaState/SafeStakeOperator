@@ -1,7 +1,7 @@
 
 use dvf::validation::{OperatorCommittee};
 use dvf::validation::operator::TOperator;
-use dvf::validation::operator::{HotStuffOperator, LocalOperator};
+use dvf::validation::operator::{RemoteOperator, LocalOperator};
 use dvf::crypto::{ThresholdSignature};
 use std::sync::Arc;
 use types::Hash256;
@@ -16,18 +16,13 @@ use std::fs;
 use log::{error, info};
 use tokio::task::JoinHandle;
 use futures::future::join_all;
-use dvf::node::dvfcore::{DvfCore, SignatureInfo, DvfSignatureReceiverHandler};
-use network::{SimpleSender, DvfMessage};
-use bytes::Bytes;
-use std::net::SocketAddr;
-use mempool::{MempoolMessage, Batch, Transaction};
+use dvf::node::dvfcore::{DvfCore };
 use parking_lot::{RwLock};
 use tokio::sync::mpsc::{channel, Sender};
 use types::Keypair;
 use std::{thread, time};
 use env_logger::Env;
-use futures::executor::block_on;
-fn deploy_testbed(nodes: usize, kps: &Vec<Keypair>, tx_signature: Sender<SignatureInfo>, ids: &Vec<u32>) -> Result<Vec<JoinHandle<()>>, Box<dyn std::error::Error>> {
+fn deploy_testbed(nodes: usize, kps: &Vec<Keypair>, ids: &Vec<u64>) -> Result<Vec<JoinHandle<()>>, Box<dyn std::error::Error>> {
 
   let mut logger = env_logger::Builder::from_env(Env::default().default_filter_or("error"));
   logger.format_timestamp_millis();
@@ -99,26 +94,16 @@ fn deploy_testbed(nodes: usize, kps: &Vec<Keypair>, tx_signature: Sender<Signatu
           let signature_address = committee.mempool.signature_address(&name)
             .expect("Our public key is not in the committee");
           let kp = kps[i].clone();
-          let sender_signature = tx_signature.clone();
-          let id = ids[i].clone();
+          let bls_id = ids[i].clone();
           Ok(tokio::spawn(async move {
               match Node::new(&tx_address.to_string(), &mem_address.to_string(), &consensus_address.to_string(), &dvf_address.to_string(), &signature_address.to_string(), secret, &store_path, None).await {
-                  Ok(mut node) => {
-                      // Sink the commit channel.
-                      // while node.commit.recv().await.is_some() {}
-
-                      // node.process_dvfinfo().await;
-
+                  Ok(node) => {
                       info!("start dvf node {} success", name);
 
                       let committee_file = "committee.json";
-                      let mut network = SimpleSender::new();
                       let committee = Committee::read(&committee_file).unwrap();
                       let validator_id: u64= 1;
-                      // println!("received validator {}", validator_id);
-                      
-                      let ten_millis = time::Duration::from_millis(1);
-
+                      // create dvf consensus
                       match DvfCore::new(
                         committee,
                         node.name.clone(),
@@ -130,7 +115,7 @@ fn deploy_testbed(nodes: usize, kps: &Vec<Keypair>, tx_signature: Sender<Signatu
                         Arc::clone(&node.consensus_handler_map),
                         Arc::clone(&node.signature_handler_map),
                         kp,
-                        id
+                        bls_id
                       ).await {
                         Ok(mut dvfcore) => {
                           dvfcore.save_committed_block().await;
@@ -199,60 +184,39 @@ fn deploy_testbed(nodes: usize, kps: &Vec<Keypair>, tx_signature: Sender<Signatu
 //   }
 // }
 
-async fn start_dvf_committee(node: &mut Node, tx_signature: Sender<SignatureInfo>, keypair: Arc<Keypair>) {
-
-    
-} 
-
 #[tokio::main(worker_threads = 200)]
-//#[tokio::main]
+// #[tokio::main]
 async fn main() {
     let t: usize = 5;
     let n: usize = 10;
     let mut m_threshold = ThresholdSignature::new(t);
     let (kp, kps, ids) = m_threshold.key_gen(n);
-    let (tx_signature, mut rx_signature) = channel(n + 1);
-    let self_kp = kps[0].clone();
 
-          let mut committee = OperatorCommittee::new(0, kp.pk.clone(), t);
-      //     // transaction address
-          let address = "127.0.0.1:25001".parse::<SocketAddr>().unwrap();
-          let operator = Arc::new(
-            RwLock::new(HotStuffOperator::new(Arc::new(self_kp), address, rx_signature)));  
-          committee.add_operator(ids[0], operator);
+    let mut committee = OperatorCommittee::new(1, kp.pk.clone(), t);
+    let local_operator = Arc::new(
+      RwLock::new(LocalOperator::new(1, Arc::new(kps[0].clone())))); 
+    committee.add_operator(ids[0], local_operator);
+    for i in 1..n {
+      let signature_address = format!("127.0.0.1:{}", 25_400 + i).parse().unwrap();
+      let remote_operator = Arc::new(
+          RwLock::new(RemoteOperator::new(1, kps[i].pk.clone(), signature_address)));  
+      committee.add_operator(ids[i], remote_operator);
+    }
 
     if n > 1 {
-      match deploy_testbed(n, &kps, tx_signature, &ids) {
+      match deploy_testbed(n, &kps, &ids) {
         Ok(handles) => {
-          // read committee from file 
-          let committee_file = "committee.json";
-          let mut network = SimpleSender::new();
-          let committee = Committee::read(&committee_file).unwrap();
-          let mut addresses : Vec<SocketAddr>= Vec::new();
-          for (key, authority) in &committee.mempool.authorities {
-            addresses.push(authority.dvf_address.clone());
-          }
-          let validator_id :u64 = 1;
-          let dvfinfo = DvfInfo { validator_id, committee };
-
-          let empty_vec : Vec<u8>= vec![48;88];
-          let mut prefix_msg : Vec<u8> = Vec::new();
-          prefix_msg.extend(empty_vec);
-          let dvfinfo_bytes = serde_json::to_vec(&dvfinfo).unwrap();
-          prefix_msg.extend(dvfinfo_bytes);
-
-
           // block_on(network.broadcast(addresses, Bytes::from(prefix_msg)));
           // wait for network
+          
+          info!("committee sign");
           let ten_millis = time::Duration::from_millis(20);
           thread::sleep(ten_millis);
-          info!("committee sign");
-
           let message = "hello world";
           let mut context = Context::new();
           context.update(message.as_bytes());
           let message = Hash256::from_slice(&context.finalize());
-            println!("propose {:02x?}", message);
+          println!("propose {:02x?}", message);
           let sig1 = committee.sign(message).unwrap();
           let sig2 = kp.sk.sign(message);
 

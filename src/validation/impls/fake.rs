@@ -64,7 +64,7 @@ impl TOperatorCommittee for FakeOperatorCommittee {
 
         let mut sigs: Vec<Signature> = Vec::<_>::new();
         for op in operators {
-            match op.read().sign(msg) {
+            match op.read().sign(msg, self.id) {
                 Ok(sig) => sigs.push(sig),
                 Err(_) => {} 
             }

@@ -10,13 +10,15 @@ use futures::executor::block_on;
 use tokio::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 use tokio::time::timeout;
+use crate::{DvfOperatorTsid,DvfCommitteeIndex};
 pub enum OperatorMessage {
 }
 
 pub trait TOperator: DowncastSync + Sync + Send {
-    fn sign(&self, msg: Hash256) -> Result<Signature, DvfError>; 
+    fn sign(&self, msg: Hash256, index: DvfCommitteeIndex) -> Result<Signature, DvfError>; 
     fn public_key(&self) -> PublicKey;
-    fn propose(&self, msg: Hash256);
+    fn propose(&self, msg: Hash256, index: DvfCommitteeIndex);
+    fn get_id(&self) -> DvfOperatorTsid;
 }
 impl_downcast!(sync TOperator);
 
@@ -29,7 +31,7 @@ pub struct LocalOperator {
 
 impl TOperator for LocalOperator {
 
-    fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> {
+    fn sign(&self, msg: Hash256, index: DvfCommitteeIndex) -> Result<Signature, DvfError> {
         Ok(self.voting_keypair.sk.sign(msg))
     }
 
@@ -37,12 +39,16 @@ impl TOperator for LocalOperator {
         self.voting_keypair.pk.clone()
     }
 
-    fn propose(&self, msg: Hash256) {
+    fn propose(&self, msg: Hash256, index: DvfCommitteeIndex) {
         // TODO add transaction port for local operator
         let transaction_address = format!("127.0.0.1:{}", 25_000).parse().unwrap();
         let mut sender = SimpleSender::new();
-        let dvf_message = DvfMessage { validator_id: self.id, message: msg.to_fixed_bytes().to_vec()};
+        let dvf_message = DvfMessage { validator_id: index, message: msg.to_fixed_bytes().to_vec()};
         block_on(sender.send(transaction_address, Bytes::from(bincode::serialize(&dvf_message).unwrap())));
+    }
+
+    fn get_id(&self) -> DvfOperatorTsid {
+        return self.id;
     }
 }
 
@@ -68,7 +74,7 @@ pub struct HotStuffOperator {
 /// hotstuff remote operator
 impl TOperator for HotStuffOperator {
 
-    fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> {
+    fn sign(&self, msg: Hash256, index: DvfCommitteeIndex) -> Result<Signature, DvfError> {
         Ok(self.voting_keypair.sk.sign(msg))
     }
 
@@ -76,7 +82,10 @@ impl TOperator for HotStuffOperator {
         self.voting_keypair.pk.clone()
     }
 
-    fn propose(&self, msg: Hash256) {
+    fn propose(&self, msg: Hash256, index: DvfCommitteeIndex) {
+    }
+    fn get_id(&self) -> DvfOperatorTsid {
+        return 0 as u64;
     }
 }
 
@@ -151,11 +160,11 @@ pub struct RemoteOperator {
 }
 
 impl TOperator for RemoteOperator {
-    fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> { 
+    fn sign(&self, msg: Hash256, index: DvfCommitteeIndex) -> Result<Signature, DvfError> { 
         let timeout_mill :u64 = 1000;
         // Err(DvfError::Unknown)
         let mut sender = ReliableSender::new();
-        let dvf_message = DvfMessage { validator_id: self.id, message: msg.to_fixed_bytes().to_vec()};
+        let dvf_message = DvfMessage { validator_id: index, message: msg.to_fixed_bytes().to_vec()};
         let serialize_msg = bincode::serialize(&dvf_message).unwrap();
         for retry in 0..5 {
             let receiver = block_on(sender.send(self.socket_address, Bytes::from(serialize_msg.clone())));
@@ -164,7 +173,7 @@ impl TOperator for RemoteOperator {
                 Ok(output) => {
                     match output {
                         Ok(data) => {
-                            println!("got = {:?}", data);
+                           println!("got = {:?}", data); 
                             match bincode::deserialize::<Signature>(&data) {
                                 Ok(bls_signature) =>{
                                     return Ok(bls_signature);
@@ -191,12 +200,16 @@ impl TOperator for RemoteOperator {
         self.public_key.clone()
     }
 
-    fn propose(&self, msg: Hash256) {
+    fn propose(&self, msg: Hash256, index: DvfCommitteeIndex) {
         // TODO add transaction port for local operator
         let transaction_address = format!("127.0.0.1:{}", 25_000).parse().unwrap();
         let mut sender = SimpleSender::new();
-        let dvf_message = DvfMessage { validator_id: self.id, message: msg.to_fixed_bytes().to_vec()};
+        let dvf_message = DvfMessage { validator_id: index, message: msg.to_fixed_bytes().to_vec()};
         block_on(sender.send(transaction_address, Bytes::from(bincode::serialize(&dvf_message).unwrap())));
+    }
+
+    fn get_id(&self) -> DvfOperatorTsid {
+        return self.id;
     }
 }
 

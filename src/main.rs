@@ -194,12 +194,12 @@ async fn main() {
 
     let mut committee = OperatorCommittee::new(1, kp.pk.clone(), t);
     let local_operator = Arc::new(
-      RwLock::new(LocalOperator::new(1, Arc::new(kps[0].clone())))); 
+      RwLock::new(LocalOperator::new(ids[0], Arc::new(kps[0].clone())))); 
     committee.add_operator(ids[0], local_operator);
     for i in 1..n {
       let signature_address = format!("127.0.0.1:{}", 25_400 + i).parse().unwrap();
       let remote_operator = Arc::new(
-          RwLock::new(RemoteOperator::new(1, kps[i].pk.clone(), signature_address)));  
+          RwLock::new(RemoteOperator::new(ids[i], kps[i].pk.clone(), signature_address)));  
       committee.add_operator(ids[i], remote_operator);
     }
 

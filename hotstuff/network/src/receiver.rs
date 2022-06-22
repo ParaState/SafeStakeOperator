@@ -34,14 +34,15 @@ pub struct Receiver<Handler: MessageHandler> {
     /// Address to listen to.
     address: SocketAddr,
     /// Struct responsible to define how to handle received messages.
-    handler_map: Arc<RwLock<HashMap<u64, Handler>>>
+    handler_map: Arc<RwLock<HashMap<u64, Handler>>>,
+    name: &'static str,
 }
 
 impl<Handler: MessageHandler> Receiver<Handler> {
     /// Spawn a new network receiver handling connections from any incoming peer.
-    pub fn spawn(address: SocketAddr, handler_map: Arc<RwLock<HashMap<u64, Handler>>>) {
+    pub fn spawn(address: SocketAddr, handler_map: Arc<RwLock<HashMap<u64, Handler>>>, name: &'static str) {
         tokio::spawn(async move {
-            Self { address, handler_map : Arc::clone(&handler_map) }.run().await;
+            Self { address, handler_map : Arc::clone(&handler_map), name}.run().await;
         });
     }
 
@@ -61,11 +62,11 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                 }
             };
             info!("Incoming connection established with {}", peer);
-            Self::spawn_runner(socket, peer, Arc::clone(&self.handler_map)).await;
+            Self::spawn_runner(socket, peer, Arc::clone(&self.handler_map), self.name).await;
         }
     }
 
-    async fn spawn_runner(socket: TcpStream, peer: SocketAddr, handler_map: Arc<RwLock<HashMap<u64, Handler>>>) {
+    async fn spawn_runner(socket: TcpStream, peer: SocketAddr, handler_map: Arc<RwLock<HashMap<u64, Handler>>>, name: &'static str) {
         tokio::spawn(async move {
             let transport = Framed::new(socket, LengthDelimitedCodec::new());
             let (mut writer, mut reader) = transport.split();
@@ -87,7 +88,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                             },
                             None => {
                                 error!("{:?}", message);
-                                error!("there is no handler for this validator id, some error happen!");
+                                error!("No handler found for validator id {:?}! [{:?}]", validator_id, name);
                             } 
                         }
                     }

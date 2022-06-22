@@ -23,9 +23,9 @@ impl <Committee> GenericOperatorCommittee<Committee>
 where
     Committee: TOperatorCommittee
 {
-    pub fn new(id: DvfCommitteeIndex, voting_public_key: PublicKey, t: usize) -> Self {
+    pub fn new(id: DvfCommitteeIndex, voting_public_key: PublicKey, threshold: usize) -> Self {
         Self {
-            cmt: TOperatorCommittee::new(id, voting_public_key, t)
+            cmt: TOperatorCommittee::new(id, voting_public_key, threshold)
         }
     }
 

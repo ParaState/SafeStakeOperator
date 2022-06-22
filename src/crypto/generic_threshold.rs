@@ -1,6 +1,7 @@
 use bls::{Signature, PublicKey, SecretKey, Keypair, SECRET_KEY_BYTES_LEN};
 use types::{Hash256}; 
 use crate::utils::error::{DvfError};
+use log::{error};
 use crate::crypto::define::{MODULUS};
 use num_bigint::ToBigInt;
 use crate::math::polynomial::Polynomial;
@@ -126,9 +127,12 @@ where
                     break
                 }
             }
+            else {
+                error!("Invalid signature from operator {}", ids[i]);
+            }
         }
         if pks_valid.len() < self.threshold() {
-            return Err(DvfError::InsufficientSignatures{got: pks_valid.len(), expected: self.threshold()}); 
+            return Err(DvfError::InsufficientValidSignatures{got: pks_valid.len(), expected: self.threshold()}); 
         }
 
         Ok(self.unsafe_aggregate(&sigs_valid, &ids_valid[..]))

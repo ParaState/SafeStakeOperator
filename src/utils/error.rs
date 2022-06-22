@@ -12,6 +12,8 @@ pub enum DvfError {
     ConsensusFailure,
     /// Threshold signature aggregation failed due to insufficient valid signatures.
     InsufficientSignatures {got: usize, expected: usize},
+    /// Threshold signature aggregation failed due to insufficient valid signatures.
+    InsufficientValidSignatures {got: usize, expected: usize},
     /// Invalid operator signature
     InvalidSignatureShare {id: u64},
     /// Different length

@@ -4,6 +4,7 @@ use dvf::crypto::{ThresholdSignature};
 use std::sync::Arc;
 use types::Hash256;
 use eth2_hashing::{Context, Sha256Context};
+use futures::executor::block_on; 
 
 #[cfg(feature = "fake_committee")]
 #[test]
@@ -26,7 +27,7 @@ fn test_fake_operator_committee() {
     context.update(message.as_bytes());
     let message = Hash256::from_slice(&context.finalize());
 
-    let sig1 = committee.sign(message).unwrap();
+    let sig1 = block_on(committee.sign(message)).unwrap();
     let sig2 = kp.sk.sign(message);
 
     let status1 = sig1.verify(&kp.pk, message);

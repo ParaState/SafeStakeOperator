@@ -71,9 +71,9 @@ impl Consensus {
         //     .expect("Our public key is not in the committee");
         // address.set_ip("0.0.0.0".parse().unwrap());
         {
-            let mut handler_map = block_on(consensus_handler_map.write());
-            handler_map.insert(validator_id, ConsensusReceiverHandler{tx_consensus, tx_helper});
-            info!("insert into consensus handler_map");
+            block_on(consensus_handler_map.write())
+                .insert(validator_id, ConsensusReceiverHandler{tx_consensus, tx_helper});
+            info!("Insert consensus handler for validator: {}", validator_id);
         }
         
         // NetworkReceiver::spawn(
@@ -147,7 +147,7 @@ pub struct ConsensusReceiverHandler {
 
 #[async_trait]
 impl MessageHandler for ConsensusReceiverHandler {
-    async fn dispatch(&mut self, writer: &mut Writer, serialized: Bytes) -> Result<(), Box<dyn Error>> {
+    async fn dispatch(&self, writer: &mut Writer, serialized: Bytes) -> Result<(), Box<dyn Error>> {
         // Deserialize and parse the message.
         match bincode::deserialize(&serialized).map_err(ConsensusError::SerializationError)? {
             ConsensusMessage::SyncRequest(missing, origin) => self

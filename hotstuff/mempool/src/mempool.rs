@@ -129,9 +129,11 @@ impl Mempool {
         //     .expect("Our public key is not in the committee");
         // address.set_ip("0.0.0.0".parse().unwrap());
         {
-            let mut handler_map = tx_handler_map.write().await;
-            handler_map.insert(self.validator_id.clone(), TxReceiverHandler{tx_batch_maker});
-            info!("insert into tx handler_map");
+            tx_handler_map
+                .write()
+                .await
+                .insert(self.validator_id.clone(), TxReceiverHandler{tx_batch_maker});
+            info!("Insert transaction handler for validator: {}", self.validator_id);
         }
         
         
@@ -184,9 +186,11 @@ impl Mempool {
         //     .expect("Our public key is not in the committee");
         // address.set_ip("0.0.0.0".parse().unwrap());
         {
-            let mut handler_map = mempool_handler_map.write().await;
-            handler_map.insert(self.validator_id.clone(), MempoolReceiverHandler{tx_helper, tx_processor});
-            info!("insert into mempool handler_map");
+            mempool_handler_map
+                .write()
+                .await
+                .insert(self.validator_id.clone(), MempoolReceiverHandler{tx_helper, tx_processor});
+            info!("Insert mempool handler for validator: {}", self.validator_id);
         }
         
         // NetworkReceiver::spawn(
@@ -227,8 +231,8 @@ pub struct TxReceiverHandler {
 
 #[async_trait]
 impl MessageHandler for TxReceiverHandler {
-    async fn dispatch(&mut self, _writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
-        println!("receive a transaction");
+    async fn dispatch(&self, _writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
+        info!("receive a transaction");
         // Send the transaction to the batch maker.
         self.tx_batch_maker
             .send(message.to_vec())
@@ -250,7 +254,7 @@ pub struct MempoolReceiverHandler {
 
 #[async_trait]
 impl MessageHandler for MempoolReceiverHandler {
-    async fn dispatch(&mut self, writer: &mut Writer, serialized: Bytes) -> Result<(), Box<dyn Error>> {
+    async fn dispatch(&self, writer: &mut Writer, serialized: Bytes) -> Result<(), Box<dyn Error>> {
         // Reply with an ACK.
         let _ = writer.send(Bytes::from("Ack")).await;
 

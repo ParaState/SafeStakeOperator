@@ -15,6 +15,7 @@ use std::fs;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use types::{Address, GRAFFITI_BYTES_LEN};
+use crate::node::config::NodeConfig;
 
 pub const DEFAULT_BEACON_NODE: &str = "http://localhost:5052/";
 
@@ -59,6 +60,9 @@ pub struct Config {
     /// A list of custom certificates that the validator client will additionally use when
     /// connecting to a beacon node over SSL/TLS.
     pub beacon_nodes_tls_certs: Option<Vec<PathBuf>>,
+
+    /// Used for 
+    pub dvf_node_config: NodeConfig,
 }
 
 impl Default for Config {
@@ -93,6 +97,8 @@ impl Default for Config {
             enable_doppelganger_protection: false,
             beacon_nodes_tls_certs: None,
             private_tx_proposals: false,
+            
+            dvf_node_config: NodeConfig::default(), 
         }
     }
 }

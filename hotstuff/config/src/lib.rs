@@ -67,15 +67,19 @@ impl Secret {
         let (name, secret) = generate_production_keypair();
         Self { name, secret }
     }
+
+    pub fn insecure(state: u64) -> Self {
+        let mut rng = StdRng::seed_from_u64(state);
+        let (name, secret) = generate_keypair(&mut rng);
+        Self { name, secret }
+    }
 }
 
 impl Export for Secret {}
 
 impl Default for Secret {
     fn default() -> Self {
-        let mut rng = StdRng::from_seed([0; 32]);
-        let (name, secret) = generate_keypair(&mut rng);
-        Self { name, secret }
+        Self::insecure(0) 
     }
 }
 

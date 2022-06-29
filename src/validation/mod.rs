@@ -63,6 +63,7 @@ use tokio::{
 };
 use types::{EthSpec, Hash256};
 use validator_store::ValidatorStore;
+use crate::node::node::Node;
 
 /// The interval between attempts to contact the beacon node during startup.
 const RETRY_DELAY: Duration = Duration::from_secs(2);
@@ -180,10 +181,15 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
                 "new_distributed_validators" => new_distributed_validators,
             );
         }
+        let node = Node::new(config.dvf_node_config.clone())
+            .await
+            .map_err(|e| format!("Dvf node creation failed: {}", e))?;
+        let node = Some(Arc::new(node));
 
         let validators = InitializedValidators::from_definitions(
             validator_defs,
             config.validator_dir.clone(),
+            node,
             log.clone(),
         )
         .await

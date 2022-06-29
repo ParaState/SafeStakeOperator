@@ -19,6 +19,7 @@ use types::*;
 use url::Url;
 use web3signer::{ForkInfo, SigningRequest, SigningResponse};
 use parking_lot::{RwLock};
+use crate::node::dvfcore::DvfSigner;
 
 pub use web3signer::Web3SignerObject;
 
@@ -97,7 +98,7 @@ pub enum SigningMethod {
         voting_keystore_lockfile: Mutex<Option<Lockfile>>,
         //voting_keystore: Keystore,
         voting_public_key: PublicKey,
-        operator_committee: Arc<RwLock<OperatorCommittee>>,
+        dvf_signer: DvfSigner,
     },
 }
 
@@ -230,31 +231,13 @@ impl SigningMethod {
 
                 Ok(response.signature)
             }
-            SigningMethod::DistributedKeystore { operator_committee, .. } => {
+            SigningMethod::DistributedKeystore { dvf_signer, .. } => {
                 let _timer =
                     metrics::start_timer_vec(&metrics::SIGNING_TIMES, &[metrics::LOCAL_KEYSTORE]);
 
-                let operator_committee = operator_committee.clone();
-                // Spawn a blocking task to produce the signature. This avoids blocking the core
-                // tokio executor.
-                let signature = executor
-                    .spawn_blocking_handle(
-                        move || operator_committee.read().sign(signing_root),
-                        "distributed_keystore_signer",
-                    )
-                    .ok_or(Error::ShuttingDown)?
+                dvf_signer.sign(signing_root)
                     .await
-                    .map_err(|e| Error::TokioJoin(e.to_string()))?;
-
-                match signature {
-                    Ok(signature) => {
-                        Ok(signature)
-                    }
-                    Err(_) => {
-                        Err(Error::CommitteeSignFailed)
-                    }
-                }
-
+                    .map_err(|e| Error::CommitteeSignFailed)
             }
         }
     }

@@ -43,6 +43,10 @@ use crate::validation::{
     operator::LocalOperator,
     OperatorCommittee};
 use parking_lot::{RwLock};
+use crate::node::node::Node;
+use crate::node::dvfcore::DvfSigner;
+
+
 /// Default timeout for a request to a remote signer for a signature.
 ///
 /// Set to 12 seconds since that's the duration of a slot. A remote signer that cannot sign within
@@ -178,6 +182,7 @@ impl InitializedValidator {
         key_cache: &mut KeyCache,
         key_stores: &mut HashMap<PathBuf, Keystore>,
         committee_cache: &mut HashMap<u64, Arc<RwLock<OperatorCommittee>>>,
+        node: Option<Arc<Node>>,
     ) -> Result<Self, Error> {
         if !def.enabled {
             return Err(Error::UnableToInitializeDisabledValidator);
@@ -372,25 +377,20 @@ impl InitializedValidator {
 
                 let committee_def_path = operator_committee_definition_path.ok_or(Error::NoCommitteeDefinition)?;
                 let committee_def = OperatorCommitteeDefinition::from_file(committee_def_path).map_err(Error::UnableToParseCommitteeDefinition)?; 
+                let validator_public_key = committee_def.validator_public_key.clone();
 
-                let committee = match committee_cache.entry(committee_def.committee_index) {
-                    Vacant(entry) => {
-                        let committee = OperatorCommittee::from_definition(committee_def.clone()).map_err(|_| Error::UnableToBuildCommittee)?;
-                        let committee = Arc::new(RwLock::new(committee));
-                        entry.insert(committee)
-                    },
-                    Occupied(entry) => entry.into_mut(),
-                };
-
-                let local_operator = Arc::new(
-                    RwLock::new(LocalOperator::new(operator_id, Arc::new(voting_keypair))));  
-                committee.write().add_operator(operator_id, local_operator);
-
+                let signer = DvfSigner::spawn(
+                    node.unwrap(),
+                    committee_def.validator_id,
+                    operator_id,
+                    voting_keypair,
+                    committee_def,
+                ).await;
 
                 SigningMethod::DistributedKeystore {
                     voting_keystore_lockfile: <_>::default(),
-                    voting_public_key: committee_def.voting_public_key,
-                    operator_committee: committee.clone(),
+                    voting_public_key: validator_public_key,
+                    dvf_signer: signer,
                 }
             }
         };
@@ -479,6 +479,8 @@ pub struct InitializedValidators {
     validators_dir: PathBuf,
     /// The canonical set of validators.
     validators: HashMap<PublicKeyBytes, InitializedValidator>,
+    /// The hotstuff node (only used for decentralized signing)
+    node: Option<Arc<Node>>,
     /// For logging via `slog`.
     log: Logger,
 }
@@ -488,12 +490,14 @@ impl InitializedValidators {
     pub async fn from_definitions(
         definitions: ValidatorDefinitions,
         validators_dir: PathBuf,
+        node: Option<Arc<Node>>,
         log: Logger,
     ) -> Result<Self, Error> {
         let mut this = Self {
             validators_dir,
             definitions,
             validators: HashMap::default(),
+            node,
             log,
         };
         this.update_validators().await?;
@@ -862,6 +866,7 @@ impl InitializedValidators {
                             &mut key_cache,
                             &mut key_stores,
                             &mut committee_cache,
+                            None,
                         )
                         .await
                         {
@@ -912,6 +917,7 @@ impl InitializedValidators {
                             &mut key_cache,
                             &mut key_stores,
                             &mut committee_cache,
+                            None,
                         )
                         .await
                         {
@@ -961,6 +967,7 @@ impl InitializedValidators {
                             &mut key_cache,
                             &mut key_stores,
                             &mut committee_cache,
+                            self.node.clone(),
                         )
                         .await
                         {

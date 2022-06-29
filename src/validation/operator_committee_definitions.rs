@@ -51,11 +51,12 @@ pub enum Error {
 pub struct OperatorCommitteeDefinition {
     pub total: u64,
     pub threshold: u64,
-    pub committee_index: u64,
-    pub voting_public_key: PublicKey,
-    pub ids: Vec<u64>,
-    pub public_keys: Vec<PublicKey>,
-    pub socket_addresses: Vec<SocketAddr>,
+    pub validator_id: u64,
+    pub validator_public_key: PublicKey,
+    pub operator_ids: Vec<u64>,
+    pub operator_public_keys: Vec<PublicKey>,
+    pub node_public_keys: Vec<hscrypto::PublicKey>,
+    pub base_socket_addresses: Vec<SocketAddr>,
 }
 
 //impl ValidatorDefinition {
@@ -151,13 +152,16 @@ impl OperatorCommitteeDefinitions {
         let defs: Self = serde_yaml::from_reader(file).map_err(Error::UnableToParseFile)?;
         // Validate simple constraints
         for i in 0..defs.0.len() {
-            if defs.0[i].ids.len() != (defs.0[i].total as usize) {
+            if defs.0[i].operator_ids.len() != (defs.0[i].total as usize) {
                 return Err(Error::InvalidFile);
             }
-            if defs.0[i].public_keys.len() != (defs.0[i].total as usize) {
+            if defs.0[i].operator_public_keys.len() != (defs.0[i].total as usize) {
                 return Err(Error::InvalidFile);
             }
-            if defs.0[i].socket_addresses.len() != (defs.0[i].total as usize) {
+            if defs.0[i].node_public_keys.len() != (defs.0[i].total as usize) {
+                return Err(Error::InvalidFile);
+            }
+            if defs.0[i].base_socket_addresses.len() != (defs.0[i].total as usize) {
                 return Err(Error::InvalidFile);
             }
         }

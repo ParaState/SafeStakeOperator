@@ -1,6 +1,8 @@
-use hotstuff_config::{Committee, ConfigError, Parameters};
+use hsconfig::{Committee as HotstuffCommittee, ConfigError, Parameters};
+use consensus::Committee as ConsensusCommittee;
+use mempool::Committee as MempoolCommittee;
 use consensus::{Block, Consensus};
-use crypto::SignatureService;
+use hscrypto::SignatureService;
 use log::{info, error, warn};
 use mempool::{Mempool, MempoolMessage};
 use store::Store;
@@ -18,12 +20,20 @@ use types::Keypair;
 use crate::validation::operator::{LocalOperator, TOperator};
 use futures::SinkExt;
 use crate::node::node::Node;
+use std::path::PathBuf;
+use futures::executor::block_on;
+use crate::utils::error::DvfError;
+use crate::validation::{OperatorCommittee};
+use tokio::sync::{RwLock};
+use eth2_hashing::{Context, Sha256Context};
+use crate::validation::operator_committee_definitions::OperatorCommitteeDefinition; 
+use crate::node::config::NodeConfig;
 
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DvfInfo {
   pub validator_id : u64,
-  pub committee: Committee
+  pub committee: HotstuffCommittee
 }
 
 impl fmt::Debug for DvfInfo {
@@ -44,7 +54,7 @@ pub struct DvfReceiverHandler {
 
 #[async_trait]
 impl MessageHandler for DvfReceiverHandler {
-    async fn dispatch(&mut self, _writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
+    async fn dispatch(&self, _writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
         let dvfinfo = serde_json::from_slice(&message.to_vec())?;
         self.tx_dvfinfo.send(dvfinfo).await.unwrap();
         // Give the change to schedule other tasks.
@@ -88,7 +98,7 @@ pub struct DvfSignatureReceiverHandler {
 
 #[async_trait]
 impl MessageHandler for DvfSignatureReceiverHandler {
-    async fn dispatch(&mut self, writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
+    async fn dispatch(&self, writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
       let msg: Vec<u8> = message.slice(..).to_vec();  
       match self.store.read(msg).await {
         Ok(value) => {
@@ -111,42 +121,143 @@ impl MessageHandler for DvfSignatureReceiverHandler {
     }
 }
 
+pub struct DvfSigner {
+    pub signal: Option<exit_future::Signal>,
+    pub operator_committee: OperatorCommittee,
+}
+
+impl Drop for DvfSigner {
+    fn drop(&mut self) {
+        if let Some(signal) = self.signal.take() {
+            info!("Shutting down Dvf Core");
+            let _ = signal.fire();
+        } 
+    }
+}
+
+impl DvfSigner {
+    pub async fn spawn(
+        node: Arc<Node>,
+        validator_id: u64,
+        operator_id : u64,
+        keypair: Keypair,
+        committee_def: OperatorCommitteeDefinition,
+    ) -> Self {
+        // Construct the committee for validator signing
+        let (mut operator_committee, tx_consensus) = OperatorCommittee::from_definition(committee_def.clone()).await;
+        let local_operator = Arc::new(
+            RwLock::new(LocalOperator::new(validator_id, operator_id, Arc::new(keypair.clone()), node.config.transaction_address))); 
+        operator_committee.add_operator(operator_id, local_operator).await;
+
+
+        // Construct the committee for hotstuff protocol
+        let epoch = 1;
+        let stake = 1;
+        let mempool_committee = MempoolCommittee::new(
+            committee_def.node_public_keys 
+                .iter()
+                .enumerate()
+                .map(|(i, pk)| {
+                    let addr = committee_def.base_socket_addresses[i]; 
+                    let config = NodeConfig::new(addr.ip(), addr.port());
+                    (pk.clone(), 
+                    stake, 
+                    config.transaction_address.clone(), 
+                    config.mempool_address.clone(), 
+                    config.signature_address.clone())
+                })
+                .collect(),
+            epoch,
+        );
+        let consensus_committee = ConsensusCommittee::new(
+            committee_def.node_public_keys 
+                .iter()
+                .enumerate()
+                .map(|(i, pk)| {
+                    let addr = committee_def.base_socket_addresses[i]; 
+                    let config = NodeConfig::new(addr.ip(), addr.port());
+                    (pk.clone(), 
+                    stake,
+                    config.consensus_address.clone())
+                })
+                .collect(),
+            epoch,
+        );
+        let hotstuff_committee = HotstuffCommittee {
+            mempool: mempool_committee,
+            consensus: consensus_committee,
+        };
+
+        let signal = DvfCore::spawn(
+            node,
+            committee_def.validator_id,
+            operator_id,
+            hotstuff_committee,
+            keypair,
+            tx_consensus,
+        );
+
+        Self {
+            signal: Some(signal),
+            operator_committee,
+        }
+    }
+
+    pub async fn sign_str(&self, message: &str) -> Result<Signature, DvfError> {
+        let mut context = Context::new();
+        context.update(message.as_bytes());
+        let message_hash = Hash256::from_slice(&context.finalize());
+
+        self.operator_committee.sign(message_hash).await
+    }
+
+    pub async fn sign(&self, message: Hash256) -> Result<Signature, DvfError> {
+        self.operator_committee.sign(message).await
+    }
+}
+
 pub struct DvfCore {
     pub store: Store,
     pub commit: Receiver<Block>,
     pub validator_id: u64, 
+    pub operator_id: u64,
     pub bls_keypair: Keypair,
-    pub bls_id: u64
+    pub tx_consensus: Sender<Hash256>,
+    pub operator: LocalOperator,
+
+    pub exit: exit_future::Exit,
 }
 
+unsafe impl Send for DvfCore {}
+unsafe impl Sync for DvfCore {}
+
+
+
 impl DvfCore {
-    pub async fn new(
+    pub fn spawn(
         node: Arc<Node>,
         validator_id: u64,
-        bls_id : u64,
-        committee: Committee,
+        operator_id : u64,
+        committee: HotstuffCommittee,
         keypair: Keypair,
-    ) -> Result<Self, ConfigError> {
+        tx_consensus: Sender<Hash256>,
+    ) -> exit_future::Signal {
         let (tx_commit, rx_commit) = channel(CHANNEL_CAPACITY);
         let (tx_consensus_to_mempool, rx_consensus_to_mempool) = channel(CHANNEL_CAPACITY);
         let (tx_mempool_to_consensus, rx_mempool_to_consensus) = channel(CHANNEL_CAPACITY);
 
         let parameters = Parameters::default();
-        let store_path = node.config.base_store_path.join(validator_id.to_string()).join(bls_id.to_string()); 
+        let store_path = node.config.base_store_path.join(validator_id.to_string()).join(operator_id.to_string()); 
         let store = Store::new(&store_path.to_str().unwrap()).expect("Failed to create store");
 
         // Run the signature service.
         let signature_service = SignatureService::new(node.secret.secret.clone());
 
-        info!(
-            "Node {} create a dvfcore instance with validator id {}",
-            node.secret.name, validator_id.clone()
-        );
 
         {
-            let mut handler_map = node.signature_handler_map.write().await;
-            handler_map.insert(validator_id, DvfSignatureReceiverHandler{store : store.clone()});
-            info!("Insert signature handler for validator id {:?}", validator_id);
+            block_on(node.signature_handler_map.write())
+                .insert(validator_id, DvfSignatureReceiverHandler{store : store.clone()});
+            info!("Insert signature handler for validator: {}", validator_id);
         }
 
         Mempool::spawn(
@@ -173,18 +284,41 @@ impl DvfCore {
             validator_id,
             Arc::clone(&node.consensus_handler_map)
         );
-        info!("Dvfcore {}/{} successfully booted", bls_id, validator_id);
-        Ok(Self { commit: rx_commit, store: store, validator_id: validator_id, bls_keypair: keypair, bls_id : bls_id})
-        
+
+        info!("[Dvf {}/{}] successfully booted", operator_id, validator_id);
+
+        let operator = LocalOperator::new(validator_id, operator_id, Arc::new(keypair.clone()), node.config.transaction_address);
+
+        let (signal, exit) = exit_future::signal();
+        tokio::spawn(async move {
+            Self {
+                store: store, 
+                commit: rx_commit, 
+                validator_id: validator_id, 
+                operator_id : operator_id,
+                bls_keypair: keypair,
+                tx_consensus,
+                operator,
+
+                exit
+            }
+            .run()
+            .await
+        });
+        signal
     }
 
-    pub async fn save_committed_block(&mut self) {
-        info!("DvfCore {}/{} start receiving committed consensus blocks", self.bls_id, self.validator_id);
-        let operator = LocalOperator::new(self.validator_id ,Arc::new(self.bls_keypair.clone()));
-        while let Some(block) = self.commit.recv().await {
-                // This is where we can further process committed block.
-                if !block.payload.is_empty() {
-                    println!("committed block");
+    pub async fn run(&mut self) {
+        info!("[Dvf {}/{}] start receiving committed consensus blocks", self.operator_id, self.validator_id);
+        loop {
+            let exit = self.exit.clone();
+            tokio::select!{
+                Some(block) = self.commit.recv() => { 
+                    // This is where we can further process committed block.
+                    if block.payload.is_empty() {
+                        continue;
+                    }
+                    info!("[Dvf {}/{}] received a non-empty committed block", self.operator_id, self.validator_id);
                     for payload in block.payload {
                         match self.store.read(payload.to_vec()).await {
                             Ok(value) => {
@@ -196,14 +330,17 @@ impl DvfCore {
                                                 for batch in batches {
                                                     // construct hash256
                                                     let msg = Hash256::from_slice(&batch[..]);
-                                                    let signature = operator.sign(msg.clone(), self.validator_id).unwrap();
-                                                    let status = signature.verify(&operator.voting_keypair.pk, msg);
-                                                    if (!status) {
-                                                        error!("Wrong signature in consensus {}", self.bls_id);
-                                                    }
+                                                    let signature = self.operator.sign(msg.clone()).unwrap();
                                                     let serialized_signature = bincode::serialize(&signature).unwrap();
                                                     // save to local db
                                                     self.store.write(batch, serialized_signature).await;
+
+                                                    if let Err(e) = self.tx_consensus.send(msg).await {
+                                                        error!("Failed to notify consensus status: {}", e);
+                                                    }
+                                                    else {
+                                                        info!("[Dvf {}/{}] Sent out 1 consensus notification for msg: {}", self.operator_id, self.validator_id, msg);
+                                                    }
                                                 }
                                             }
                                             MempoolMessage::BatchRequest(_, _) => { }
@@ -220,6 +357,12 @@ impl DvfCore {
                         }
                     }
                 }
+                () = exit => {
+                    break;
+                }
+            }
         }
+        info!("[Dvf {}/{}] destroying dvf store", self.operator_id, self.validator_id);
+        self.store.notify_destroy().await;
     }
 }

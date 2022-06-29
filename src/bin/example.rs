@@ -17,8 +17,8 @@ use types::{Epoch, MainnetEthSpec, EthSpec};
 use beacon_node::{ClientGenesis};
 
 pub fn simple_integration_example() -> Result<(), String> {
-    let node_count = 1; 
-    let validators_per_node = 3; 
+    let node_count = 3; 
+    let validators_per_node = 5; 
     let speed_up_factor = 3;
     let continue_after_checks = false;
 

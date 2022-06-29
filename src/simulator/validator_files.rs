@@ -1,8 +1,10 @@
-use crate::validation::validator_dir::share_builder::{
-    build_deterministic_distributed_validator_dirs,
-    build_deterministic_committees_file};
+use crate::validation::validator_dir::share_builder::build_deterministic_distributed_validator_dirs;
+//use crate::validation::validator_dir::share_builder::build_deterministic_committees_file;
 use tempfile::{Builder as TempBuilder, TempDir};
 use validator_dir::insecure_keys::build_deterministic_validator_dirs;
+use crate::node::config::NODE_KEY_FILENAME;
+use hsconfig::Secret;
+use hsconfig::Export;
 
 pub use beacon_node::{ClientConfig, ClientGenesis, ProductionClient};
 pub use environment;
@@ -15,7 +17,7 @@ pub use eth2;
 pub struct ValidatorFiles {
     pub validator_dir: TempDir,
     pub secrets_dir: TempDir,
-    //pub committees_dir: TempDir, 
+    pub node_dir: TempDir, 
 }
 
 impl ValidatorFiles {
@@ -35,15 +37,15 @@ impl ValidatorFiles {
             .tempdir()
             .map_err(|e| format!("Unable to create VC secrets dir: {:?}", e))?;
 
-        //let committees_dir = TempBuilder::new()
-            //.prefix("lighthouse-operator-committee")
-            //.tempdir()
-            //.map_err(|e| format!("Unable to create committee dir: {:?}", e))?;
+        let node_dir = TempBuilder::new()
+            .prefix("dvf-node")
+            .tempdir()
+            .map_err(|e| format!("Unable to create dvf node dir: {:?}", e))?;
 
         Ok(Self {
             validator_dir: datadir,
             secrets_dir,
-            //committees_dir,
+            node_dir,
         })
     }
 
@@ -77,8 +79,10 @@ impl ValidatorFiles {
     //}
 
     /// Creates temporary data and secrets dirs, preloaded with keystores.
-    pub fn with_distributed_keystores(keypair_indices: &[usize], threshold: usize, total_splits: usize) -> Result<Self, String> {
+    pub fn with_distributed_keystores(keypair_indices: &[u64], threshold: usize, total_splits: usize, node_secret: Secret, node_public_keys: &[hscrypto::PublicKey]) -> Result<Self, String> {
         let this = Self::new()?;
+
+        node_secret.write(this.node_dir.path().join(NODE_KEY_FILENAME).to_str().unwrap());
 
         build_deterministic_distributed_validator_dirs(
             this.validator_dir.path().into(),
@@ -86,6 +90,7 @@ impl ValidatorFiles {
             keypair_indices,
             threshold,
             total_splits,
+            node_public_keys,
         )
         .map_err(|e| format!("Unable to build distributed validator directories: {:?}", e))?;
 

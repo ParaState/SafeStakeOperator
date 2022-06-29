@@ -1,5 +1,5 @@
-use hotstuff_config::Export as _;
-use hotstuff_config::{ConfigError, Secret};
+use hsconfig::Export as _;
+use hsconfig::{ConfigError, Secret};
 use log::{info};
 use consensus::{ConsensusReceiverHandler};
 use mempool::{TxReceiverHandler, MempoolReceiverHandler};
@@ -9,10 +9,11 @@ use std::collections::HashMap;
 use tokio::sync::RwLock;
 use std::net::SocketAddr;
 use tokio::sync::mpsc::{channel, Receiver};
-use crypto::{PublicKey, SecretKey};
+use hscrypto::{PublicKey, SecretKey};
 /// The default channel capacity for this module.
 use crate::node::dvfcore::{DvfInfo, DvfReceiverHandler, DvfSignatureReceiverHandler};
 use crate::node::config::NodeConfig;
+use std::path::PathBuf;
 
 
 fn with_wildcard_ip(mut addr: SocketAddr) -> SocketAddr {
@@ -31,32 +32,34 @@ pub struct Node {
 }
 
 impl Node {
+
     pub async fn new(
         config: NodeConfig,
-        secret: Secret
     ) -> Result<Self, ConfigError> {
+
+        let secret = Node::open_or_create_secret(config.node_key_path.clone())?;
 
         let tx_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let mempool_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let consensus_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let signature_handler_map = Arc::new(RwLock::new(HashMap::new()));
 
-        let tx_address = with_wildcard_ip(config.tx_receiver_address.clone());
-        NetworkReceiver::spawn(tx_address, Arc::clone(&tx_handler_map), "transaction");
-        info!("Mempool listening to client transactions on {}", tx_address);
+        let transaction_address = with_wildcard_ip(config.transaction_address.clone());
+        NetworkReceiver::spawn(transaction_address, Arc::clone(&tx_handler_map), "transaction");
+        info!("Mempool listening to client transactions on {}", transaction_address);
 
-        let mempool_address = with_wildcard_ip(config.mempool_receiver_address.clone());
+        let mempool_address = with_wildcard_ip(config.mempool_address.clone());
         NetworkReceiver::spawn(mempool_address, Arc::clone(&mempool_handler_map), "mempool");
         info!("Mempool listening to mempool messages on {}", mempool_address);
 
-        let consensus_address = with_wildcard_ip(config.consensus_receiver_address.clone());
+        let consensus_address = with_wildcard_ip(config.consensus_address.clone());
         NetworkReceiver::spawn(consensus_address, Arc::clone(&consensus_handler_map), "consensus");
         info!(
-            "Node {} listening to consensus messages on {}",
+            "Node {} Listening to consensus messages on {}",
             secret.name, consensus_address
         );
 
-        let signature_address = with_wildcard_ip(config.signature_receiver_address.clone());
+        let signature_address = with_wildcard_ip(config.signature_address.clone());
         NetworkReceiver::spawn(signature_address, Arc::clone(&signature_handler_map), "signature");
         info!(
             "Node {} listening to signature messages on {}",
@@ -80,6 +83,7 @@ impl Node {
         
         //NetworkReceiver::spawn(config.dvfcore_network_address.clone(), Arc::clone(&dvfcore_handler_map));
         //info!("DvfCore listening to dvf messages on {}", config.dvfcore_network_address);
+        
 
         info!("Node {} successfully booted", secret.name);
         Ok(Self { 
@@ -93,8 +97,15 @@ impl Node {
         )
     }
 
-    pub fn print_key_file(filename: &str) -> Result<(), ConfigError> {
-        Secret::new().write(filename)
+    pub fn open_or_create_secret(path: PathBuf) -> Result<Secret, ConfigError> {
+        if path.exists() {
+            Secret::read(path.to_str().unwrap())
+        }
+        else {
+            let secret = Secret::new();
+            secret.write(path.to_str().unwrap())?;
+            Ok(secret)
+        }
     }
 
     //pub async fn process_dvfinfo(&mut self) {

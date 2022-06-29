@@ -22,12 +22,15 @@ pub fn simple_integration_example() -> Result<(), String> {
     let speed_up_factor = 3;
     let continue_after_checks = false;
     let threshold = 5;
-    let total_splits = 10;
+    let total_splits = node_count;
 
     println!("Beacon Chain Simulator:");
     println!(" nodes:{}", node_count);
     println!(" validators_per_node:{}", validators_per_node);
     println!(" continue_after_checks:{}", continue_after_checks);
+
+    let node_secrets: Vec<hsconfig::Secret> = (0..total_splits).map(|i| hsconfig::Secret::insecure(i as u64)).collect();
+    let node_public_keys: Vec<hscrypto::PublicKey> = node_secrets.iter().map(|s| s.name.clone()).collect();
 
     // Generate the directories and keystores required for the validator clients.
     let validator_files = (0..node_count)
@@ -41,7 +44,8 @@ pub fn simple_integration_example() -> Result<(), String> {
 
             let indices =
                 (i * validators_per_node..(i + 1) * validators_per_node).collect::<Vec<_>>();
-            ValidatorFiles::with_distributed_keystores(&indices, threshold, total_splits).unwrap()
+
+            ValidatorFiles::with_distributed_keystores(&indices, threshold, total_splits as usize, node_secrets[i as usize].clone(), &node_public_keys.clone()).unwrap()
         })
         .collect::<Vec<_>>();
 
@@ -88,7 +92,7 @@ pub fn simple_integration_example() -> Result<(), String> {
     let mut beacon_config = testing_client_config();
 
     beacon_config.genesis = ClientGenesis::Interop {
-        validator_count: total_validator_count,
+        validator_count: total_validator_count as usize,
         genesis_time: genesis_time.as_secs(),
     };
     beacon_config.dummy_eth1_backend = true;

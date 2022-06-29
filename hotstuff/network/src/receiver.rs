@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::sync::{Arc};
 use tokio::sync::{RwLock};
 use crate::dvf_message::DvfMessage;
+
 #[cfg(test)]
 #[path = "tests/receiver_tests.rs"]
 pub mod receiver_tests;
@@ -25,7 +26,7 @@ pub trait MessageHandler: Clone + Send + Sync + 'static {
     /// number of `Sender<T>` channels. Then implement `dispatch` to deserialize incoming messages and
     /// forward them through the appropriate delivery channel. Then `writer` can be used to send back
     /// responses or acknowledgements to the sender machine (see unit tests for examples).
-    async fn dispatch(&mut self, writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>>;
+    async fn dispatch(&self, writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>>;
 }
 
 /// For each incoming request, we spawn a new runner responsible to receive messages and forward them
@@ -42,7 +43,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
     /// Spawn a new network receiver handling connections from any incoming peer.
     pub fn spawn(address: SocketAddr, handler_map: Arc<RwLock<HashMap<u64, Handler>>>, name: &'static str) {
         tokio::spawn(async move {
-            Self { address, handler_map : Arc::clone(&handler_map), name}.run().await;
+            Self { address, handler_map, name}.run().await;
         });
     }
 
@@ -62,11 +63,14 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                 }
             };
             info!("Incoming connection established with {}", peer);
-            Self::spawn_runner(socket, peer, Arc::clone(&self.handler_map), self.name).await;
+            self.spawn_runner(socket, peer).await;
         }
     }
 
-    async fn spawn_runner(socket: TcpStream, peer: SocketAddr, handler_map: Arc<RwLock<HashMap<u64, Handler>>>, name: &'static str) {
+    async fn spawn_runner(&self, socket: TcpStream, peer: SocketAddr) {
+        let handler_map = self.handler_map.clone(); 
+        let name = self.name.clone();
+
         tokio::spawn(async move {
             let transport = Framed::new(socket, LengthDelimitedCodec::new());
             let (mut writer, mut reader) = transport.split();
@@ -76,8 +80,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                         // get validator
                         let dvf_message : DvfMessage = bincode::deserialize(&message[..]).unwrap();
                         let validator_id = dvf_message.validator_id;
-                        let mut handlers = handler_map.write().await;
-                        match handlers.get_mut(&validator_id) {
+                        match handler_map.read().await.get(&validator_id) {
                             Some(handler) => {
                                 // trunctate the prefix
                                 let msg = dvf_message.message;
@@ -87,7 +90,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                 }
                             },
                             None => {
-                                error!("{:?}", message);
+                                error!("Unhandled message: {:?}", dvf_message);
                                 error!("No handler found for validator id {:?}! [{:?}]", validator_id, name);
                             } 
                         }

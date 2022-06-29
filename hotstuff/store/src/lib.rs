@@ -1,6 +1,8 @@
 use std::collections::{HashMap, VecDeque};
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::oneshot;
+use rocksdb::{DB, Options};
+use log::{info, warn};
 
 #[cfg(test)]
 #[path = "tests/store_tests.rs"]
@@ -16,6 +18,7 @@ pub enum StoreCommand {
     Write(Key, Value),
     Read(Key, oneshot::Sender<StoreResult<Option<Value>>>),
     NotifyRead(Key, oneshot::Sender<StoreResult<Value>>),
+    NotifyDestroy(oneshot::Sender<bool>),
 }
 
 #[derive(Clone)]
@@ -55,19 +58,35 @@ impl Store {
                             }
                         }
                     }
+                    StoreCommand::NotifyDestroy(sender) => {
+                        let p = db.path().to_path_buf();
+                        drop(db);
+                        let result = DB::destroy(&Options::default(), p); 
+                        match result {
+                             Ok(()) => {
+                                 info!("DB deleted success");
+                                 sender.send(true);
+                             }
+                             Err(e) => {
+                                 warn!("DB deleted failure: {}", e);
+                                 sender.send(false);
+                             }
+                        }
+                        break;
+                    }
                 }
             }
         });
         Ok(Self { channel: tx })
     }
 
-    pub async fn write(&mut self, key: Key, value: Value) {
+    pub async fn write(&self, key: Key, value: Value) {
         if let Err(e) = self.channel.send(StoreCommand::Write(key, value)).await {
             panic!("Failed to send Write command to store: {}", e);
         }
     }
 
-    pub async fn read(&mut self, key: Key) -> StoreResult<Option<Value>> {
+    pub async fn read(&self, key: Key) -> StoreResult<Option<Value>> {
         let (sender, receiver) = oneshot::channel();
         if let Err(e) = self.channel.send(StoreCommand::Read(key, sender)).await {
             panic!("Failed to send Read command to store: {}", e);
@@ -77,7 +96,7 @@ impl Store {
             .expect("Failed to receive reply to Read command from store")
     }
 
-    pub async fn notify_read(&mut self, key: Key) -> StoreResult<Value> {
+    pub async fn notify_read(&self, key: Key) -> StoreResult<Value> {
         let (sender, receiver) = oneshot::channel();
         if let Err(e) = self
             .channel
@@ -90,4 +109,19 @@ impl Store {
             .await
             .expect("Failed to receive reply to NotifyRead command from store")
     }
+
+    pub async fn notify_destroy(&self) {
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self
+            .channel
+            .send(StoreCommand::NotifyDestroy(sender))
+            .await
+        {
+            panic!("Failed to send NotifyDestroy command to store: {}", e);
+        }
+        receiver
+            .await
+            .expect("Failed to receive reply to NotifyDestroy command from store");
+    }
+
 }

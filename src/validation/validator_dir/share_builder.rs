@@ -15,6 +15,7 @@ use eth2_keystore::{
 use std::fs::{create_dir_all, File};
 use filesystem::create_with_600_perms;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use crate::node::config::DEFAULT_BASE_PORT;
 
 
 pub const VOTING_KEYSTORE_SHARE_FILE: &str = "voting-keystore-share.json";
@@ -118,11 +119,12 @@ impl ShareBuilder {
     fn build_insecure_distributed_voting_keypair(
         base_validators_dir: PathBuf,
         password_dir: PathBuf,
-        deterministic_key_index: usize,        
+        validator_id: u64,        
         threshold: usize,
         total_splits: usize,
+        node_public_keys: &[hscrypto::PublicKey],
     ) -> Result<(), BuilderError> {
-        let keypair = generate_deterministic_keypair(deterministic_key_index);
+        let keypair = generate_deterministic_keypair(validator_id as usize);
 
         let mut m_threshold = ThresholdSignature::new(threshold);  
         let (kps, ids) = m_threshold.deterministic_key_split(&keypair.sk, total_splits);
@@ -134,7 +136,7 @@ impl ShareBuilder {
                 .kdf(insecure_kdf())
                 .build()
                 .map_err(|e| BuilderError::InsecureKeysError(format!("Unable to build keystore: {:?}", e)))?;
-            let keystore_share = KeystoreShare::new(keystore, keypair.pk.clone(), deterministic_key_index as u64, ids[i]);
+            let keystore_share = KeystoreShare::new(keystore, keypair.pk.clone(), validator_id as u64, ids[i]);
 
             ShareBuilder::new(base_validators_dir.clone())
                 .password_dir(password_dir.clone())
@@ -145,11 +147,13 @@ impl ShareBuilder {
         let def = OperatorCommitteeDefinition {
             total: total_splits as u64,
             threshold: threshold as u64,
-            committee_index: deterministic_key_index as u64,
-            voting_public_key: keypair.pk.clone(),
-            ids: ids,
-            public_keys: kps.iter().map(|x| x.pk.clone()).collect(),
-            socket_addresses: (0..total_splits).map(|j| SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), (4000 + j) as u16)).collect(),
+            validator_id: validator_id,
+            validator_public_key: keypair.pk.clone(),
+            operator_ids: ids,
+            operator_public_keys: kps.iter().map(|x| x.pk.clone()).collect(),
+            node_public_keys: Vec::from(node_public_keys),
+            base_socket_addresses: (0..total_splits)
+                .map(|j| SocketAddr::new("127.0.0.1".parse().unwrap(), (DEFAULT_BASE_PORT + j as u16 * 100) as u16)).collect(),
         };
         let committee_def_path = default_operator_committee_definition_path(
             &keypair.pk,
@@ -242,18 +246,20 @@ pub fn write_password_to_file<P: AsRef<Path>>(path: P, bytes: &[u8]) -> Result<(
 pub fn build_deterministic_distributed_validator_dirs(
     validators_dir: PathBuf,
     password_dir: PathBuf,
-    indices: &[usize],
+    validator_ids: &[u64],
     threshold: usize,
     total_splits: usize,
+    node_public_keys: &[hscrypto::PublicKey], 
 ) -> Result<(), String> {
 
-    for i in 0..indices.len() {
+    for i in 0..validator_ids.len() {
         ShareBuilder::build_insecure_distributed_voting_keypair(
             validators_dir.clone(),
             password_dir.clone(),
-            indices[i],
+            validator_ids[i],
             threshold,
-            total_splits)
+            total_splits,
+            node_public_keys,)
             .map_err(|e| format!("Unable to build distributed keystore: {:?}", e))?;
     }
 
@@ -261,34 +267,35 @@ pub fn build_deterministic_distributed_validator_dirs(
 }
 
 
-pub fn build_deterministic_committees_file(
-    committees_dir: PathBuf,
-    indices: &[usize],
-    threshold: usize,
-    total_splits: usize,
-) -> Result<(), String> {
+//pub fn build_deterministic_committees_file(
+    //committees_dir: PathBuf,
+    //validator_ids: &[usize],
+    //threshold: usize,
+    //total_splits: usize,
+//) -> Result<(), String> {
     
-    let mut defs = Vec::<OperatorCommitteeDefinition>::new();
-    for i in 0..indices.len() {
-        let keypair = generate_deterministic_keypair(indices[i]);
+    //let mut defs = Vec::<OperatorCommitteeDefinition>::new();
+    //for i in 0..validator_ids.len() {
+        //let keypair = generate_deterministic_keypair(validator_ids[i]);
 
-        let mut m_threshold = ThresholdSignature::new(threshold);  
-        let (kps, ids) = m_threshold.deterministic_key_split(&keypair.sk, total_splits);
+        //let mut m_threshold = ThresholdSignature::new(threshold);  
+        //let (kps, ids) = m_threshold.deterministic_key_split(&keypair.sk, total_splits);
 
-        defs.push(
-            OperatorCommitteeDefinition {
-                total: total_splits as u64,
-                threshold: threshold as u64,
-                committee_index: indices[i] as u64,
-                voting_public_key: keypair.pk.clone(),
-                ids: ids,
-                public_keys: kps.iter().map(|x| x.pk.clone()).collect(),
-                socket_addresses: (0..total_splits).map(|j| SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), (4000 + j) as u16)).collect(),
-            }
-        );
-    } 
-    OperatorCommitteeDefinitions::from(defs)
-        .save(committees_dir)
-        .map_err(|e| format!("Unable to build committee definitions file: {:?}", e))?;
-    Ok(())
-}
+        //defs.push(
+            //OperatorCommitteeDefinition {
+                //total: total_splits as u64,
+                //threshold: threshold as u64,
+                //validator_id: validator_ids[i] as u64,
+                //validator_public_key: keypair.pk.clone(),
+                //operator_ids: ids,
+                //operator_public_keys: kps.iter().map(|x| x.pk.clone()).collect(),
+                //node_public_keys,
+                //base_socket_addresses: (0..total_splits).map(|j| SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), (4000 + j) as u16)).collect(),
+            //}
+        //);
+    //} 
+    //OperatorCommitteeDefinitions::from(defs)
+        //.save(committees_dir)
+        //.map_err(|e| format!("Unable to build committee definitions file: {:?}", e))?;
+    //Ok(())
+//}

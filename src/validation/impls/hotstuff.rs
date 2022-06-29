@@ -3,14 +3,19 @@ use std::sync::{Arc};
 use std::{thread, time};
 use crate::validation::{
     generic_operator_committee::{TOperatorCommittee},
-    operator::{TOperator, HotStuffOperator},
+    operator::{TOperator},
 };
 use crate::crypto::ThresholdSignature;
-use crate::DvfOperatorTsid;
-use crate::DvfCommitteeIndex;
 use crate::utils::error::DvfError;
 use bls::{Hash256, Signature, PublicKey};
-use parking_lot::{RwLock};
+use tokio::sync::{RwLock};
+use tokio::sync::mpsc::{Receiver};
+use futures::executor::block_on;
+use futures::future::join_all;
+use log::{info, error};
+use tokio::sync::Mutex;
+use async_trait::async_trait;
+
 
 /// Provides the externally-facing operator committee type.
 pub mod types {
@@ -19,25 +24,30 @@ pub mod types {
 
 /// Hotstuff operator committee whose consensus protocol is dummy 
 pub struct HotstuffOperatorCommittee {
-    id: DvfCommitteeIndex,
-    voting_public_key: PublicKey,
-    operators: RwLock<HashMap<DvfOperatorTsid, Arc<RwLock<dyn TOperator>>>>,
+    validator_id: u64,
+    validator_public_key: PublicKey,
+    operators: RwLock<HashMap<u64, Arc<RwLock<dyn TOperator>>>>,
     threshold_: usize,
+    rx_consensus: Arc<RwLock<Receiver<Hash256>>>,
 }
 
+#[async_trait]
 impl TOperatorCommittee for HotstuffOperatorCommittee {
-    fn new(id: DvfCommitteeIndex, voting_public_key: PublicKey, t: usize) -> Self {
+    fn new(validator_id: u64, validator_public_key: PublicKey, t: usize, rx_consensus: Receiver<Hash256>) -> Self {
         Self {
-            id,
-            voting_public_key,
+            validator_id,
+            validator_public_key,
             operators: <_>::default(),
             threshold_: t,
+            rx_consensus: Arc::new(RwLock::new(rx_consensus)),
         }
     }
 
-    fn add_operator(&mut self, id: DvfOperatorTsid, operator: Arc<RwLock<dyn TOperator>>) {
+    async fn add_operator(&mut self, operator_id: u64, operator: Arc<RwLock<dyn TOperator>>) {
 
-        self.operators.write().insert(id, operator);
+        self.operators.write()
+            .await
+            .insert(operator_id, operator);
     }
 
     fn threshold(&self) -> usize {
@@ -45,82 +55,69 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
     }
 
     // assumt operators are already sorted
-    fn consensus(&self, msg: Hash256) -> bool {
-        // send network request
-        // let operators = self.operators.write();
-        // let ids : Vec<DvfOperatorTsid> = operators.keys().map(|k| *k).collect();
-        // let id = ids[0];
-        // let mut operator = operators.get(&id).unwrap().write();
-        // let hotstuff_operator = operator.downcast_mut::<HotStuffOperator>().unwrap(); 
-        // println!("propose msg by id { }", id);
-        // if id == 1 {
-        //     println!("propose msg by id { }", id);
-        //     block_on(hotstuff_operator.propose(msg));
-        // }
-        let operators = self.operators.read();
-        let select_order = msg.to_fixed_bytes()[0] as u64 % operators.len() as u64;
-        let ids : Vec<DvfOperatorTsid> = operators.keys().map(|k| *k).collect();
+    async fn consensus(&self, msg: Hash256) -> Result<(), DvfError> {
+        let operators = self.operators.read().await;
+        let select_order = msg.to_low_u64_le() % operators.len() as u64;
+        let mut ids : Vec<u64> = operators.keys().map(|k| *k).collect();
+        ids.sort();
         let selected_id = ids[select_order as usize];
-        let operator = operators.get(&selected_id).unwrap().write();
-        operator.propose(msg, self.id);
-            
-        return true;
+        let operator = operators.get(&selected_id).unwrap().clone();
+        let rx_consensus = self.rx_consensus.clone();
+        
+        let fut = tokio::spawn(async move {
+            // Acquire the write lock, so that only one thread can invoke a consensus instance
+            let mut rx_consensus = rx_consensus.write().await;
+
+            operator.read()
+                .await
+                .propose(msg);
+
+            match rx_consensus.recv().await {
+                Some(value) => {
+                    if value == msg {
+                        info!("Consensus achieved for msg {}", msg);
+                        Ok(()) 
+                    }
+                    else {
+                        Err(DvfError::ConsensusFailure(
+                            format!("Consensus msg changed ({} != {}). Something went seriously wrong.", value, msg))
+                        )
+                    }
+                }
+                None => {
+                    Err(DvfError::ConsensusFailure(
+                        format!("Failed to receive consensus of msg {}", msg))
+                    )
+                }
+            }
+        });
+        fut.await.map_err(|e| DvfError::ConsensusFailure(format!("Tokio run error: {}", e)))?
     }
 
-    fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> {
+    async fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> {
         // Run consensus protocol 
-        println!("<<<<<<<[Duty]: {:02x?}>>>>>>", msg);
-        println!("<<<<<<<[Committee Sign]>>>>>>");
-        println!("<<<<<<<[Start Consensus]>>>>>>");
-        let status = self.consensus(msg);
-        let ten_millis = time::Duration::from_millis(2000);
-        thread::sleep(ten_millis);
-        println!("<<<<<<<[Request Other Signature]>>>>>>");
+        self.consensus(msg).await?;
 
-        // let operators = self.operators.write();
-        // let ids : Vec<DvfOperatorTsid> = operators.keys().map(|k| *k).collect();
+        let operators = &self.operators.read().await;
+        let signing_futs = operators.keys().map(|operator_id| async move {
+            let operator = operators.get(operator_id).unwrap().read().await; 
+            operator.sign(msg)
+                .map(|x| (operator_id.clone(), operator.public_key(), x))
+            
+        });
+        let results = join_all(signing_futs)
+            .await
+            .into_iter()
+            .flatten()
+            .collect::<Vec<(u64, PublicKey, Signature)>>();
 
-        // let id :u32 = ids[0];
-        // let mut operator = operators.get(&id).unwrap().write();
-        // let hotstuff_operator = operator.downcast_mut::<HotStuffOperator>().unwrap();
-        // // wait 
-        // let signatures = block_on(hotstuff_operator.wait_signature());
-        // let ids : Vec<DvfOperatorTsid> = signatures.iter().map(|x| x.id as u32).collect();
-        // // ids.push(id);
-        // println!("{:?}", &ids);
-        // let pks: Vec<&PublicKey> = signatures.iter().map(|x| &x.from).collect();
-        // // pks.push(self_pk);
-        // let sigs: Vec<&Signature> = signatures.iter().map(|x| &x.signature).collect();
-        // // sigs.push(&self_signature);
-        // let threshold_sig = ThresholdSignature::new(self.threshold());
-        // threshold_sig.threshold_aggregate(&sigs[..], &pks[..], &ids[..], msg)
+        let ids = results.iter().map(|x| x.0).collect::<Vec<u64>>();
+        let pks = results.iter().map(|x| &x.1).collect::<Vec<&PublicKey>>();
+        let sigs = results.iter().map(|x| &x.2).collect::<Vec<&Signature>>();
 
-        let operators = self.operators.write();
-        let keys: Vec<DvfOperatorTsid> = operators.keys().map(|k| *k).collect();
-        let mut ids:  Vec<DvfOperatorTsid> = Vec::new();
-        let operators: Vec<&Arc<RwLock<dyn TOperator>>> = keys.iter().map(|k| operators.get(&k).unwrap()).collect();
-        let mut pks: Vec<PublicKey> = Vec::new();
-        let mut sigs: Vec<Signature> = Vec::<_>::new();
-        // TODO use multiple threads to do this
-        for op in operators {
-            let operator = op.read();
-            match operator.sign(msg, self.id) {
-                Ok(sig) => {
-                    sigs.push(sig);
-                    ids.push(operator.get_id());
-                    pks.push(operator.public_key().clone());
-                }
-                Err(_) => {} 
-            }
-        }
-        let pk_refs: Vec<&PublicKey> = pks.iter().map(|x| x).collect();
-        let sigs: Vec<&Signature> = sigs.iter().map(|x| x).collect();
-        println!("<<<<<<<[Got {} signatures]>>>>>>", sigs.len());
         let threshold_sig = ThresholdSignature::new(self.threshold());
+        let sig = threshold_sig.threshold_aggregate(&sigs[..], &pks[..], &ids[..], msg);
 
-        let sig = threshold_sig.threshold_aggregate(&sigs[..], &pk_refs[..], &ids[..], msg);
-
-        println!("<<<<<<<[Threshold Committee Signing Succeeds]>>>>>>");
         sig
     }
 

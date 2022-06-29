@@ -2,67 +2,76 @@ use crate::validation::OperatorCommittee;
 use crate::utils::error::DvfError;
 use crate::validation::operator_committee_definitions::{OperatorCommitteeDefinition, OperatorCommitteeDefinitions};
 use crate::validation::operator::RemoteOperator;
-use crate::DvfCommitteeIndex;
+use crate::DEFAULT_CHANNEL_CAPACITY;
+use crate::node::config::SIGNATURE_PORT_OFFSET;
 use std::sync::Arc;
 use std::convert::TryInto;
 use std::path::PathBuf;
 use std::collections::HashMap;
-use parking_lot::{RwLock};
+use tokio::sync::{RwLock};
+use tokio::sync::mpsc::{channel, Sender};
+use types::Hash256;
+
 
 impl OperatorCommittee { 
-    pub fn from_definition(
+    pub async fn from_definition(
         def: OperatorCommitteeDefinition,
-    ) -> Result<Self, DvfError> {
-        let mut committee = Self::new(def.committee_index, def.voting_public_key.clone(), def.threshold.try_into().unwrap());
+    ) -> (Self, Sender<Hash256>) {
+        let (tx, rx) = channel(DEFAULT_CHANNEL_CAPACITY);
+
+        let mut committee = Self::new(def.validator_id, def.validator_public_key.clone(), def.threshold as usize, rx);
         for i in 0..(def.total as usize) {
+            let mut addr = def.base_socket_addresses[i].clone();
+            addr.set_port(addr.port() + SIGNATURE_PORT_OFFSET);
             let operator = RemoteOperator {
-                id: def.ids[i],
-                public_key: def.public_keys[i].clone(),
-                socket_address: def.socket_addresses[i],
+                validator_id: def.validator_id,
+                operator_id: def.operator_ids[i],
+                operator_public_key: def.operator_public_keys[i].clone(),
+                signature_address: addr,
             };
-            committee.add_operator(def.ids[i], Arc::new(RwLock::new(operator)));
+            committee.add_operator(def.operator_ids[i], Arc::new(RwLock::new(operator))).await;
         }
-        Ok(committee)
+        (committee, tx)
     }
 }
 
-pub struct OperatorCommittees {
-    /// A list of validator definitions which can be stored on-disk.
-    definitions: OperatorCommitteeDefinitions,
-    /// The directory that the `self.definitions` will be saved into.
-    committees_dir: PathBuf,
-    /// The canonical set of validators.
-    pub committee_map: HashMap<DvfCommitteeIndex, OperatorCommittee>,
-}
+//pub struct OperatorCommittees {
+    ///// A list of validator definitions which can be stored on-disk.
+    //definitions: OperatorCommitteeDefinitions,
+    ///// The directory that the `self.definitions` will be saved into.
+    //committees_dir: PathBuf,
+    ///// The canonical set of validators.
+    //pub committee_map: HashMap<u64, OperatorCommittee>,
+//}
 
-impl OperatorCommittees {
-    pub async fn from_definitions(
-        definitions: OperatorCommitteeDefinitions,
-        committees_dir: PathBuf,
-    ) -> Result<Self, DvfError> {
-        let mut this = Self {
-            definitions,
-            committees_dir,
-            committee_map: HashMap::default(),
-        };
-        this.update_committees().await?;
-        Ok(this)
-    }
+//impl OperatorCommittees {
+    //pub async fn from_definitions(
+        //definitions: OperatorCommitteeDefinitions,
+        //committees_dir: PathBuf,
+    //) -> Result<Self, DvfError> {
+        //let mut this = Self {
+            //definitions,
+            //committees_dir,
+            //committee_map: HashMap::default(),
+        //};
+        //this.update_committees().await?;
+        //Ok(this)
+    //}
 
-    pub async fn update_committees(&mut self) -> Result<(), DvfError> {
-        for def in self.definitions.as_slice() { 
-            if self.committee_map.contains_key(&def.committee_index) {
-                continue;
-            }
-            match OperatorCommittee::from_definition(def.clone()) {
-                Ok(committee) => {
-                    self.committee_map.insert(def.committee_index, committee);
-                }
-                Err(e) => {
-                    return Err(e);
-                }
-            }
-        }
-        Ok(())
-    }
-}
+    //pub async fn update_committees(&mut self) -> Result<(), DvfError> {
+        //for def in self.definitions.as_slice() { 
+            //if self.committee_map.contains_key(&def.committee_index) {
+                //continue;
+            //}
+            //match OperatorCommittee::from_definition(def.clone()) {
+                //Ok(committee) => {
+                    //self.committee_map.insert(def.validator_id, committee);
+                //}
+                //Err(e) => {
+                    //return Err(e);
+                //}
+            //}
+        //}
+        //Ok(())
+    //}
+//}

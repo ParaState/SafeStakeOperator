@@ -38,7 +38,7 @@ impl<E: EthSpec> LocalValidatorClient<E> {
         context: RuntimeContext<E>,
         config: ValidatorConfig,
     ) -> Result<Self, String> {
-        let files = ValidatorFiles::new()?;
+        let files = ValidatorFiles::new(0)?;
 
         Self::new(context, config, files).await
     }
@@ -50,7 +50,9 @@ impl<E: EthSpec> LocalValidatorClient<E> {
     ) -> Result<Self, String> {
         config.validator_dir = files.validator_dir.path().into();
         config.secrets_dir = files.secrets_dir.path().into();
-        config.dvf_node_config = config.dvf_node_config.set_base_dir(files.node_dir.path().into());
+        config.dvf_node_config = config.dvf_node_config
+            .set_id(files.node_id)
+            .set_base_dir(files.node_dir.path().into());
 
         ProductionValidatorClient::new(context, config)
             .await

@@ -16,6 +16,7 @@ use std::{sync::Arc, time::Duration};
 use types::{Epoch, EthSpec};
 
 use crate::simulator::ValidatorConfig;
+use crate::node::config::DEFAULT_BASE_PORT;
 
 const BOOTNODE_PORT: u16 = 42424;
 pub const INVALID_ADDRESS: &str = "http://127.0.0.1:42423";
@@ -148,15 +149,17 @@ impl<E: EthSpec> LocalNetwork<E> {
                 .expect("Must have http started")
         };
 
-        let beacon_node = SensitiveUrl::parse(
+        let beacon_node_url = SensitiveUrl::parse(
             format!("http://{}:{}", socket_addr.ip(), socket_addr.port()).as_str(),
         )
         .unwrap();
         validator_config.beacon_nodes = if invalid_first_beacon_node {
-            vec![SensitiveUrl::parse(INVALID_ADDRESS).unwrap(), beacon_node]
+            vec![SensitiveUrl::parse(INVALID_ADDRESS).unwrap(), beacon_node_url]
         } else {
-            vec![beacon_node]
+            vec![beacon_node_url]
         };
+        validator_config.dvf_node_config = 
+            validator_config.dvf_node_config.set_base_port(DEFAULT_BASE_PORT + beacon_node as u16 * 100);
         let validator_client = LocalValidatorClient::production_with_insecure_keypairs(
             context,
             validator_config,

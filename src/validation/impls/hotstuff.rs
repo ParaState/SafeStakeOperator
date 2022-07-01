@@ -115,6 +115,8 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
         let pks = results.iter().map(|x| &x.1).collect::<Vec<&PublicKey>>();
         let sigs = results.iter().map(|x| &x.2).collect::<Vec<&Signature>>();
 
+        info!("Received {} signatures", sigs.len());
+
         let threshold_sig = ThresholdSignature::new(self.threshold());
         let sig = threshold_sig.threshold_aggregate(&sigs[..], &pks[..], &ids[..], msg);
 

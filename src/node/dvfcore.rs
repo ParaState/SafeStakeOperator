@@ -27,7 +27,8 @@ use crate::validation::{OperatorCommittee};
 use tokio::sync::{RwLock};
 use eth2_hashing::{Context, Sha256Context};
 use crate::validation::operator_committee_definitions::OperatorCommitteeDefinition; 
-use crate::node::config::NodeConfig;
+use crate::node::config::{NodeConfig, TRANSACTION_PORT_OFFSET, MEMPOOL_PORT_OFFSET, CONSENSUS_PORT_OFFSET, SIGNATURE_PORT_OFFSET};
+use std::net::SocketAddr;
 
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -139,10 +140,10 @@ impl DvfSigner {
     pub async fn spawn(
         node: Arc<Node>,
         validator_id: u64,
-        operator_id : u64,
         keypair: Keypair,
         committee_def: OperatorCommitteeDefinition,
     ) -> Self {
+        let operator_id = node.config.id;
         // Construct the committee for validator signing
         let (mut operator_committee, tx_consensus) = OperatorCommittee::from_definition(committee_def.clone()).await;
         let local_operator = Arc::new(
@@ -159,12 +160,12 @@ impl DvfSigner {
                 .enumerate()
                 .map(|(i, pk)| {
                     let addr = committee_def.base_socket_addresses[i]; 
-                    let config = NodeConfig::new(addr.ip(), addr.port());
                     (pk.clone(), 
-                    stake, 
-                    config.transaction_address.clone(), 
-                    config.mempool_address.clone(), 
-                    config.signature_address.clone())
+                     stake, 
+                     SocketAddr::new(addr.ip(), addr.port() + TRANSACTION_PORT_OFFSET), 
+                     SocketAddr::new(addr.ip(), addr.port() + MEMPOOL_PORT_OFFSET), 
+                     SocketAddr::new(addr.ip(), addr.port() + SIGNATURE_PORT_OFFSET), 
+                    )
                 })
                 .collect(),
             epoch,
@@ -175,10 +176,10 @@ impl DvfSigner {
                 .enumerate()
                 .map(|(i, pk)| {
                     let addr = committee_def.base_socket_addresses[i]; 
-                    let config = NodeConfig::new(addr.ip(), addr.port());
                     (pk.clone(), 
-                    stake,
-                    config.consensus_address.clone())
+                     stake,
+                     SocketAddr::new(addr.ip(), addr.port() + CONSENSUS_PORT_OFFSET),
+                    )
                 })
                 .collect(),
             epoch,
@@ -191,7 +192,6 @@ impl DvfSigner {
         let signal = DvfCore::spawn(
             node,
             committee_def.validator_id,
-            operator_id,
             hotstuff_committee,
             keypair,
             tx_consensus,
@@ -237,7 +237,6 @@ impl DvfCore {
     pub fn spawn(
         node: Arc<Node>,
         validator_id: u64,
-        operator_id : u64,
         committee: HotstuffCommittee,
         keypair: Keypair,
         tx_consensus: Sender<Hash256>,
@@ -246,6 +245,7 @@ impl DvfCore {
         let (tx_consensus_to_mempool, rx_consensus_to_mempool) = channel(CHANNEL_CAPACITY);
         let (tx_mempool_to_consensus, rx_mempool_to_consensus) = channel(CHANNEL_CAPACITY);
 
+        let operator_id = node.config.id;
         let parameters = Parameters::default();
         let store_path = node.config.base_store_path.join(validator_id.to_string()).join(operator_id.to_string()); 
         let store = Store::new(&store_path.to_str().unwrap()).expect("Failed to create store");

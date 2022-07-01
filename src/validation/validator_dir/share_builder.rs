@@ -16,6 +16,9 @@ use std::fs::{create_dir_all, File};
 use filesystem::create_with_600_perms;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use crate::node::config::DEFAULT_BASE_PORT;
+use crate::test_utils::{generate_deterministic_threshold_keypairs, ThresholdKeyPack};
+use bls::{PublicKey, Keypair};
+use std::collections::HashMap;
 
 
 pub const VOTING_KEYSTORE_SHARE_FILE: &str = "voting-keystore-share.json";
@@ -119,47 +122,25 @@ impl ShareBuilder {
     fn build_insecure_distributed_voting_keypair(
         base_validators_dir: PathBuf,
         password_dir: PathBuf,
-        validator_id: u64,        
-        threshold: usize,
-        total_splits: usize,
-        node_public_keys: &[hscrypto::PublicKey],
+        validator_id: u64,
+        validator_public_key: PublicKey,
+        operator_id: u64,
+        operator_key_pair: Keypair,
     ) -> Result<(), BuilderError> {
-        let keypair = generate_deterministic_keypair(validator_id as usize);
 
-        let mut m_threshold = ThresholdSignature::new(threshold);  
-        let (kps, ids) = m_threshold.deterministic_key_split(&keypair.sk, total_splits);
 
-        for i in 0..total_splits {
+        let keystore = KeystoreBuilder::new(&operator_key_pair, INSECURE_PASSWORD, "".into())
+            .map_err(|e| BuilderError::InsecureKeysError(format!("Unable to create keystore builder: {:?}", e)))?
+            .kdf(insecure_kdf())
+            .build()
+            .map_err(|e| BuilderError::InsecureKeysError(format!("Unable to build keystore: {:?}", e)))?;
+        let keystore_share = KeystoreShare::new(keystore, validator_public_key, validator_id as u64, operator_id);
 
-            let keystore = KeystoreBuilder::new(&kps[i], INSECURE_PASSWORD, "".into())
-                .map_err(|e| BuilderError::InsecureKeysError(format!("Unable to create keystore builder: {:?}", e)))?
-                .kdf(insecure_kdf())
-                .build()
-                .map_err(|e| BuilderError::InsecureKeysError(format!("Unable to build keystore: {:?}", e)))?;
-            let keystore_share = KeystoreShare::new(keystore, keypair.pk.clone(), validator_id as u64, ids[i]);
-
-            ShareBuilder::new(base_validators_dir.clone())
-                .password_dir(password_dir.clone())
-                .voting_keystore_share(keystore_share, INSECURE_PASSWORD)
-                .build()?;
-        }
-
-        let def = OperatorCommitteeDefinition {
-            total: total_splits as u64,
-            threshold: threshold as u64,
-            validator_id: validator_id,
-            validator_public_key: keypair.pk.clone(),
-            operator_ids: ids,
-            operator_public_keys: kps.iter().map(|x| x.pk.clone()).collect(),
-            node_public_keys: Vec::from(node_public_keys),
-            base_socket_addresses: (0..total_splits)
-                .map(|j| SocketAddr::new("127.0.0.1".parse().unwrap(), (DEFAULT_BASE_PORT + j as u16 * 100) as u16)).collect(),
-        };
-        let committee_def_path = default_operator_committee_definition_path(
-            &keypair.pk,
-            <PathBuf as AsRef<Path>>::as_ref(&base_validators_dir),
-        ); 
-        def.to_file(committee_def_path).map_err(|e| BuilderError::InsecureKeysError("[TODO] Actually a Committee Definition Error".to_string()))
+        ShareBuilder::new(base_validators_dir.clone())
+            .password_dir(password_dir.clone())
+            .voting_keystore_share(keystore_share, INSECURE_PASSWORD)
+            .build()?;
+        Ok(()) 
     }
 
 }
@@ -247,20 +228,51 @@ pub fn build_deterministic_distributed_validator_dirs(
     validators_dir: PathBuf,
     password_dir: PathBuf,
     validator_ids: &[u64],
+    operator_ids: &[u64],
     threshold: usize,
-    total_splits: usize,
-    node_public_keys: &[hscrypto::PublicKey], 
+    node_public_keys: &HashMap<u64, hscrypto::PublicKey>, 
+    node_base_addresses: &HashMap<u64, SocketAddr>,
 ) -> Result<(), String> {
-
+    
+    let node_ids: Vec<u64> = node_public_keys.keys().map(|k| *k).collect();
     for i in 0..validator_ids.len() {
+        let key_pack = generate_deterministic_threshold_keypairs(validator_ids[i], &node_ids, threshold);
+
         ShareBuilder::build_insecure_distributed_voting_keypair(
             validators_dir.clone(),
             password_dir.clone(),
             validator_ids[i],
-            threshold,
-            total_splits,
-            node_public_keys,)
+            key_pack.kp.pk.clone(),
+            operator_ids[i],
+            key_pack.kps.get(&operator_ids[i]).unwrap().clone(),
+            )
             .map_err(|e| format!("Unable to build distributed keystore: {:?}", e))?;
+
+
+        let def = OperatorCommitteeDefinition {
+            total: node_ids.len() as u64,
+            threshold: threshold as u64,
+            validator_id: validator_ids[i],
+            validator_public_key: key_pack.kp.pk.clone(),
+            operator_ids: node_ids.clone(),
+            operator_public_keys: node_ids.iter()
+                .map(|id| key_pack.kps.get(id).unwrap().pk.clone())
+                .collect(),
+            node_public_keys: node_ids.iter()
+                .map(|id| node_public_keys.get(id).unwrap().clone())
+                .collect(),
+            base_socket_addresses: node_ids.iter()
+                .map(|id| node_base_addresses.get(id).unwrap().clone())
+                .collect(),
+                //.map(|j| SocketAddr::new("127.0.0.1".parse().unwrap(), (DEFAULT_BASE_PORT + j as u16 * 100) as u16)).collect(),
+        };
+        let committee_def_path = default_operator_committee_definition_path(
+            &key_pack.kp.pk,
+            <PathBuf as AsRef<Path>>::as_ref(&validators_dir),
+        ); 
+        def.to_file(committee_def_path)
+            .map_err(|e| format!("Unable to save committee definition: {:?}", e))?;
+
     }
 
     Ok(())

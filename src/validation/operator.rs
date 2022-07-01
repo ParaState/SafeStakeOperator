@@ -71,7 +71,7 @@ impl TOperator for RemoteOperator {
         let mut sender = ReliableSender::new();
         let dvf_message = DvfMessage { validator_id: self.validator_id, message: msg.to_fixed_bytes().to_vec()};
         let serialize_msg = bincode::serialize(&dvf_message).unwrap();
-        for retry in 0..5 {
+        for retry in 0..3 {
             let receiver = block_on(sender.send(self.signature_address, Bytes::from(serialize_msg.clone())));
             let result = block_on(timeout(Duration::from_millis(timeout_mill), receiver)); 
             match result {

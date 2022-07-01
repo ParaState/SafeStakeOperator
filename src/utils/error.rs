@@ -10,6 +10,8 @@ pub fn require(status: bool, msg: &'static str) {
 pub enum DvfError {
     /// The consensus protocol failed.
     ConsensusFailure(String),
+    /// Key generation failed.
+    KeyGenError(String),
     /// Threshold signature aggregation failed due to insufficient valid signatures.
     InsufficientSignatures {got: usize, expected: usize},
     /// Threshold signature aggregation failed due to insufficient valid signatures.

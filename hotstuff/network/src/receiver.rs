@@ -51,7 +51,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
     async fn run(&self) {
         let listener = TcpListener::bind(&self.address)
             .await
-            .expect("Failed to bind TCP port");
+            .expect(format!("Failed to bind TCP address {}", self.address).as_str());
 
         debug!("Listening on {}", self.address);
         loop {
@@ -62,7 +62,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                     continue;
                 }
             };
-            info!("Incoming connection established with {}", peer);
+            info!("Incoming connection established with {}. Local: {}. [{:?}]", peer, self.address, self.name);
             self.spawn_runner(socket, peer).await;
         }
     }

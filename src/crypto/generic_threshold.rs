@@ -9,7 +9,7 @@ use num_bigint::{BigInt, Sign};
 use crate::math::bigint_ext::Ring;
 use crate::utils::rand_utils::RandUtilsRng;
 use crate::utils::rand_utils::Sample;
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 
 
 pub trait TThresholdSignature: Sized + Clone {
@@ -44,37 +44,39 @@ where
         self.point.threshold()
     }
 
-    pub fn key_gen(&mut self, n: usize) -> (Keypair, Vec<Keypair>, Vec<u64>) {
+    pub fn key_gen(&mut self, ids: &[u64]) -> Result<(Keypair, HashMap<u64, Keypair>), DvfError> {
         let kp = Keypair::random();
-        let (kps, ids) = self.key_split(&kp.sk, n);
-        (kp, kps, ids)
+        let kps = self.key_split(&kp.sk, ids)?;
+        Ok((kp, kps))
     }
 
-    pub fn key_split(&mut self, sk: &SecretKey, n: usize) -> (Vec<Keypair>, Vec<u64>) {
+    pub fn key_split(&mut self, sk: &SecretKey, ids: &[u64]) -> Result<HashMap<u64, Keypair>, DvfError> {
         let mut rng = RandUtilsRng::new();
 
         let mut coeffs: Vec<BigInt> = rng.sample_vec(self.threshold(), &MODULUS);
         coeffs[0] = BigInt::from_bytes_be(Sign::Plus, &sk.serialize().as_bytes()); 
         let poly = Polynomial::new(coeffs);
 
-        let mut kps: Vec<Keypair> = Vec::new();
-        let mut ids: Vec<u64> = Vec::new();
-        for i in 0..n {
-            let (_, mut sk_share) = poly.eval(&(i+1).to_bigint().unwrap()).reduce(&MODULUS).to_bytes_be();
+        let mut kps: HashMap<u64, Keypair> = HashMap::new();
+        for i in 0..ids.len() {
+            if ids[i] == 0 {
+                return Err(DvfError::KeyGenError(format!("Invalid id {}", ids[i])));
+            }
+
+            let (_, mut sk_share) = poly.eval(&(&ids[i]).to_bigint().unwrap()).reduce(&MODULUS).to_bytes_be();
             if sk_share.len() < SECRET_KEY_BYTES_LEN {
                 (0..SECRET_KEY_BYTES_LEN-sk_share.len()).for_each(|_| sk_share.insert(0, 0));
             }
             let sk_share = SecretKey::deserialize(&sk_share[..]).unwrap();
-            kps.push(Keypair::from_components(sk_share.public_key(), sk_share));
-            ids.push((i + 1) as u64);
+            kps.insert(ids[i], Keypair::from_components(sk_share.public_key(), sk_share));
         }
-        (kps, ids)
+        Ok(kps)
     }
 
     /// Split the key in a deterministic way.  
     ///
     /// **NEVER** use this in production! 
-    pub fn deterministic_key_split(&mut self, sk: &SecretKey, n: usize) -> (Vec<Keypair>, Vec<u64>) {
+    pub fn deterministic_key_split(&mut self, sk: &SecretKey, ids: &[u64]) -> Result<HashMap<u64, Keypair>, DvfError> {
         let seed: [u8; 32] = [0; 32];
         let mut rng = RandUtilsRng::from_seed(&seed);
 
@@ -82,18 +84,43 @@ where
         coeffs[0] = BigInt::from_bytes_be(Sign::Plus, &sk.serialize().as_bytes()); 
         let poly = Polynomial::new(coeffs);
 
-        let mut kps: Vec<Keypair> = Vec::new();
-        let mut ids: Vec<u64> = Vec::new();
-        for i in 0..n {
-            let (_, mut sk_share) = poly.eval(&(i+1).to_bigint().unwrap()).reduce(&MODULUS).to_bytes_be();
+        let mut kps: HashMap<u64, Keypair> = HashMap::new();
+        for i in 0..ids.len() {
+            if ids[i] == 0 {
+                return Err(DvfError::KeyGenError(format!("Invalid id {}", ids[i])));
+            }
+
+            let (_, mut sk_share) = poly.eval(&(&ids[i]).to_bigint().unwrap()).reduce(&MODULUS).to_bytes_be();
             if sk_share.len() < SECRET_KEY_BYTES_LEN {
                 (0..SECRET_KEY_BYTES_LEN-sk_share.len()).for_each(|_| sk_share.insert(0, 0));
             }
             let sk_share = SecretKey::deserialize(&sk_share[..]).unwrap();
-            kps.push(Keypair::from_components(sk_share.public_key(), sk_share));
-            ids.push((i + 1) as u64);
+            kps.insert(ids[i], Keypair::from_components(sk_share.public_key(), sk_share));
         }
-        (kps, ids)
+        Ok(kps)
+    }
+
+    /// Compute the key share in a deterministic way.  
+    ///
+    /// **NEVER** use this in production! 
+    pub fn deterministic_key_share(&mut self, sk: &SecretKey, id: u64) -> Keypair {
+        if id == 0 {
+            panic!("Invalid id")
+        }
+        
+        let seed: [u8; 32] = [0; 32];
+        let mut rng = RandUtilsRng::from_seed(&seed);
+
+        let mut coeffs: Vec<BigInt> = rng.sample_vec(self.threshold(), &MODULUS);
+        coeffs[0] = BigInt::from_bytes_be(Sign::Plus, &sk.serialize().as_bytes()); 
+        let poly = Polynomial::new(coeffs);
+
+        let (_, mut sk_share) = poly.eval(&(id).to_bigint().unwrap()).reduce(&MODULUS).to_bytes_be();
+        if sk_share.len() < SECRET_KEY_BYTES_LEN {
+            (0..SECRET_KEY_BYTES_LEN-sk_share.len()).for_each(|_| sk_share.insert(0, 0));
+        }
+        let sk_share = SecretKey::deserialize(&sk_share[..]).unwrap();
+        Keypair::from_components(sk_share.public_key(), sk_share)
     }
 
     pub fn threshold_aggregate(&self, sigs: &[&Signature], pks: &[&PublicKey], ids: &[u64], msg: Hash256) -> Result<Signature, DvfError> {

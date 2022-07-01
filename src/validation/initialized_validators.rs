@@ -382,7 +382,6 @@ impl InitializedValidator {
                 let signer = DvfSigner::spawn(
                     node.unwrap(),
                     committee_def.validator_id,
-                    operator_id,
                     voting_keypair,
                     committee_def,
                 ).await;
@@ -949,6 +948,8 @@ impl InitializedValidators {
                     // [Zico]TODO: to be revised
                     SigningDefinition::DistributedKeystore { 
                         voting_keystore_share_path, 
+                        operator_committee_index,
+                        operator_id,
                         .. 
                     } => {
                         let pubkey_bytes = def.voting_public_key.compress();
@@ -985,6 +986,7 @@ impl InitializedValidators {
                                     "Enabled validator";
                                     "signing_method" => "distributed_keystore",
                                     "voting_pubkey" => format!("{:?}", def.voting_public_key),
+                                    "operator/validator" => format!("{}/{}", operator_id, operator_committee_index),
                                 );
 
                                 if let Some(lockfile_path) = existing_lockfile_path {
@@ -1004,7 +1006,8 @@ impl InitializedValidators {
                                     "Failed to initialize validator";
                                     "error" => format!("{:?}", e),
                                     "signing_method" => "distributed_keystore",
-                                    "validator" => format!("{:?}", def.voting_public_key)
+                                    "validator" => format!("{:?}", def.voting_public_key),
+                                    "operator/validator" => format!("{}/{}", operator_id, operator_committee_index),
                                 );
 
                                 // Exit on an invalid validator.

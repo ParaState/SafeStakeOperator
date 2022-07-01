@@ -29,6 +29,7 @@ use dvf::validation::operator_committee_definitions::OperatorCommitteeDefinition
 async fn start_nodes(n_nodes: usize) -> Result<Vec<Arc<Node>>, String> {
     let configs: Vec<NodeConfig> = (0..n_nodes).map(|i| {
         NodeConfig::default()
+            .set_id((i + 1) as u64)
             .set_base_port((25_000 + i * 100) as u16)
             .set_base_dir(PathBuf::from(format!("./dvf_nodes/{}/", i)))
     }).collect();
@@ -36,23 +37,26 @@ async fn start_nodes(n_nodes: usize) -> Result<Vec<Arc<Node>>, String> {
     println!("Starting {} nodes", n_nodes);
     let mut nodes: Vec<Arc<Node>> = Vec::default();
     for i in 0..n_nodes {
-        let node = Node::new(configs[i].clone()).await.expect("Should start node");
+        let node = Node::new(configs[i].clone()).expect("Should start node");
         nodes.push(Arc::new(node)); 
     }
     Ok(nodes)
 }
 
 async fn start_dvf_committee(validator_id: u64, nodes: &[Arc<Node>], threshold: usize) -> Result<(Keypair, Vec<DvfSigner>), String> {
+    let node_ids: Vec<u64> = nodes.iter().map(|x| x.config.id).collect();
     let mut m_threshold = ThresholdSignature::new(threshold);
-    let (kp, kps, ids) = m_threshold.key_gen(nodes.len());
+    let (kp, kps) = m_threshold.key_gen(&node_ids).map_err(|e| format!("Key gen error: {:?}", e))?;
 
     let def = OperatorCommitteeDefinition {
         total: nodes.len() as u64,
         threshold: threshold as u64,
         validator_id,
         validator_public_key: kp.pk.clone(),
-        operator_ids: ids.clone(),
-        operator_public_keys: kps.iter().map(|x| x.pk.clone()).collect(),
+        operator_ids: node_ids.clone(),
+        operator_public_keys: node_ids.iter()
+            .map(|id| kps[id].pk.clone())
+            .collect(),
         node_public_keys: nodes.iter().map(|x| x.secret.name.clone()).collect(),
         base_socket_addresses: nodes.iter().map(|x| x.config.base_address).collect(),
     };
@@ -61,43 +65,6 @@ async fn start_dvf_committee(validator_id: u64, nodes: &[Arc<Node>], threshold: 
     fs::remove_file(&committee_file);
     def.to_file(committee_file.clone()).map_err(|e| format!("Error saving committee def file. {:?}", e))?;
 
-    //// Print the committee file.
-    //let epoch = 1;
-    //let mempool_committee = MempoolCommittee::new(
-        //nodes
-            //.iter()
-            //.enumerate()
-            //.map(|(i, node)| {
-                //(node.secret.name, 
-                //1, 
-                //nodes[i].config.tx_receiver_address.clone(), 
-                //nodes[i].config.mempool_receiver_address.clone(), 
-                //nodes[i].config.dvfcore_receiver_address.clone(), 
-                //nodes[i].config.signature_receiver_address.clone())
-            //})
-            //.collect(),
-        //epoch,
-    //);
-    //let consensus_committee = ConsensusCommittee::new(
-        //nodes
-            //.iter()
-            //.enumerate()
-            //.map(|(i, node)| {
-                //(node.secret.name, 
-                //1,
-                //nodes[i].config.consensus_receiver_address.clone())
-            //})
-            //.collect(),
-        //epoch,
-    //);
-    //let _ = fs::remove_file(committee_file.as_str());
-    //let committee = Committee {
-        //mempool: mempool_committee,
-        //consensus: consensus_committee,
-    //};
-  
-    //committee.write(committee_file.as_str()).map_err(|e| e.to_string())?;
-
     let committee_def = OperatorCommitteeDefinition::from_file(committee_file)
         .map_err(|e| format!("Error in loading file. {:?}", e))?;
     println!("Starting DVF instances for validator {}", validator_id);
@@ -105,30 +72,11 @@ async fn start_dvf_committee(validator_id: u64, nodes: &[Arc<Node>], threshold: 
     for i in 0..nodes.len() {
         // create dvf consensus
         let node = nodes[i].clone();
-        let operator_id = ids[i];
-        let bls_kp = kps[i].clone();
-        //let committee = Committee::read(committee_file.as_str()).unwrap();
-
-        //let (tx_consensus, rx_consensus) = channel(100);
-
-        //let mut operator_committee = OperatorCommittee::new(validator_id, kp.pk.clone(), threshold, rx_consensus);
-        //let local_operator = Arc::new(
-            //RwLock::new(LocalOperator::new(ids[i], Arc::new(kps[i].clone())))); 
-        //operator_committee.add_operator(ids[i], local_operator);
-        //for j in 0..nodes.len() {
-            //if j == i {
-                //continue
-            //}
-            //let signature_address = nodes[j].config.signature_receiver_address.clone();
-            //let remote_operator = Arc::new(
-                //RwLock::new(RemoteOperator::new(ids[j], kps[j].pk.clone(), signature_address)));  
-            //operator_committee.add_operator(ids[j], remote_operator);
-        //}
+        let bls_kp = kps[&nodes[i].config.id].clone();
 
         let dvf_inst = DvfSigner::spawn(
             node,
             validator_id,
-            operator_id,
             bls_kp,
             committee_def.clone(),
         ).await;

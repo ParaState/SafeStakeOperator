@@ -33,7 +33,7 @@ pub struct Node {
 
 impl Node {
 
-    pub async fn new(
+    pub fn new(
         config: NodeConfig,
     ) -> Result<Self, ConfigError> {
 
@@ -46,16 +46,16 @@ impl Node {
 
         let transaction_address = with_wildcard_ip(config.transaction_address.clone());
         NetworkReceiver::spawn(transaction_address, Arc::clone(&tx_handler_map), "transaction");
-        info!("Mempool listening to client transactions on {}", transaction_address);
+        info!("Node {} listening to client transactions on {}", secret.name, transaction_address);
 
         let mempool_address = with_wildcard_ip(config.mempool_address.clone());
         NetworkReceiver::spawn(mempool_address, Arc::clone(&mempool_handler_map), "mempool");
-        info!("Mempool listening to mempool messages on {}", mempool_address);
+        info!("Node {} listening to mempool messages on {}", secret.name, mempool_address);
 
         let consensus_address = with_wildcard_ip(config.consensus_address.clone());
         NetworkReceiver::spawn(consensus_address, Arc::clone(&consensus_handler_map), "consensus");
         info!(
-            "Node {} Listening to consensus messages on {}",
+            "Node {} listening to consensus messages on {}",
             secret.name, consensus_address
         );
 

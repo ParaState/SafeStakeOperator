@@ -15,41 +15,64 @@ use std::net::{IpAddr, Ipv4Addr};
 use tokio::time::sleep;
 use types::{Epoch, MainnetEthSpec, EthSpec};
 use beacon_node::{ClientGenesis};
+use env_logger::Env;
+use dvf::node::config::DEFAULT_BASE_PORT;
+use std::collections::HashMap;
+use std::net::SocketAddr;
 
 pub fn simple_integration_example() -> Result<(), String> {
-    let node_count = 2; 
-    let validators_per_node = 5; 
+    let mut logger = env_logger::Builder::from_env(Env::default().default_filter_or("info"));
+    logger.format_timestamp_millis();
+    logger.init();
+
+    let node_count = 4; 
+    let validator_count = 5; 
     let speed_up_factor = 3;
     let continue_after_checks = false;
-    let threshold = 5;
-    let total_splits = node_count;
+    let threshold = 3;
 
     println!("Beacon Chain Simulator:");
     println!(" nodes:{}", node_count);
-    println!(" validators_per_node:{}", validators_per_node);
+    println!(" validators:{}", validator_count);
     println!(" continue_after_checks:{}", continue_after_checks);
 
-    let node_secrets: Vec<hsconfig::Secret> = (0..total_splits).map(|i| hsconfig::Secret::insecure(i as u64)).collect();
-    let node_public_keys: Vec<hscrypto::PublicKey> = node_secrets.iter().map(|s| s.name.clone()).collect();
+    let node_ids: Vec<u64> = (0..node_count).map(|i| (i+1) as u64).collect();
+    let node_secrets: Vec<hsconfig::Secret> = (0..node_count).map(|i| hsconfig::Secret::insecure(i as u64)).collect();
+    let node_public_keys: HashMap<u64, hscrypto::PublicKey> = HashMap::from_iter(
+        (0..node_count)
+        .map(|j| (node_ids[j], node_secrets[j].name.clone()))
+    );
+    let node_base_addresses: HashMap<u64, SocketAddr> = HashMap::from_iter(
+        (0..node_count) 
+        .map(|j| (node_ids[j], SocketAddr::new("127.0.0.1".parse().unwrap(), (DEFAULT_BASE_PORT + j as u16 * 100) as u16)))
+    );
+
+    let validator_ids = (0..validator_count).map(|x| x as u64).collect::<Vec<_>>(); 
 
     // Generate the directories and keystores required for the validator clients.
     let validator_files = (0..node_count)
         .into_par_iter()
         .map(|i| {
             println!(
-                "Generating keystores for validator {} of {}",
+                "Generating keystores for node {} of {}",
                 i + 1,
                 node_count
             );
+            let operator_ids = vec![node_ids[i]; validator_count]; 
 
-            let indices =
-                (i * validators_per_node..(i + 1) * validators_per_node).collect::<Vec<_>>();
-
-            ValidatorFiles::with_distributed_keystores(&indices, threshold, total_splits as usize, node_secrets[i as usize].clone(), &node_public_keys.clone()).unwrap()
+            ValidatorFiles::with_distributed_keystores(
+                node_ids[i],
+                &validator_ids, 
+                &operator_ids, 
+                threshold, 
+                node_secrets[i as usize].clone(), 
+                &node_public_keys,
+                &node_base_addresses,
+            ).unwrap()
         })
         .collect::<Vec<_>>();
 
-    let log_level = "error";
+    let log_level = "info";
     let log_format = None;
 
     let mut env = EnvironmentBuilder::mainnet()
@@ -69,7 +92,7 @@ pub fn simple_integration_example() -> Result<(), String> {
 
     let spec = &mut env.eth2_config.spec;
 
-    let total_validator_count = validators_per_node * node_count;
+    let total_validator_count = validator_count;
 
     spec.seconds_per_slot /= speed_up_factor;
     spec.seconds_per_slot = max(1, spec.seconds_per_slot);

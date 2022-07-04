@@ -124,6 +124,7 @@ struct Connection {
 
 impl Connection {
     fn spawn(address: SocketAddr, receiver: Receiver<InnerMessage>) {
+        info!("Connection spawn with address {} ============", address);
         tokio::spawn(async move {
             Self {
                 address,
@@ -141,6 +142,7 @@ impl Connection {
         let mut delay = self.retry_delay;
         let mut retry = 0;
         loop {
+            info!("Connection run loop with address {} ============", self.address);
             match TcpStream::connect(self.address).await {
                 Ok(stream) => {
                     info!("Outgoing connection established with {}", self.address);

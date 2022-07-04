@@ -38,7 +38,7 @@ impl<E: EthSpec> LocalValidatorClient<E> {
         context: RuntimeContext<E>,
         config: ValidatorConfig,
     ) -> Result<Self, String> {
-        let files = ValidatorFiles::new(0)?;
+        let files = ValidatorFiles::new(1)?;
 
         Self::new(context, config, files).await
     }
@@ -54,9 +54,12 @@ impl<E: EthSpec> LocalValidatorClient<E> {
             .set_id(files.node_id)
             .set_base_dir(files.node_dir.path().into());
 
+        log::error!("Before validator client new ==========");
+
         ProductionValidatorClient::new(context, config)
             .await
             .map(move |mut client| {
+                log::error!("Before validator client start service ==============");
                 client
                     .start_service()
                     .expect("should start validator services");

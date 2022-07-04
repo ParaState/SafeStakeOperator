@@ -125,6 +125,7 @@ impl<T, E: EthSpec> Deref for AttestationService<T, E> {
 impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
     /// Starts the service which periodically produces attestations.
     pub fn start_update_service(self, spec: &ChainSpec) -> Result<(), String> {
+        log::info!("Enter start_update_service ======================");
         let log = self.context.log().clone();
 
         let slot_duration = Duration::from_secs(spec.seconds_per_slot);
@@ -175,6 +176,7 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
     /// For each each required attestation, spawn a new task that downloads, signs and uploads the
     /// attestation to the beacon node.
     fn spawn_attestation_tasks(&self, slot_duration: Duration) -> Result<(), String> {
+        log::info!("Enter spawn attestation tasks =====================");
         let slot = self.slot_clock.now().ok_or("Failed to read slot clock")?;
         let duration_to_next_slot = self
             .slot_clock
@@ -242,6 +244,7 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
         validator_duties: Vec<DutyAndProof>,
         aggregate_production_instant: Instant,
     ) -> Result<(), ()> {
+        log::info!("Enter publish_attestations_and_aggregates ========================");
         let log = self.context.log();
         let attestations_timer = metrics::start_timer_vec(
             &metrics::ATTESTATION_SERVICE_TIMES,
@@ -325,6 +328,7 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
         committee_index: CommitteeIndex,
         validator_duties: &[DutyAndProof],
     ) -> Result<Option<AttestationData>, String> {
+        log::info!("Enter produce_and_publish_attestations =======================");
         let log = self.context.log();
 
         if validator_duties.is_empty() {

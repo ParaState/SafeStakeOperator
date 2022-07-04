@@ -11,12 +11,14 @@ use tokio::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 use tokio::time::timeout;
 use log::{info, warn};
+use async_trait::async_trait;
 
 pub enum OperatorMessage {
 }
 
+#[async_trait]
 pub trait TOperator: DowncastSync + Sync + Send {
-    fn sign(&self, msg: Hash256) -> Result<Signature, DvfError>; 
+    async fn sign(&self, msg: Hash256) -> Result<Signature, DvfError>; 
     fn public_key(&self) -> PublicKey;
     fn propose(&self, msg: Hash256);
 }
@@ -29,9 +31,10 @@ pub struct LocalOperator {
     pub transaction_address: SocketAddr,
 }
 
+#[async_trait]
 impl TOperator for LocalOperator {
 
-    fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> {
+    async fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> {
         Ok(self.operator_keypair.sk.sign(msg))
     }
 
@@ -64,16 +67,20 @@ pub struct RemoteOperator {
     pub signature_address: SocketAddr,
 }
 
+#[async_trait]
 impl TOperator for RemoteOperator {
-    fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> { 
+    async fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> { 
         let timeout_mill :u64 = 200;
         // Err(DvfError::Unknown)
         let mut sender = ReliableSender::new();
         let dvf_message = DvfMessage { validator_id: self.validator_id, message: msg.to_fixed_bytes().to_vec()};
         let serialize_msg = bincode::serialize(&dvf_message).unwrap();
         for retry in 0..3 {
-            let receiver = block_on(sender.send(self.signature_address, Bytes::from(serialize_msg.clone())));
-            let result = block_on(timeout(Duration::from_millis(timeout_mill), receiver)); 
+            log::info!("Before sender send to {} ({}/{}) ========", self.signature_address, self.operator_id, self.validator_id);
+            let receiver = sender.send(self.signature_address, Bytes::from(serialize_msg.clone())).await;
+            log::info!("Before timeout ========");
+            let result = timeout(Duration::from_millis(timeout_mill), receiver).await; 
+            log::info!("Before match result ========");
             match result {
                 Ok(output) => {
                     match output {

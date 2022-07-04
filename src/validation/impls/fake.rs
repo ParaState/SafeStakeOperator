@@ -62,7 +62,7 @@ impl TOperatorCommittee for FakeOperatorCommittee {
         println!("<<<<<<<[Consensus Succeeds]>>>>>>");
         
         // If consensus is achieved, aggregate the valid signatures
-        let operators = block_on(self.operators.read());
+        let operators = self.operators.read().await;
         let ids: Vec<u64> = operators.keys().map(|k| *k).collect();
         let operators: Vec<&Arc<RwLock<dyn TOperator>>> = ids.iter().map(|k| operators.get(&k).unwrap()).collect(); 
         let mut pks: Vec<PublicKey> = operators.iter().map(|x| block_on(x.read()).public_key()).collect();
@@ -70,7 +70,7 @@ impl TOperatorCommittee for FakeOperatorCommittee {
 
         let mut sigs: Vec<Signature> = Vec::<_>::new();
         for op in operators {
-            match block_on(op.read()).sign(msg) {
+            match op.read().await.sign(msg).await {
                 Ok(sig) => sigs.push(sig),
                 Err(_) => {} 
             }

@@ -53,7 +53,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
             .await
             .expect(format!("Failed to bind TCP address {}", self.address).as_str());
 
-        debug!("Listening on {}", self.address);
+        info!("Listening on {}. [{:?}]", self.address, self.name);
         loop {
             let (socket, peer) = match listener.accept().await {
                 Ok(value) => value,

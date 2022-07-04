@@ -330,7 +330,7 @@ impl DvfCore {
                                                 for batch in batches {
                                                     // construct hash256
                                                     let msg = Hash256::from_slice(&batch[..]);
-                                                    let signature = self.operator.sign(msg.clone()).unwrap();
+                                                    let signature = self.operator.sign(msg.clone()).await.unwrap();
                                                     let serialized_signature = bincode::serialize(&signature).unwrap();
                                                     // save to local db
                                                     self.store.write(batch, serialized_signature).await;

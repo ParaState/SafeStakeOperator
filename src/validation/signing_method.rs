@@ -36,7 +36,7 @@ pub enum Error {
     ShuttingDown,
     TokioJoin(String),
     MergeForkNotSupported,
-    CommitteeSignFailed,
+    CommitteeSignFailed(String),
 }
 
 /// Enumerates all messages that can be signed by a validator.
@@ -140,6 +140,7 @@ impl SigningMethod {
         } = signing_context;
 
         let signing_root = signable_message.signing_root(domain_hash);
+        log::info!("Signing for root: {:?}", signing_root);
 
         match self {
             SigningMethod::LocalKeystore { voting_keypair, .. } => {
@@ -237,7 +238,7 @@ impl SigningMethod {
 
                 dvf_signer.sign(signing_root)
                     .await
-                    .map_err(|e| Error::CommitteeSignFailed)
+                    .map_err(|e| Error::CommitteeSignFailed(format!("{:?}", e)))
             }
         }
     }

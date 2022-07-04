@@ -4,7 +4,7 @@ use bytes::Bytes;
 use crypto::{Digest, PublicKey};
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
-use log::{debug, error};
+use log::{debug, error, info};
 use network::{SimpleSender, DvfMessage};
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -145,6 +145,7 @@ impl Synchronizer {
                         
                         let dvf_message = DvfMessage { validator_id: self.validator_id, message: serialized};
                         let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+                        info!("[MemSYNC] Sending to {:?}", address);
                         self.network.send(address, Bytes::from(serialized_msg)).await;
                     },
                     ConsensusMempoolMessage::Cleanup(round) => {
@@ -205,6 +206,7 @@ impl Synchronizer {
                         let serialized = bincode::serialize(&message).expect("Failed to serialize our own message");
                         let dvf_message = DvfMessage { validator_id: self.validator_id, message: serialized};
                         let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+                        info!("[MemSYNC] Lucky broacasting to {:?}", addresses);
                         self.network
                             .lucky_broadcast(addresses, Bytes::from(serialized_msg), self.sync_retry_nodes)
                             .await;

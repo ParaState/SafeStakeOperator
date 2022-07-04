@@ -56,7 +56,7 @@ impl ValidatorFiles {
 
     /// Creates temporary data and secrets dirs, preloaded with keystores.
     pub fn with_keystores(keypair_indices: &[usize]) -> Result<Self, String> {
-        let this = Self::new(0)?;
+        let this = Self::new(1)?;
 
         build_deterministic_validator_dirs(
             this.validator_dir.path().into(),

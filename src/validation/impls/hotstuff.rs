@@ -10,7 +10,6 @@ use crate::utils::error::DvfError;
 use bls::{Hash256, Signature, PublicKey};
 use tokio::sync::{RwLock};
 use tokio::sync::mpsc::{Receiver};
-use futures::executor::block_on;
 use futures::future::join_all;
 use log::{info, error};
 use tokio::sync::Mutex;
@@ -71,6 +70,7 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
             operator.read()
                 .await
                 .propose(msg);
+            info!("Proposed msg {}", msg);
 
             match rx_consensus.recv().await {
                 Some(value) => {
@@ -97,19 +97,24 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
     async fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> {
         // Run consensus protocol 
         self.consensus(msg).await?;
+        info!("After consensus =============");
 
         let operators = &self.operators.read().await;
         let signing_futs = operators.keys().map(|operator_id| async move {
             let operator = operators.get(operator_id).unwrap().read().await; 
+            info!("After operator read ({}/{}) =============", operator_id, self.validator_id);
             operator.sign(msg)
+                .await
                 .map(|x| (operator_id.clone(), operator.public_key(), x))
             
         });
+        info!("After signing_futs =============");
         let results = join_all(signing_futs)
             .await
             .into_iter()
             .flatten()
             .collect::<Vec<(u64, PublicKey, Signature)>>();
+        info!("After join_all signing_futs =============");
 
         let ids = results.iter().map(|x| x.0).collect::<Vec<u64>>();
         let pks = results.iter().map(|x| &x.1).collect::<Vec<&PublicKey>>();

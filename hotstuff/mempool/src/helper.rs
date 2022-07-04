@@ -1,7 +1,7 @@
 use crate::config::Committee;
 use bytes::Bytes;
 use crypto::{Digest, PublicKey};
-use log::{error, warn};
+use log::{error, warn, info};
 use network::{SimpleSender, DvfMessage};
 use store::Store;
 use tokio::sync::mpsc::Receiver;
@@ -62,6 +62,7 @@ impl Helper {
                     Ok(Some(data)) => {
                         let dvf_message = DvfMessage { validator_id: self.validator_id, message: data};
                         let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+                        info!("[MemHELPER] Sending to {:?}", address);
                         self.network.send(address, Bytes::from(serialized_msg)).await
                     },
                     Ok(None) => (),

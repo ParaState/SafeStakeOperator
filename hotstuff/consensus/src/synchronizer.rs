@@ -7,7 +7,7 @@ use crypto::Hash as _;
 use crypto::{Digest, PublicKey};
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
-use log::{debug, error};
+use log::{debug, error, info};
 use network::{SimpleSender, DvfMessage};
 use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -70,6 +70,7 @@ impl Synchronizer {
                                     .expect("Failed to serialize sync request");
                                 let dvf_message = DvfMessage { validator_id: validator_id, message: message};
                                 let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+                                info!("[SYNC] Sending to {:?}", address);
                                 network.send(address, Bytes::from(serialized_msg)).await;
                             }
                         }
@@ -103,6 +104,7 @@ impl Synchronizer {
                                     .expect("Failed to serialize sync request");
                                 let dvf_message = DvfMessage { validator_id: validator_id, message: message};
                                 let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+                                info!("[SYNC] Broacasting to {:?}", addresses);
                                 network.broadcast(addresses, Bytes::from(serialized_msg)).await;
                             }
                         }

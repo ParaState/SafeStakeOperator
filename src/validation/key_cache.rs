@@ -110,6 +110,7 @@ impl KeyCache {
     }
 
     fn encrypt(&mut self) -> Result<(), Error> {
+        log::info!("Enter encrypt ============");
         self.crypto = Self::init_crypto();
         let secret_map: SerializedKeyMap = self
             .pairs
@@ -117,9 +118,11 @@ impl KeyCache {
             .map(|(k, v)| (*k, v.sk.serialize()))
             .collect();
 
+        log::info!("Before plaintext from ====================");
         let raw = PlainText::from(
             bincode::serialize(&secret_map).map_err(Error::UnableToSerializeKeyMap)?,
         );
+        log::info!("Before encrypt ===============");
         let (cipher_text, checksum) = encrypt(
             raw.as_ref(),
             Self::password(&self.passwords).as_ref(),
@@ -127,6 +130,7 @@ impl KeyCache {
             &self.crypto.cipher.params,
         )
         .map_err(Error::UnableToEncrypt)?;
+        log::info!("After encrypt =================");
 
         self.crypto.cipher.message = cipher_text.into();
         self.crypto.checksum.message = checksum.to_vec().into();
@@ -138,16 +142,24 @@ impl KeyCache {
     /// Will create a new file if it does not exist or over-write any existing file.
     /// Returns false iff there are no unsaved changes
     pub fn save<P: AsRef<Path>>(&mut self, validators_dir: P) -> Result<bool, Error> {
+        log::info!("Enter save ================");
         if self.is_modified() {
-            self.encrypt()?;
+            //self.encrypt()?;
+            let x = self.encrypt();
+            log::info!("After encrypt result =============");
+            x?;
+            log::info!("After encrypt result reveal =============");
 
             let cache_path = validators_dir.as_ref().join(CACHE_FILENAME);
             let temp_path = validators_dir.as_ref().join(TEMP_CACHE_FILENAME);
             let bytes = serde_json::to_vec(self).map_err(Error::UnableToEncodeFile)?;
 
+            log::info!("before write_file_via_temporary =================");
+
             write_file_via_temporary(&cache_path, &temp_path, &bytes)
                 .map_err(Error::UnableToCreateFile)?;
 
+            log::info!("after write_file_via_temporary =================");
             self.state = State::DecryptedAndSaved;
             Ok(true)
         } else {

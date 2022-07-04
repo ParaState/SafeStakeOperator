@@ -15,8 +15,13 @@ use std::net::{IpAddr, Ipv4Addr};
 use tokio::time::sleep;
 use types::{Epoch, MainnetEthSpec, EthSpec};
 use beacon_node::{ClientGenesis};
+use env_logger::Env;
 
 pub fn simple_integration_example() -> Result<(), String> {
+    let mut logger = env_logger::Builder::from_env(Env::default().default_filter_or("info"));
+    logger.format_timestamp_millis();
+    logger.init();
+
     let node_count = 3; 
     let validators_per_node = 5; 
     let speed_up_factor = 3;

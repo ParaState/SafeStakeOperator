@@ -55,8 +55,10 @@ impl SimpleSender {
             if tx.send(data.clone()).await.is_ok() {
                 return;
             }
+            info!("Previous connection to {} SEND not working", address);
         }
 
+        info!("Openning a new connection to {}", address);
         // Otherwise make a new connection.
         let tx = Self::spawn_connection(address);
         if tx.send(data).await.is_ok() {

@@ -446,6 +446,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         attestation: &mut Attestation<E>,
         current_epoch: Epoch,
     ) -> Result<(), Error> {
+        log::info!("Enter sign_attestation ==========================");
         // Make sure the target epoch is not higher than the current epoch to avoid potential attacks.
         if attestation.data.target.epoch > current_epoch {
             return Err(Error::GreaterThanCurrentEpoch {

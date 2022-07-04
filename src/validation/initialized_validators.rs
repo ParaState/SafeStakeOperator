@@ -1051,10 +1051,13 @@ impl InitializedValidators {
             key_cache.remove(&uuid);
         }
 
+        log::info!("before validators_dir clone ======================");
         let validators_dir = self.validators_dir.clone();
         let log = self.log.clone();
         if key_cache.is_modified() {
+            log::info!("key cache is modified ==================");
             tokio::task::spawn_blocking(move || {
+                log::info!("Enter spawn_blocking ===============");
                 match key_cache.save(validators_dir) {
                     Err(e) => warn!(
                         log,
@@ -1070,6 +1073,7 @@ impl InitializedValidators {
         } else {
             debug!(log, "Key cache not modified");
         }
+        log::info!("before set gauge =======================");
 
         // Update the enabled and total validator counts
         set_gauge(

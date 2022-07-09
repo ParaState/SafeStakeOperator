@@ -10,10 +10,12 @@ use async_trait::async_trait;
 /// Operator committee for a validator. 
 #[async_trait]
 pub trait TOperatorCommittee {
-    fn new(id: u64, validator_public_key: PublicKey, t: usize, rx_consensus: Receiver<Hash256>) -> Self;
-    async fn add_operator(&mut self, id: u64, operator: Arc<RwLock<dyn TOperator>>); 
+    fn new(validator_id: u64, validator_public_key: PublicKey, t: usize, rx_consensus: Receiver<Hash256>) -> Self;
+    fn validator_id(&self) -> u64;
+    async fn add_operator(&mut self, operator_id: u64, operator: Arc<RwLock<dyn TOperator>>); 
     async fn consensus(&self, msg: Hash256) -> Result<(), DvfError>;
     async fn sign(&self, msg: Hash256) -> Result<Signature, DvfError>;
+    async fn get_leader(&self, nonce: u64) -> u64;
     fn threshold(&self) -> usize;
 }
 
@@ -26,14 +28,18 @@ impl <Committee> GenericOperatorCommittee<Committee>
 where
     Committee: TOperatorCommittee
 {
-    pub fn new(id: u64, validator_public_key: PublicKey, threshold: usize, rx_consensus: Receiver<Hash256>) -> Self {
+    pub fn new(validator_id: u64, validator_public_key: PublicKey, threshold: usize, rx_consensus: Receiver<Hash256>) -> Self {
         Self {
-            cmt: TOperatorCommittee::new(id, validator_public_key, threshold, rx_consensus)
+            cmt: TOperatorCommittee::new(validator_id, validator_public_key, threshold, rx_consensus)
         }
     }
 
-    pub async fn add_operator(&mut self, id: u64, operator: Arc<RwLock<dyn TOperator>>) {
-        self.cmt.add_operator(id, operator).await;
+    pub fn validator_id(&self) -> u64 {
+        self.cmt.validator_id()
+    }
+
+    pub async fn add_operator(&mut self, operator_id: u64, operator: Arc<RwLock<dyn TOperator>>) {
+        self.cmt.add_operator(operator_id, operator).await;
     }
 
     pub fn threshold(&self) -> usize {
@@ -42,6 +48,10 @@ where
 
     pub async fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> {
         self.cmt.sign(msg).await
+    }
+
+    pub async fn get_leader(&self, nonce: u64) -> u64 {
+        self.cmt.get_leader(nonce).await
     }
 }
 

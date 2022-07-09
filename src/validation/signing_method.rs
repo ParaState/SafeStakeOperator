@@ -37,6 +37,8 @@ pub enum Error {
     TokioJoin(String),
     MergeForkNotSupported,
     CommitteeSignFailed(String),
+
+    NotLeader,
 }
 
 /// Enumerates all messages that can be signed by a validator.
@@ -140,7 +142,6 @@ impl SigningMethod {
         } = signing_context;
 
         let signing_root = signable_message.signing_root(domain_hash);
-        log::info!("Signing for root: {:?}", signing_root);
 
         match self {
             SigningMethod::LocalKeystore { voting_keypair, .. } => {
@@ -236,9 +237,19 @@ impl SigningMethod {
                 let _timer =
                     metrics::start_timer_vec(&metrics::SIGNING_TIMES, &[metrics::LOCAL_KEYSTORE]);
 
-                dvf_signer.sign(signing_root)
-                    .await
-                    .map_err(|e| Error::CommitteeSignFailed(format!("{:?}", e)))
+                if dvf_signer.is_leader(signing_context.epoch.as_u64()).await {
+                    log::info!("[Dvf {}/{}] Signing for root: {:?}. Epoch: {}", 
+                               dvf_signer.operator_id, 
+                               dvf_signer.operator_committee.validator_id(), 
+                               signing_root,
+                               signing_context.epoch.as_u64());
+                    dvf_signer.sign(signing_root)
+                        .await
+                        .map_err(|e| Error::CommitteeSignFailed(format!("{:?}", e)))
+                }
+                else {
+                    Err(Error::NotLeader)
+                }
             }
         }
     }

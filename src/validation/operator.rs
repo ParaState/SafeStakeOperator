@@ -20,7 +20,7 @@ pub enum OperatorMessage {
 pub trait TOperator: DowncastSync + Sync + Send {
     async fn sign(&self, msg: Hash256) -> Result<Signature, DvfError>; 
     fn public_key(&self) -> PublicKey;
-    fn propose(&self, msg: Hash256);
+    async fn propose(&self, msg: Hash256);
 }
 impl_downcast!(sync TOperator);
 
@@ -29,6 +29,7 @@ pub struct LocalOperator {
     pub operator_id: u64,
     pub operator_keypair: Arc<Keypair>,
     pub transaction_address: SocketAddr,
+    network: SimpleSender,
 }
 
 #[async_trait]
@@ -42,10 +43,10 @@ impl TOperator for LocalOperator {
         self.operator_keypair.pk.clone()
     }
 
-    fn propose(&self, msg: Hash256) {
-        let mut sender = SimpleSender::new();
+    async fn propose(&self, msg: Hash256) {
+        info!("[Dvf {}/{}] Proposing msg {}", self.operator_id, self.validator_id, msg);
         let dvf_message = DvfMessage { validator_id: self.validator_id, message: msg.to_fixed_bytes().to_vec()};
-        block_on(sender.send(self.transaction_address, Bytes::from(bincode::serialize(&dvf_message).unwrap())));
+        self.network.send(self.transaction_address, Bytes::from(bincode::serialize(&dvf_message).unwrap())).await;
     }
 }
 
@@ -56,6 +57,7 @@ impl LocalOperator {
             operator_id,
             operator_keypair,
             transaction_address,
+            network: SimpleSender::new(),
         }
     }
 }
@@ -65,6 +67,7 @@ pub struct RemoteOperator {
     pub operator_id: u64,
     pub operator_public_key: PublicKey,
     pub signature_address: SocketAddr,
+    network: ReliableSender,
 }
 
 #[async_trait]
@@ -72,26 +75,22 @@ impl TOperator for RemoteOperator {
     async fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> { 
         let timeout_mill :u64 = 200;
         // Err(DvfError::Unknown)
-        let mut sender = ReliableSender::new();
         let dvf_message = DvfMessage { validator_id: self.validator_id, message: msg.to_fixed_bytes().to_vec()};
         let serialize_msg = bincode::serialize(&dvf_message).unwrap();
         for retry in 0..3 {
-            log::info!("Before sender send to {} ({}/{}) ========", self.signature_address, self.operator_id, self.validator_id);
-            let receiver = sender.send(self.signature_address, Bytes::from(serialize_msg.clone())).await;
-            log::info!("Before timeout ========");
+            let receiver = self.network.send(self.signature_address, Bytes::from(serialize_msg.clone())).await;
             let result = timeout(Duration::from_millis(timeout_mill), receiver).await; 
-            log::info!("Before match result ========");
             match result {
                 Ok(output) => {
                     match output {
                         Ok(data) => {
                             match bincode::deserialize::<Signature>(&data) {
                                 Ok(bls_signature) =>{
-                                    info!("Received a signature from operator {} ({:?})", self.operator_id, self.signature_address);
+                                    info!("Received a signature from operator {}/{} ({:?})", self.operator_id, self.validator_id, self.signature_address);
                                     return Ok(bls_signature);
                                 }
                                 Err(e) => {
-                                    warn!("Deserialize failed, retry...");
+                                    warn!("Deserialize failed from operator {}/{}, retry...", self.operator_id, self.validator_id);
                                 }
                             }
                         },
@@ -101,11 +100,11 @@ impl TOperator for RemoteOperator {
                     }
                 },
                 Err(_) => {
-                    warn!("Retry");
+                    warn!("Retry from operator {}/{}", self.operator_id, self.validator_id);
                 }
             }
         }
-        warn!("Failed to receive a signature from operator {} ({:?})", self.operator_id, self.signature_address);
+        warn!("Failed to receive a signature from operator {}/{} ({:?})", self.operator_id, self.validator_id, self.signature_address);
         Err(DvfError::Unknown)
     }
 
@@ -113,7 +112,7 @@ impl TOperator for RemoteOperator {
         self.operator_public_key.clone()
     }
 
-    fn propose(&self, msg: Hash256) { }
+    async fn propose(&self, msg: Hash256) { }
 
 }
 
@@ -124,6 +123,7 @@ impl RemoteOperator {
             operator_id,
             operator_public_key,
             signature_address, 
+            network: ReliableSender::new(),
         }
     }
 

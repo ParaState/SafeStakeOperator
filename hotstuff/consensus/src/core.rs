@@ -317,7 +317,7 @@ impl Core {
 
     #[async_recursion]
     async fn process_block(&mut self, block: &Block) -> ConsensusResult<()> {
-        debug!("Processing {:?}", block);
+        debug!("{} Processing {:?}", self.name, block);
 
         // Let's see if we have the last three ancestors of the block, that is:
         //      b0 <- |qc0; b1| <- |qc1; block|
@@ -358,7 +358,7 @@ impl Core {
             if next_leader == self.name {
                 self.handle_vote(&vote).await?;
             } else {
-                debug!("Sending {:?} to {}", vote, next_leader);
+                debug!("[CORE] {} Sending {:?} to {}", self.name, vote, next_leader);
                 let address = self
                     .committee
                     .address(&next_leader)
@@ -367,7 +367,6 @@ impl Core {
                     .expect("Failed to serialize vote");
                 let dvf_message = DvfMessage { validator_id: self.validator_id, message: message};
                 let serialized_msg = bincode::serialize(&dvf_message).unwrap();
-                info!("[CORE] Sending to {:?}", address);
                 self.network.send(address, Bytes::from(serialized_msg)).await;
             }
         }

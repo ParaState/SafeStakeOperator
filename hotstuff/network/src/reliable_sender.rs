@@ -13,9 +13,10 @@ use std::fmt::Debug;
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, RwLock};
 use tokio::time::{sleep, Duration};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use std::sync::Arc;
 
 #[cfg(test)]
 #[path = "tests/reliable_sender_tests.rs"]
@@ -30,7 +31,7 @@ pub type CancelHandler = oneshot::Receiver<Bytes>;
 /// receive an ACK back (until they succeed or are canceled).
 pub struct ReliableSender {
     /// A map holding the channels to our connections.
-    connections: HashMap<SocketAddr, Sender<InnerMessage>>,
+    connections: Arc<RwLock<HashMap<SocketAddr, Sender<InnerMessage>>>>,
     /// Small RNG just used to shuffle nodes and randomize connections (not crypto related).
     rng: SmallRng,
 }
@@ -44,22 +45,25 @@ impl std::default::Default for ReliableSender {
 impl ReliableSender {
     pub fn new() -> Self {
         Self {
-            connections: HashMap::new(),
+            connections: Arc::new(RwLock::new(HashMap::new())),
             rng: SmallRng::from_entropy(),
         }
     }
 
     /// Helper function to spawn a new connection.
     fn spawn_connection(address: SocketAddr) -> Sender<InnerMessage> {
+        info!("[Reliable] Openning a new connection to {}", address);
         let (tx, rx) = channel(1_000);
         Connection::spawn(address, rx);
         tx
     }
 
     /// Reliably send a message to a specific address.
-    pub async fn send(&mut self, address: SocketAddr, data: Bytes) -> CancelHandler {
+    pub async fn send(&self, address: SocketAddr, data: Bytes) -> CancelHandler {
         let (sender, receiver) = oneshot::channel();
         self.connections
+            .write()
+            .await
             .entry(address)
             .or_insert_with(|| Self::spawn_connection(address))
             .send(InnerMessage {
@@ -124,7 +128,6 @@ struct Connection {
 
 impl Connection {
     fn spawn(address: SocketAddr, receiver: Receiver<InnerMessage>) {
-        info!("Connection spawn with address {} ============", address);
         tokio::spawn(async move {
             Self {
                 address,
@@ -142,7 +145,6 @@ impl Connection {
         let mut delay = self.retry_delay;
         let mut retry = 0;
         loop {
-            info!("Connection run loop with address {} ============", self.address);
             match TcpStream::connect(self.address).await {
                 Ok(stream) => {
                     info!("Outgoing connection established with {}", self.address);

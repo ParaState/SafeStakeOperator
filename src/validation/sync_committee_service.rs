@@ -1,7 +1,8 @@
 //! Reference: lighthouse/validator_client/sync_committee_service.rs 
 
 use crate::validation::beacon_node_fallback::{BeaconNodeFallback, RequireSynced};
-use crate::validation::{duties_service::DutiesService, validator_store::ValidatorStore};
+use crate::validation::{duties_service::DutiesService, validator_store::ValidatorStore, validator_store::Error as VSError};
+use crate::validation::signing_method::Error as SigningError;
 use environment::RuntimeContext;
 use eth2::types::BlockId;
 use futures::future::join_all;
@@ -243,6 +244,7 @@ impl<T: SlotClock + 'static, E: EthSpec> SyncCommitteeService<T, E> {
                 .await
             {
                 Ok(signature) => Some(signature),
+                Err(VSError::UnableToSign(SigningError::NotLeader)) => None,
                 Err(e) => {
                     crit!(
                         log,
@@ -376,6 +378,7 @@ impl<T: SlotClock + 'static, E: EthSpec> SyncCommitteeService<T, E> {
                     .await
                 {
                     Ok(signed_contribution) => Some(signed_contribution),
+                    Err(VSError::UnableToSign(SigningError::NotLeader)) => None,
                     Err(e) => {
                         crit!(
                             log,

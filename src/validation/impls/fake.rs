@@ -39,6 +39,10 @@ impl TOperatorCommittee for FakeOperatorCommittee {
         }
     }
 
+    fn validator_id(&self) -> u64 {
+        self.validator_id
+    }
+
     async fn add_operator(&mut self, operator_id: u64, operator: Arc<RwLock<dyn TOperator>>) {
         self.operators.write()
             .await
@@ -47,6 +51,14 @@ impl TOperatorCommittee for FakeOperatorCommittee {
 
     fn threshold(&self) -> usize {
         self.threshold_
+    }
+
+    async fn get_leader(&self, nonce: u64) -> u64 {
+        let operators = self.operators.read().await;
+        let select_order = nonce % operators.len() as u64;
+        let mut ids : Vec<u64> = operators.keys().map(|k| *k).collect();
+        ids.sort();
+        ids[select_order as usize]
     }
 
     async fn consensus(&self, msg: Hash256) -> Result<(), DvfError> {

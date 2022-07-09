@@ -124,6 +124,7 @@ impl MessageHandler for DvfSignatureReceiverHandler {
 
 pub struct DvfSigner {
     pub signal: Option<exit_future::Signal>,
+    pub operator_id: u64,
     pub operator_committee: OperatorCommittee,
 }
 
@@ -199,6 +200,7 @@ impl DvfSigner {
 
         Self {
             signal: Some(signal),
+            operator_id,
             operator_committee,
         }
     }
@@ -213,6 +215,10 @@ impl DvfSigner {
 
     pub async fn sign(&self, message: Hash256) -> Result<Signature, DvfError> {
         self.operator_committee.sign(message).await
+    }
+
+    pub async fn is_leader(&self, nonce: u64) -> bool {
+        self.operator_committee.get_leader(nonce).await == self.operator_id
     }
 }
 

@@ -5,7 +5,8 @@ use crate::validation::{
     beacon_node_fallback::{BeaconNodeFallback, RequireSynced},
     graffiti_file::GraffitiFile,
 };
-use crate::validation::{http_metrics::metrics, validator_store::ValidatorStore};
+use crate::validation::{http_metrics::metrics, validator_store::ValidatorStore, validator_store::Error as VSError};
+use crate::validation::signing_method::Error as SigningError;
 use environment::RuntimeContext;
 use eth2::types::Graffiti;
 use slog::{crit, debug, error, info, trace, warn};
@@ -21,6 +22,7 @@ use types::{
 pub enum BlockError {
     Recoverable(String),
     Irrecoverable(String),
+    Negligible,
 }
 
 impl From<AllErrored<BlockError>> for BlockError {
@@ -273,11 +275,16 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
                             .await
                     };
                     if let Err(e) = publish_result {
-                        crit!(
-                            log,
-                            "Error whilst producing block";
-                            "message" => ?e
-                        );
+                        match e {
+                            BlockError::Negligible => {},
+                            _ => {
+                                crit!(
+                                    log,
+                                    "Error whilst producing block";
+                                    "message" => ?e
+                                );
+                            }
+                        };
                     }
                 },
                 "block service",
@@ -306,10 +313,10 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
             .randao_reveal(validator_pubkey, slot.epoch(E::slots_per_epoch()))
             .await
             .map_err(|e| {
-                BlockError::Recoverable(format!(
-                    "Unable to produce randao reveal signature: {:?}",
-                    e
-                ))
+                match e {
+                    VSError::UnableToSign(SigningError::NotLeader) => BlockError::Negligible,
+                    _ => BlockError::Recoverable(format!("Unable to produce randao reveal signature: {:?}", e))
+                }
             })?
             .into();
 
@@ -385,7 +392,10 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
                     .sign_block::<Payload>(*validator_pubkey_ref, block, current_slot)
                     .await
                     .map_err(|e| {
-                        BlockError::Recoverable(format!("Unable to sign block: {:?}", e))
+                        match e {
+                            VSError::UnableToSign(SigningError::NotLeader) => BlockError::Negligible,
+                            _ => BlockError::Recoverable(format!("Unable to sign block: {:?}", e))
+                        }
                     })?;
 
                 let _post_timer = metrics::start_timer_vec(

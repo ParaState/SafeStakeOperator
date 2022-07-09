@@ -23,12 +23,12 @@ impl OperatorCommittee {
         for i in 0..(def.total as usize) {
             let mut addr = def.base_socket_addresses[i].clone();
             addr.set_port(addr.port() + SIGNATURE_PORT_OFFSET);
-            let operator = RemoteOperator {
-                validator_id: def.validator_id,
-                operator_id: def.operator_ids[i],
-                operator_public_key: def.operator_public_keys[i].clone(),
-                signature_address: addr,
-            };
+            let operator = RemoteOperator::new(
+                def.validator_id,
+                def.operator_ids[i],
+                def.operator_public_keys[i].clone(),
+                addr,
+            );
             committee.add_operator(def.operator_ids[i], Arc::new(RwLock::new(operator))).await;
         }
         (committee, tx)

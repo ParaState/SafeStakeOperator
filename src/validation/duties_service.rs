@@ -14,6 +14,7 @@ use crate::validation::{
     http_metrics::metrics,
     validator_store::{DoppelgangerStatus, Error as ValidatorStoreError, ValidatorStore},
 };
+use crate::validation::signing_method::Error as SigningError;
 use environment::RuntimeContext;
 use eth2::types::{AttesterData, BeaconCommitteeSubscription, ProposerData, StateId, ValidatorId};
 use futures::future::join_all;
@@ -47,6 +48,7 @@ pub enum Error {
     InvalidModulo(ArithError),
     Arith(ArithError),
     SyncDutiesNotFound(u64),
+    Negligible,
 }
 
 impl From<ArithError> for Error {
@@ -73,7 +75,10 @@ impl DutyAndProof {
         let selection_proof = validator_store
             .produce_selection_proof(duty.pubkey, duty.slot)
             .await
-            .map_err(Error::FailedToProduceSelectionProof)?;
+            .map_err(|e| match e {
+                ValidatorStoreError::UnableToSign(SigningError::NotLeader) => Error::Negligible, 
+                _ => Error::FailedToProduceSelectionProof(e),
+            })?;
 
         let selection_proof = selection_proof
             .is_aggregator(duty.committee_length as usize, spec)
@@ -680,6 +685,9 @@ async fn poll_beacon_attesters_for_epoch<T: SlotClock + 'static, E: EthSpec>(
     for result in duty_and_proof_results {
         let duty_and_proof = match result {
             Ok(duty_and_proof) => duty_and_proof,
+            Err(Error::Negligible) => {
+                continue;
+            }
             Err(e) => {
                 error!(
                     log,

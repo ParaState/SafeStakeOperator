@@ -129,8 +129,8 @@ async fn deploy_testbed(n_nodes: usize, threshold: usize) -> Result<(), String> 
 //#[tokio::main(worker_threads = 200)]
 #[tokio::main]
 async fn main() {
-    let t: usize = 3;
-    let n: usize = 5;
+    let t: usize = 2;
+    let n: usize = 3;
     match deploy_testbed(n, t).await {
         Ok(()) => println!("Testbed exited successfully"),
         Err(e) => {

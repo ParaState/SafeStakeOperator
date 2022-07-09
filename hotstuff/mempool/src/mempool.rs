@@ -232,7 +232,6 @@ pub struct TxReceiverHandler {
 #[async_trait]
 impl MessageHandler for TxReceiverHandler {
     async fn dispatch(&self, _writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
-        info!("receive a transaction");
         // Send the transaction to the batch maker.
         self.tx_batch_maker
             .send(message.to_vec())

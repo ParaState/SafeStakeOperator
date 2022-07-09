@@ -25,8 +25,8 @@ pub fn simple_integration_example() -> Result<(), String> {
     logger.format_timestamp_millis();
     logger.init();
 
-    let node_count = 4; 
-    let validator_count = 5; 
+    let node_count = 3; 
+    let validator_count = 4; 
     let speed_up_factor = 3;
     let continue_after_checks = false;
     let threshold = 3;

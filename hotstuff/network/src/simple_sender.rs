@@ -11,7 +11,9 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::RwLock;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use std::sync::Arc;
 
 #[cfg(test)]
 #[path = "tests/simple_sender_tests.rs"]
@@ -21,7 +23,7 @@ pub mod simple_sender_tests;
 /// We communicate with our 'connections' through a dedicated channel kept by the HashMap called `connections`.
 pub struct SimpleSender {
     /// A map holding the channels to our connections.
-    connections: HashMap<SocketAddr, Sender<Bytes>>,
+    connections: Arc<RwLock<HashMap<SocketAddr, Sender<Bytes>>>>,
     /// Small RNG just used to shuffle nodes and randomize connections (not crypto related).
     rng: SmallRng,
 }
@@ -35,7 +37,7 @@ impl std::default::Default for SimpleSender {
 impl SimpleSender {
     pub fn new() -> Self {
         Self {
-            connections: HashMap::new(),
+            connections: Arc::new(RwLock::new(HashMap::new())),
             rng: SmallRng::from_entropy(),
         }
     }
@@ -49,20 +51,19 @@ impl SimpleSender {
 
     /// Try (best-effort) to send a message to a specific address.
     /// This is useful to answer sync requests.
-    pub async fn send(&mut self, address: SocketAddr, data: Bytes) {
+    pub async fn send(&self, address: SocketAddr, data: Bytes) {
         // Try to re-use an existing connection if possible.
-        if let Some(tx) = self.connections.get(&address) {
+        if let Some(tx) = self.connections.read().await.get(&address) {
             if tx.send(data.clone()).await.is_ok() {
                 return;
             }
-            info!("Previous connection to {} SEND not working", address);
         }
 
-        info!("Openning a new connection to {}", address);
+        info!("[Simple] Openning a new connection to {}", address);
         // Otherwise make a new connection.
         let tx = Self::spawn_connection(address);
         if tx.send(data).await.is_ok() {
-            self.connections.insert(address, tx);
+            self.connections.write().await.insert(address, tx);
         }
     }
 

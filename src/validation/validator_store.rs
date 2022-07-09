@@ -446,7 +446,6 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         attestation: &mut Attestation<E>,
         current_epoch: Epoch,
     ) -> Result<(), Error> {
-        log::info!("Enter sign_attestation ==========================");
         // Make sure the target epoch is not higher than the current epoch to avoid potential attacks.
         if attestation.data.target.epoch > current_epoch {
             return Err(Error::GreaterThanCurrentEpoch {
@@ -586,8 +585,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
                 &self.spec,
                 &self.task_executor,
             )
-            .await
-            .map_err(Error::UnableToSign)?;
+            .await?;
 
         metrics::inc_counter_vec(&metrics::SIGNED_SELECTION_PROOFS_TOTAL, &[metrics::SUCCESS]);
 
@@ -625,8 +623,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
                 &self.spec,
                 &self.task_executor,
             )
-            .await
-            .map_err(Error::UnableToSign)?;
+            .await?;
 
         Ok(signature.into())
     }
@@ -654,8 +651,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
                 &self.spec,
                 &self.task_executor,
             )
-            .await
-            .map_err(Error::UnableToSign)?;
+            .await?;
 
         metrics::inc_counter_vec(
             &metrics::SIGNED_SYNC_COMMITTEE_MESSAGES_TOTAL,
@@ -696,8 +692,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
                 &self.spec,
                 &self.task_executor,
             )
-            .await
-            .map_err(Error::UnableToSign)?;
+            .await?;
 
         metrics::inc_counter_vec(
             &metrics::SIGNED_SYNC_COMMITTEE_CONTRIBUTIONS_TOTAL,
@@ -810,5 +805,19 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
 
         info!(self.log, "Completed pruning of slashing protection DB");
     }
+
+    //pub fn is_duty_leader(&self, pubkey: &PublicKeyBytes, nonce: u64) -> bool {
+        //if let Some(signing_method) = self.validators.read().signing_method(pubkey) {
+            //match signing_method {
+                //SigningMethod::DistributedKeystore { dvf_signer, .. } => {
+                    //dvf_signer.is_leader(nonce)
+                //}
+                //_ => true
+            //}
+        //}
+        //else {
+            //false
+        //}
+    //}
 }
 

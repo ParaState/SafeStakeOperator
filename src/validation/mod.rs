@@ -462,7 +462,6 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
     }
 
     pub fn start_service(&mut self) -> Result<(), String> {
-        log::error!("Enter start_service =============");
         // We use `SLOTS_PER_EPOCH` as the capacity of the block notification channel, because
         // we don't except notifications to be delayed by more than a single slot, let alone a
         // whole epoch!

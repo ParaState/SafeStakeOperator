@@ -6,7 +6,7 @@ use validator_dir::{ValidatorDir, BuilderError};
 use std::path::{Path, PathBuf};
 use validator_dir::insecure_keys::{INSECURE_PASSWORD,};
 use types::test_utils::generate_deterministic_keypair;
-use std::iter::zip;
+// use std::iter::zip;
 use std::collections::HashMap;
 use bls::Keypair;
 

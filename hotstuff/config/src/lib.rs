@@ -1,5 +1,5 @@
 use consensus::{Committee as ConsensusCommittee, Parameters as ConsensusParameters};
-use crypto::{generate_keypair, generate_production_keypair, PublicKey, SecretKey};
+use crypto::{generate_secp256k_keypair, generate_production_keypair, PublicKey, SecretKey};
 use mempool::{Committee as MempoolCommittee, Parameters as MempoolParameters};
 use rand::rngs::StdRng;
 use rand::SeedableRng as _;
@@ -69,8 +69,8 @@ impl Secret {
     }
 
     pub fn insecure(state: u64) -> Self {
-        let mut rng = StdRng::seed_from_u64(state);
-        let (name, secret) = generate_keypair(&mut rng);
+        // let mut rng = StdRng::seed_from_u64(state);
+        let (name, secret) = generate_secp256k_keypair();
         Self { name, secret }
     }
 }

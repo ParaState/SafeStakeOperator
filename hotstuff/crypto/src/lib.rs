@@ -2,20 +2,19 @@
 use ed25519_dalek as dalek;
 use ed25519_dalek::ed25519;
 use ed25519_dalek::Signer as _;
-use rand::rngs::OsRng;
-use rand::{CryptoRng, RngCore};
+use secp256k1::rand::thread_rng;
+use secp256k1::{generate_keypair, Secp256k1};
 use serde::{de, ser, Deserialize, Serialize};
 use std::array::TryFromSliceError;
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::oneshot;
-
 #[cfg(test)]
 #[path = "tests/crypto_tests.rs"]
 pub mod crypto_tests;
 
-pub type CryptoError = ed25519::Error;
+pub type CryptoError = secp256k1::Error;
 
 /// Represents a hash digest (32 bytes).
 #[derive(Hash, PartialEq, Default, Eq, Clone, Deserialize, Serialize, Ord, PartialOrd)]
@@ -62,8 +61,12 @@ pub trait Hash {
 }
 
 /// Represents a public key (in bytes).
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Default)]
-pub struct PublicKey(pub [u8; 32]);
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub struct PublicKey(pub [u8; 33]);
+
+impl Default for PublicKey {
+    fn default() -> Self { PublicKey([0; 33]) }
+}
 
 impl PublicKey {
     pub fn encode_base64(&self) -> String {
@@ -72,7 +75,7 @@ impl PublicKey {
 
     pub fn decode_base64(s: &str) -> Result<Self, base64::DecodeError> {
         let bytes = base64::decode(s)?;
-        let array = bytes[..32]
+        let array = bytes[..33]
             .try_into()
             .map_err(|_| base64::DecodeError::InvalidLength)?;
         Ok(Self(array))
@@ -119,7 +122,7 @@ impl AsRef<[u8]> for PublicKey {
 
 /// Represents a secret key (in bytes).
 #[derive(Clone)]
-pub struct SecretKey([u8; 64]);
+pub struct SecretKey(pub [u8; 32]);
 
 impl SecretKey {
     pub fn encode_base64(&self) -> String {
@@ -128,7 +131,7 @@ impl SecretKey {
 
     pub fn decode_base64(s: &str) -> Result<Self, base64::DecodeError> {
         let bytes = base64::decode(s)?;
-        let array = bytes[..64]
+        let array = bytes[..32]
             .try_into()
             .map_err(|_| base64::DecodeError::InvalidLength)?;
         Ok(Self(array))
@@ -162,16 +165,15 @@ impl Drop for SecretKey {
 }
 
 pub fn generate_production_keypair() -> (PublicKey, SecretKey) {
-    generate_keypair(&mut OsRng)
+    generate_secp256k_keypair()
 }
 
-pub fn generate_keypair<R>(csprng: &mut R) -> (PublicKey, SecretKey)
-where
-    R: CryptoRng + RngCore,
+pub fn generate_secp256k_keypair() -> (PublicKey, SecretKey)
 {
-    let keypair = dalek::Keypair::generate(csprng);
-    let public = PublicKey(keypair.public.to_bytes());
-    let secret = SecretKey(keypair.to_bytes());
+    let (secret_key, public_key) = generate_keypair(&mut thread_rng());
+    // let keypair = dalek::Keypair::generate(csprng);
+    let public = PublicKey(public_key.serialize());
+    let secret = SecretKey(secret_key.secret_bytes());
     (public, secret)
 }
 
@@ -184,8 +186,10 @@ pub struct Signature {
 
 impl Signature {
     pub fn new(digest: &Digest, secret: &SecretKey) -> Self {
-        let keypair = dalek::Keypair::from_bytes(&secret.0).expect("Unable to load secret key");
-        let sig = keypair.sign(&digest.0).to_bytes();
+        // let keypair = dalek::Keypair::from_bytes(&secret.0).expect("Unable to load secret key");
+        let secret_key = secp256k1::SecretKey::from_slice(&secret.0).expect("Unable to load secret key");
+        let message = secp256k1::Message::from_slice(&digest.0).expect("messages must be 32 bytes and are expected to be hashes");
+        let sig = secret_key.sign_ecdsa(message).serialize_compact();
         let part1 = sig[..32].try_into().expect("Unexpected signature length");
         let part2 = sig[32..64].try_into().expect("Unexpected signature length");
         Signature { part1, part2 }
@@ -199,24 +203,29 @@ impl Signature {
     }
 
     pub fn verify(&self, digest: &Digest, public_key: &PublicKey) -> Result<(), CryptoError> {
-        let signature = ed25519::signature::Signature::from_bytes(&self.flatten())?;
-        let key = dalek::PublicKey::from_bytes(&public_key.0)?;
-        key.verify_strict(&digest.0, &signature)
+        let signature = secp256k1::ecdsa::Signature::from_compact(&self.flatten()).expect("compact signatures are 64 bytes; DER signatures are 68-72 bytes");
+        let message = secp256k1::Message::from_slice(&digest.0).expect("messages must be 32 bytes and are expected to be hashes");
+        // let signature = ed25519::signature::Signature::from_bytes(&self.flatten())?;
+        // let key = dalek::PublicKey::from_bytes(&public_key.0)?;
+        let key = secp256k1::PublicKey::from_slice(&public_key.0).expect("public keys must be 33 or 65 bytes, serialized according to SEC 2");
+        let secp = Secp256k1::verification_only();
+        secp.verify_ecdsa(&message, &signature, &key)
+        // key.verify_strict(&digest.0, &signature)
     }
 
     pub fn verify_batch<'a, I>(digest: &Digest, votes: I) -> Result<(), CryptoError>
     where
         I: IntoIterator<Item = &'a (PublicKey, Signature)>,
     {
-        let mut messages: Vec<&[u8]> = Vec::new();
-        let mut signatures: Vec<dalek::Signature> = Vec::new();
-        let mut keys: Vec<dalek::PublicKey> = Vec::new();
+        let message = secp256k1::Message::from_slice(&digest.0)?;
+        let secp = Secp256k1::verification_only();
         for (key, sig) in votes.into_iter() {
-            messages.push(&digest.0[..]);
-            signatures.push(ed25519::signature::Signature::from_bytes(&sig.flatten())?);
-            keys.push(dalek::PublicKey::from_bytes(&key.0)?);
+            let signature = secp256k1::ecdsa::Signature::from_compact(&sig.flatten())?;
+            let pub_key = secp256k1::PublicKey::from_slice(&key.0)?;
+            secp.verify_ecdsa(&message, &signature, &pub_key)?;
         }
-        dalek::verify_batch(&messages[..], &signatures[..], &keys[..])
+        // dalek::verify_batch(&messages[..], &signatures[..], &keys[..])
+        Ok(())
     }
 }
 

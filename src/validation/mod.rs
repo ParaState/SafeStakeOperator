@@ -181,14 +181,14 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
                 "new_distributed_validators" => new_distributed_validators,
             );
         }
-        let node = Node::new(config.dvf_node_config.clone())
+        let node = Node::<T>::new(config.dvf_node_config.clone())
             .map_err(|e| format!("Dvf node creation failed: {}", e))?;
-        let node = Some(Arc::new(node));
+        // let node = Some(Arc::new(RwLock::new(node)));
 
         let validators = InitializedValidators::from_definitions(
             validator_defs,
             config.validator_dir.clone(),
-            node,
+            node.clone(),
             log.clone(),
         )
         .await
@@ -369,6 +369,14 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
 
         // Ensure all validators are registered in doppelganger protection.
         validator_store.register_all_in_doppelganger_protection_if_enabled()?;
+        match node {
+            Some(n) => {
+                let mut node = n.write();
+                node.validator_store = Some(Arc::clone(&validator_store));
+            }
+            _ => {}
+        }
+        
 
         info!(
             log,

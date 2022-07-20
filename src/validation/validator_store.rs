@@ -80,7 +80,7 @@ impl PartialEq for LocalValidator {
 }
 
 pub struct ValidatorStore<T, E: EthSpec> {
-    validators: Arc<RwLock<InitializedValidators>>,
+    validators: Arc<RwLock<InitializedValidators<E>>>,
     slashing_protection: SlashingDatabase,
     slashing_protection_last_prune: Arc<Mutex<Epoch>>,
     genesis_validators_root: Hash256,
@@ -97,7 +97,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
     // unnecessary.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        validators: InitializedValidators,
+        validators: InitializedValidators<E>,
         slashing_protection: SlashingDatabase,
         genesis_validators_root: Hash256,
         spec: ChainSpec,
@@ -139,7 +139,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         self.doppelganger_service.is_some()
     }
 
-    pub fn initialized_validators(&self) -> Arc<RwLock<InitializedValidators>> {
+    pub fn initialized_validators(&self) -> Arc<RwLock<InitializedValidators<E>>> {
         self.validators.clone()
     }
 

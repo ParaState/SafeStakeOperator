@@ -19,6 +19,7 @@ pub enum StoreCommand {
     Read(Key, oneshot::Sender<StoreResult<Option<Value>>>),
     NotifyRead(Key, oneshot::Sender<StoreResult<Value>>),
     NotifyDestroy(oneshot::Sender<bool>),
+    Delete(Key)
 }
 
 #[derive(Clone)]
@@ -74,6 +75,9 @@ impl Store {
                         }
                         break;
                     }
+                    StoreCommand::Delete(key) => {
+                        let _ = db.delete(key);
+                    }
                 }
             }
         });
@@ -94,6 +98,12 @@ impl Store {
         receiver
             .await
             .expect("Failed to receive reply to Read command from store")
+    }
+
+    pub async fn delete(&self, key: Key) {
+        if let Err(e) = self.channel.send(StoreCommand::Delete(key)).await {
+            panic!("Failed to send Delete command to store: {}", e);
+        }
     }
 
     pub async fn notify_read(&self, key: Key) -> StoreResult<Value> {

@@ -92,6 +92,9 @@ rpassword = "5.0.0"
 zeroize = { version = "1.4.2", features = ["zeroize_derive"] }
 
 beacon_node = { path = "lighthouse/beacon_node" }
+discv5 = "0.1.0-beta.13"
+base64 = "0.13.0"
+web3 = "0.18.0"
 
 
 [patch]

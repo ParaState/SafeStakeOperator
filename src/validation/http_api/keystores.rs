@@ -224,7 +224,7 @@ pub fn delete<T: SlotClock + 'static, E: EthSpec>(
         .pubkeys
         .iter()
         .map(|pubkey_bytes| {
-            match delete_single_keystore(pubkey_bytes, &mut initialized_validators, runtime.clone())
+            match delete_single_keystore::<E>(pubkey_bytes, &mut initialized_validators, runtime.clone())
             {
                 Ok(status) => Status::ok(status),
                 Err(error) => {
@@ -274,9 +274,9 @@ pub fn delete<T: SlotClock + 'static, E: EthSpec>(
     })
 }
 
-fn delete_single_keystore(
+fn delete_single_keystore<T: EthSpec>(
     pubkey_bytes: &PublicKeyBytes,
-    initialized_validators: &mut InitializedValidators,
+    initialized_validators: &mut InitializedValidators<T>,
     runtime: Weak<Runtime>,
 ) -> Result<DeleteKeystoreStatus, String> {
     if let Some(runtime) = runtime.upgrade() {

@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 pub const CHANNEL_CAPACITY: usize = 1_000;
 use bls::{Hash256, Signature};
-use types::Keypair;
+use types::{Keypair, EthSpec};
 use crate::validation::operator::{LocalOperator, TOperator};
 use futures::SinkExt;
 use crate::node::node::Node;
@@ -25,6 +25,7 @@ use futures::executor::block_on;
 use crate::utils::error::DvfError;
 use crate::validation::{OperatorCommittee};
 use tokio::sync::{RwLock};
+use parking_lot::{RwLock as ParkingRwLock};
 use eth2_hashing::{Context, Sha256Context};
 use crate::validation::operator_committee_definitions::OperatorCommitteeDefinition; 
 use crate::node::config::{NodeConfig, TRANSACTION_PORT_OFFSET, MEMPOOL_PORT_OFFSET, CONSENSUS_PORT_OFFSET, SIGNATURE_PORT_OFFSET};
@@ -122,6 +123,7 @@ impl MessageHandler for DvfSignatureReceiverHandler {
     }
 }
 
+
 pub struct DvfSigner {
     pub signal: Option<exit_future::Signal>,
     pub operator_id: u64,
@@ -138,13 +140,20 @@ impl Drop for DvfSigner {
 }
 
 impl DvfSigner {
-    pub async fn spawn(
-        node: Arc<Node>,
+    pub async fn spawn<T: EthSpec>(
+        node_para: Arc<ParkingRwLock<Node<T>>>,
         validator_id: u64,
         keypair: Keypair,
         committee_def: OperatorCommitteeDefinition,
     ) -> Self {
-        let operator_id = node.config.id;
+        let node_tmp = Arc::clone(&node_para);
+        let node = node_tmp.read();
+        // find operator id from operatorCommitteeDefinition
+        let operator_index : Vec<usize> = committee_def.node_public_keys.iter().enumerate().filter(|&(i, x)| {
+            node.secret.name == *x
+        }).map(|(i, _)| i).collect();
+        assert_eq!(operator_index.len(), 1);
+        let operator_id = committee_def.operator_ids[operator_index[0]];
         // Construct the committee for validator signing
         let (mut operator_committee, tx_consensus) = OperatorCommittee::from_definition(committee_def.clone()).await;
         let local_operator = Arc::new(
@@ -191,7 +200,8 @@ impl DvfSigner {
         };
 
         let signal = DvfCore::spawn(
-            node,
+            operator_id,
+            node_para,
             committee_def.validator_id,
             hotstuff_committee,
             keypair,
@@ -230,28 +240,26 @@ pub struct DvfCore {
     pub bls_keypair: Keypair,
     pub tx_consensus: Sender<Hash256>,
     pub operator: LocalOperator,
-
     pub exit: exit_future::Exit,
 }
 
 unsafe impl Send for DvfCore {}
 unsafe impl Sync for DvfCore {}
 
-
-
 impl DvfCore {
-    pub fn spawn(
-        node: Arc<Node>,
+    pub fn spawn<T: EthSpec> (
+        operator_id: u64,
+        node: Arc<ParkingRwLock<Node<T>>>,
         validator_id: u64,
         committee: HotstuffCommittee,
         keypair: Keypair,
         tx_consensus: Sender<Hash256>,
     ) -> exit_future::Signal {
+        let mut node = node.write();
         let (tx_commit, rx_commit) = channel(CHANNEL_CAPACITY);
         let (tx_consensus_to_mempool, rx_consensus_to_mempool) = channel(CHANNEL_CAPACITY);
         let (tx_mempool_to_consensus, rx_mempool_to_consensus) = channel(CHANNEL_CAPACITY);
 
-        let operator_id = node.config.id;
         let parameters = Parameters::default();
         let store_path = node.config.base_store_path.join(validator_id.to_string()).join(operator_id.to_string()); 
         let store = Store::new(&store_path.to_str().unwrap()).expect("Failed to create store");
@@ -340,7 +348,7 @@ impl DvfCore {
                                                     let serialized_signature = bincode::serialize(&signature).unwrap();
                                                     // save to local db
                                                     self.store.write(batch, serialized_signature).await;
-
+                                                    
                                                     if let Err(e) = self.tx_consensus.send(msg).await {
                                                         error!("Failed to notify consensus status: {}", e);
                                                     }

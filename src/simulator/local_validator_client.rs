@@ -51,7 +51,7 @@ impl<E: EthSpec> LocalValidatorClient<E> {
         config.validator_dir = files.validator_dir.path().into();
         config.secrets_dir = files.secrets_dir.path().into();
         config.dvf_node_config = config.dvf_node_config
-            .set_id(files.node_id)
+            // .set_id(files.node_id)
             .set_base_dir(files.node_dir.path().into());
 
         ProductionValidatorClient::new(context, config)

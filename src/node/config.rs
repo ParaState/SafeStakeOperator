@@ -69,7 +69,7 @@ impl NodeConfig {
             node_key_path,
             validator_dir,
             secrets_dir,
-            backend_address: SocketAddr::new(backend_ip, BACKEND_PORT)
+            backend_address: SocketAddr::new(backend_ip, BACKEND_PORT),
         }
     }
 

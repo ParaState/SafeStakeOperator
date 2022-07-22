@@ -195,7 +195,7 @@ pub fn simple_integration_example() -> Result<(), String> {
 
     // env.fire_signal();
     // env.shutdown_on_idle();
-    // Ok(())
+    Ok(())
 }
 
 fn main() {

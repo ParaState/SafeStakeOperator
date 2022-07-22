@@ -28,9 +28,9 @@ const DEFAULT_DELETE_VALIDATOR_TOPIC: &str = "";
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Operator {
   pub id: u64, 
-  pub node_public_key: Vec<u8>,
-  pub shared_public_key: Vec<u8>,
-  pub encrypted_public_key: Vec<u8>
+  pub node_public_key: Vec<u8>, // base64
+  pub shared_public_key: Vec<u8>, // 
+  pub encrypted_key: Vec<u8> // base64
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -39,8 +39,6 @@ pub struct Validator {
   pub validator_address: Address,
   pub validator_public_key: Vec<u8>
 }
-
-pub type ValidatorPublicKey = Vec<u8>;
 
 pub enum ValidatorCommand {
   Start(Validator),
@@ -187,15 +185,15 @@ impl ListenContract {
               token::Token::Bytes(shared_publick_key) => Some(shared_publick_key),
               _ => None
             };
-            let encrypted_public_key = match &tuple[3] {
-              token::Token::Bytes(encrypted_public_key) => Some(encrypted_public_key),
+            let encrypted_key = match &tuple[3] {
+              token::Token::Bytes(encrypted_key) => Some(encrypted_key),
               _ => None
             };
             let opeartor = Operator {
               id : id.unwrap(),
               node_public_key: node_public_key.unwrap().clone(),
               shared_public_key: shared_publick_key.unwrap().clone(),
-              encrypted_public_key: encrypted_public_key.unwrap().clone()
+              encrypted_key: encrypted_key.unwrap().clone()
             };
             Some(opeartor)
           },

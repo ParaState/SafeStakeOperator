@@ -8,14 +8,16 @@ use async_trait::async_trait;
 
 
 /// Operator committee for a validator. 
+/// 
 #[async_trait]
-pub trait TOperatorCommittee {
+pub trait TOperatorCommittee : Send {
     fn new(validator_id: u64, validator_public_key: PublicKey, t: usize, rx_consensus: Receiver<Hash256>) -> Self;
     fn validator_id(&self) -> u64;
     async fn add_operator(&mut self, operator_id: u64, operator: Arc<RwLock<dyn TOperator>>); 
     async fn consensus(&self, msg: Hash256) -> Result<(), DvfError>;
-    async fn sign(&self, msg: Hash256) -> Result<Signature, DvfError>;
+    async fn sign(&self, msg: Hash256) -> Result<(Signature, Vec<u64>), DvfError>;
     async fn get_leader(&self, nonce: u64) -> u64;
+    fn get_validator_pk(&self) -> String;
     fn threshold(&self) -> usize;
 }
 
@@ -46,12 +48,16 @@ where
         self.cmt.threshold()
     }
 
-    pub async fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> {
+    pub async fn sign(&self, msg: Hash256) -> Result<(Signature, Vec<u64>), DvfError> {
         self.cmt.sign(msg).await
     }
 
     pub async fn get_leader(&self, nonce: u64) -> u64 {
         self.cmt.get_leader(nonce).await
+    }
+
+    pub fn get_validator_pk(&self) -> String {
+        self.cmt.get_validator_pk()
     }
 }
 

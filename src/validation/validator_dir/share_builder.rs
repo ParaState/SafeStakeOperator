@@ -149,7 +149,7 @@ impl ShareBuilder {
 /// Returns an INSECURE key derivation function.
 ///
 /// **NEVER** use this KDF in production!
-fn insecure_kdf() -> Kdf {
+pub fn insecure_kdf() -> Kdf {
     Kdf::Scrypt(Scrypt {
         dklen: DKLEN,
         // `n` is set very low, making it cheap to encrypt/decrypt keystores.

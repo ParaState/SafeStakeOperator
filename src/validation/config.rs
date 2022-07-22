@@ -12,7 +12,7 @@ use sensitive_url::SensitiveUrl;
 use serde_derive::{Deserialize, Serialize};
 use slog::{info, warn, Logger};
 use std::fs;
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use types::{Address, GRAFFITI_BYTES_LEN};
 use crate::node::config::NodeConfig;
@@ -124,6 +124,36 @@ impl Config {
         }
         if cli_args.value_of("secrets-dir").is_some() {
             secrets_dir = Some(parse_required(cli_args, "secrets-dir")?);
+        }
+
+        let mut boot_enr : Option<String> = None;
+        if cli_args.value_of("boot-enr").is_some() {
+            boot_enr = Some(parse_required(cli_args, "boot-enr")?);
+        }
+
+        let mut self_ip : Option<String> = None;
+        if cli_args.value_of("ip").is_some() {
+            self_ip = Some(parse_required(cli_args, "ip")?);
+        } 
+
+        match self_ip {
+            Some(ip) => {
+                config.dvf_node_config.base_address.set_ip(IpAddr::V4(ip.parse::<Ipv4Addr>().unwrap()));
+            },
+            _ => {}
+        }
+
+        let mut base_port : Option<u16> = None;
+        if cli_args.value_of("base-port").is_some() {
+            let base_port_str: String = parse_required(cli_args, "base-port")?;
+            base_port = Some(base_port_str.parse::<u16>().unwrap());
+        }
+
+        match base_port {
+            Some(base_port) => {
+                config.dvf_node_config = config.dvf_node_config.set_base_port(base_port);
+            }
+            _ => {}
         }
 
         config.validator_dir = validator_dir.unwrap_or_else(|| {

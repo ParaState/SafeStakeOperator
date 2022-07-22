@@ -7,7 +7,6 @@
 //! - Via a distributed operator committee
 
 use crate::validation::http_metrics::metrics;
-use crate::validation::{OperatorCommittee};
 use eth2_keystore::Keystore;
 use lockfile::Lockfile;
 use parking_lot::Mutex;
@@ -18,9 +17,9 @@ use task_executor::TaskExecutor;
 use types::*;
 use url::Url;
 use web3signer::{ForkInfo, SigningRequest, SigningResponse};
-use parking_lot::{RwLock};
-use crate::node::dvfcore::DvfSigner;
-
+use crate::node::dvfcore::{DvfSigner, DvfPerformanceRequest};
+use crate::node::config::{BACKEND_IP, BACKEND_PORT};
+use std::net::{IpAddr, Ipv4Addr};
 pub use web3signer::Web3SignerObject;
 
 mod web3signer;
@@ -243,9 +242,47 @@ impl SigningMethod {
                                dvf_signer.operator_committee.validator_id(), 
                                signing_root,
                                signing_context.epoch.as_u64());
-                    dvf_signer.sign(signing_root)
-                        .await
-                        .map_err(|e| Error::CommitteeSignFailed(format!("{:?}", e)))
+
+                    let validator_pk = dvf_signer.validator_public_key();
+                    let operator_id = dvf_signer.operator_id();
+                    
+                    let (slot, duty) = match signable_message {
+                        SignableMessage::AttestationData(a) => {
+                            (a.slot, "PROPOSER")
+                        },
+                        SignableMessage::BeaconBlock(b) => {
+                            (b.slot(), "ATTESTER")
+                        },
+                        _ => { (Slot::new(0 as u64), "ERROR") }
+                    };
+
+                    
+                    match dvf_signer.sign(signing_root).await {
+                        Ok((signature, ids)) => {
+                            let request_body = DvfPerformanceRequest {
+                                validator_pk,
+                                operator_id,
+                                operators: ids, 
+                                slot: slot.as_u64(),
+                                epoch: signing_context.epoch.as_u64(),
+                                duty: duty.to_string()
+                            };
+                            let client = reqwest::Client::new();
+                            let mut url = Url::parse("http://example.com").map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
+                            url.set_ip_host(IpAddr::V4(Ipv4Addr::new(BACKEND_IP[0], BACKEND_IP[1], BACKEND_IP[2], BACKEND_IP[3]))).unwrap();
+                            url.set_port(Some(BACKEND_PORT)).unwrap();
+                            let _ = client.post(url).json(&request_body).send().await.map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
+
+                            Ok(signature)
+                        },
+                        Err(e) => {
+                            
+
+                            Err(Error::CommitteeSignFailed(format!("{:?}", e)))
+                        }
+                    }
+
+                    
                 }
                 else {
                     Err(Error::NotLeader)

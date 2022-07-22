@@ -120,7 +120,7 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
         Ok(())
     }
 
-    async fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> {
+    async fn sign(&self, msg: Hash256) -> Result<(Signature, Vec<u64>), DvfError> {
         // Run consensus protocol 
         self.consensus(msg).await?;
 
@@ -145,9 +145,13 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
         info!("Received {} signatures", sigs.len());
 
         let threshold_sig = ThresholdSignature::new(self.threshold());
-        let sig = threshold_sig.threshold_aggregate(&sigs[..], &pks[..], &ids[..], msg);
+        let sig = threshold_sig.threshold_aggregate(&sigs[..], &pks[..], &ids[..], msg)?;
 
-        sig
+        Ok((sig, ids))
+    }
+
+    fn get_validator_pk(&self) -> String {
+        self.validator_public_key.as_hex_string()
     }
 
     

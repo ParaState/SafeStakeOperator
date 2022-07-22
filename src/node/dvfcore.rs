@@ -215,21 +215,41 @@ impl DvfSigner {
         }
     }
 
-    pub async fn sign_str(&self, message: &str) -> Result<Signature, DvfError> {
-        let mut context = Context::new();
-        context.update(message.as_bytes());
-        let message_hash = Hash256::from_slice(&context.finalize());
+    // pub async fn sign_str(&self, message: &str) -> Result<Signature, DvfError> {
+    //     let mut context = Context::new();
+    //     context.update(message.as_bytes());
+    //     let message_hash = Hash256::from_slice(&context.finalize());
 
-        self.operator_committee.sign(message_hash).await
-    }
+    //     self.operator_committee.sign(message_hash).await
+    // }
 
-    pub async fn sign(&self, message: Hash256) -> Result<Signature, DvfError> {
+    pub async fn sign(&self, message: Hash256) -> Result<(Signature, Vec<u64>), DvfError> {
         self.operator_committee.sign(message).await
     }
 
     pub async fn is_leader(&self, nonce: u64) -> bool {
         self.operator_committee.get_leader(nonce).await == self.operator_id
     }
+
+    pub fn validator_public_key(&self) -> String {
+        self.operator_committee.get_validator_pk()
+    }
+ 
+    pub fn operator_id(&self) -> u64 {
+        self.operator_id
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+pub struct DvfPerformanceRequest {
+    #[serde(rename = "publicKey")]
+    pub validator_pk: String,
+    #[serde(rename = "operatorId")]
+    pub operator_id: u64,
+    pub operators: Vec<u64>,
+    pub slot: u64,
+    pub epoch: u64,
+    pub duty: String
 }
 
 pub struct DvfCore {

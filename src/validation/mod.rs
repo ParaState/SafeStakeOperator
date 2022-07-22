@@ -2,7 +2,7 @@ mod attestation_service;
 mod beacon_node_fallback;
 mod block_service;
 mod check_synced;
-//mod cli;
+mod cli;
 mod config;
 mod duties_service;
 mod fee_recipient_file;
@@ -21,7 +21,7 @@ pub mod validator_store;
 pub mod account_utils;
 pub mod validator_dir;
 pub mod eth2_keystore_share;
-
+pub use crate::validation::cli::cli_app;
 
 //pub use cli::cli_app;
 pub use config::Config;
@@ -741,11 +741,11 @@ macro_rules! define_mod {
     };
 }
 
-#[cfg(feature = "fake_committee")]
-define_mod!(fake_committee_implementations, crate::validation::impls::fake::types);
+// #[cfg(feature = "fake_committee")]
+// define_mod!(fake_committee_implementations, crate::validation::impls::fake::types);
 
-#[cfg(feature = "fake_committee")]
-pub use fake_committee_implementations::*;
+// #[cfg(feature = "fake_committee")]
+// pub use fake_committee_implementations::*;
 
 #[cfg(feature = "hotstuff_committee")]
 define_mod!(hotstuff_committee_implementations, crate::validation::impls::hotstuff::types);

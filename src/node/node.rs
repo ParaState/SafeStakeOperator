@@ -13,27 +13,30 @@ use tokio::sync::mpsc::{channel, Receiver};
 use slog::{Logger, o};
 /// The default channel capacity for this module.
 use crate::node::dvfcore::{ DvfSignatureReceiverHandler};
-use crate::node::config::{NodeConfig, DISCOVERY_PORT_OFFSET, DEFAULT_BASE_PORT, BASE64_ENR};
+use crate::node::config::{NodeConfig, DISCOVERY_PORT_OFFSET, BASE64_ENR};
 use std::path::PathBuf;
 use std::net::IpAddr;
-use crate::node::contract::{ValidatorPublicKey, ValidatorCommand, Validator, Operator};
+use crate::node::contract::{ValidatorCommand, Validator, Operator};
 use crate::validation::operator_committee_definitions::OperatorCommitteeDefinition;
 use crate::node::discovery::Discovery;
 use crate::node::contract::{ListenContract, ContractConfig};
 use types::PublicKey;
 use crate::validation::account_utils::default_operator_committee_definition_path;
-use crate::node::dvfcore::{DvfCore, DvfSigner};
-const THRESHOLD: u64 = 3;
 use types::EthSpec;
 use crate::validation::validator_store::ValidatorStore;
 use slot_clock::SystemTimeSlotClock;
-use environment::RuntimeContext;
-
+use bls::{Keypair as BlsKeypair, SecretKey as BlsSecretKey};
+use crate::crypto::elgamal::{Ciphertext, Elgamal};
+use eth2_keystore::{KeystoreBuilder};
+use validator_dir::insecure_keys::{INSECURE_PASSWORD};
+use validator_dir::{ValidatorDir, BuilderError};
+use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
+use crate::validation::validator_dir::share_builder::{insecure_kdf, ShareBuilder};
+const THRESHOLD: u64 = 3;
 fn with_wildcard_ip(mut addr: SocketAddr) -> SocketAddr {
     addr.set_ip("0.0.0.0".parse().unwrap());
     addr
 }
-
 
 pub struct Node<T: EthSpec> {
     pub config: NodeConfig,
@@ -48,13 +51,14 @@ pub struct Node<T: EthSpec> {
     // pub validators_map: Arc<RwLock<HashMap<u64, Validator>>>,
     // pub validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>
 }
-
+// impl Send for Node{}
 impl<T: EthSpec> Node<T> {
 
     pub fn new(
         config: NodeConfig
     ) -> Result<Option<Arc<ParkingRwLock<Self>>>, ConfigError> {
         let secret_exists = config.node_key_path.exists();
+        let self_address = config.base_address.ip();
         let secret = Node::<T>::open_or_create_secret(config.node_key_path.clone())?;
 
         let tx_handler_map = Arc::new(RwLock::new(HashMap::new()));
@@ -113,6 +117,7 @@ impl<T: EthSpec> Node<T> {
         info!("Node {} successfully booted", secret.name);
         let validator_dir = config.validator_dir.clone();
         let secrets_dir = config.secrets_dir.clone();
+        let base_port = config.base_address.port();
         let node = Self { 
             config,
             secret, 
@@ -126,16 +131,15 @@ impl<T: EthSpec> Node<T> {
             // validators_map: Arc::clone(&validators_map),
             // validator_operators_map: Arc::clone(&validator_operators_map)
         };
-
-        Discovery::spawn(node.config.clone().base_address.ip(), DEFAULT_BASE_PORT, key_ip_map.clone(), node.secret.clone(), Some(BASE64_ENR.to_string()));
+        Discovery::spawn(self_address, base_port + DISCOVERY_PORT_OFFSET, key_ip_map.clone(), node.secret.clone(), Some(BASE64_ENR.to_string()));
 
         let contract_config = ContractConfig::default();
         ListenContract::spawn(contract_config, !secret_exists, node.secret.name.0.to_vec(), node.config.backend_address.clone(), tx_validator_command, validators_map.clone(), validator_operators_map.clone());
 
         let node = Arc::new(ParkingRwLock::new(node));
 
-        Node::process_validator_command(Arc::clone(&node), validators_map, validator_operators_map, key_ip_map, rx_validator_command, DEFAULT_BASE_PORT, validator_dir, secrets_dir);
-        
+        Node::process_validator_command(Arc::clone(&node), validators_map, validator_operators_map, key_ip_map, rx_validator_command, base_port, validator_dir.clone(), secrets_dir);
+
         Ok(Some(node))
     }
 
@@ -155,15 +159,19 @@ impl<T: EthSpec> Node<T> {
         let log = Logger::root(slog::Discard, o!("service" => "process_validator_command"));
         tokio::spawn(async move {
             let node = node;
+            let secret = node.read().secret.clone();
+            let sk = &secret.secret;
+            let pk = &secret.name;
+            let secret_key = secp256k1::SecretKey::from_slice(&sk.0).expect("Unable to load secret key");
             loop {
                 match rx_validator_command.recv().await {
                     Some(validator_command) => {
                         match validator_command {
                             ValidatorCommand::Start(validator) => {
-                                let id = validator.id;
+                                let validator_id = validator.id;
                                 let validator_address = std::str::from_utf8(validator.validator_address.as_bytes()).unwrap();
                                 let validator_operators = validator_operators_map.read().await;
-                                let operators_vec = validator_operators.get(&id);
+                                let operators_vec = validator_operators.get(&validator_id);
 
                                 match operators_vec {
                                     Some(operators) => {
@@ -183,9 +191,44 @@ impl<T: EthSpec> Node<T> {
                                                     operator_ids.push(operator.id);
 
                                                     let operator_pk = PublicKey::deserialize(&operator.shared_public_key).unwrap();
+                                            
                                                     operator_public_keys.push(operator_pk);
 
                                                     let node_pk = hscrypto::PublicKey::decode_base64(&String::from_utf8(operator.node_public_key.clone()).unwrap()).unwrap();
+
+
+                                                    if *pk == node_pk {
+                                                        // decrypt 
+                                                        let mut rng = rand::thread_rng();
+                                                        let mut elgamal = Elgamal::new(rng);
+
+                                                        let decoded_encrypted_key = base64::decode(&operator.encrypted_key).unwrap();
+                                                        
+                                                        let ciphertext = Ciphertext::from_bytes(&decoded_encrypted_key);
+                                                        let plain_shared_key = elgamal.decrypt(&ciphertext, &secret_key).unwrap();
+
+                                                        let shared_secret_key = BlsSecretKey::deserialize(&plain_shared_key).unwrap();
+
+                                                        let shared_public_key = shared_secret_key.public_key();
+
+                                                        let shared_key_pair = BlsKeypair::from_components(shared_public_key.clone(), shared_secret_key);
+
+                                                        let keystore = KeystoreBuilder::new(&shared_key_pair, INSECURE_PASSWORD, "".into())
+                                                        .map_err(|e| BuilderError::InsecureKeysError(format!("Unable to create keystore builder: {:?}", e))).unwrap()
+                                                        .kdf(insecure_kdf())
+                                                        .build()
+                                                        .map_err(|e| BuilderError::InsecureKeysError(format!("Unable to build keystore: {:?}", e)))
+                                                        .unwrap();
+
+                                                        let keystore_share = KeystoreShare::new(keystore, shared_public_key, validator_id, operator.id);
+
+                                                        ShareBuilder::new(validator_dir.clone())
+                                                        .password_dir(secret_dir.clone())
+                                                        .voting_keystore_share(keystore_share, INSECURE_PASSWORD)
+                                                        .build().unwrap();
+                                                    }
+
+
                                                     node_public_keys.push(node_pk);
                                                 },
                                                 None => {
@@ -202,12 +245,15 @@ impl<T: EthSpec> Node<T> {
                                         // generate keypair
                                         let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
 
+                                        
 
+                                        
+                                        
                                         
                                         let def = OperatorCommitteeDefinition {
                                             total: operators.len() as u64,
                                             threshold: THRESHOLD,
-                                            validator_id: id,
+                                            validator_id: validator_id,
                                             validator_public_key: validator_pk.clone(),
                                             operator_ids: operator_ids,
                                             operator_public_keys: operator_public_keys,

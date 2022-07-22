@@ -558,19 +558,19 @@ mod tests {
         voting_public_key: 0xaf3c7ddab7e293834710fca2d39d068f884455ede270e0d0293dc818e4f2f0f975355067e8437955cb29aec674e5c9e7 
         ids: [1, 2, 3]
         public_keys: ["0x87a580d31d7bc69069b55f5a01995a610dd391a26dc9e36e81057a17211983a79266800ab8531f21f1083d7d84085007", "0xaa440c566fcf34dedf233baf56cf5fb05bb420d9663b4208272545608c27c13d5b08174518c758ecd814f158f2b4a337", "0xa5566f9ec3c6e1fdf362634ebec9ef7aceb0e460e5079714808388e5d48f4ae1e12897fed1bea951c17fa389d511e477"]
-        socket_addresses: ["127.0.0.1:12", "127.0.0.1:2523", "127.0.0.1:89"]
+        base_socket_addresses: ["127.0.0.1:12", "127.0.0.1:2523", "127.0.0.1:89"]
         "#;
         let def: OperatorCommitteeDefinition = serde_yaml::from_str(oc_str).unwrap();
         assert_eq!(def.total, 3);
         assert_eq!(def.threshold, 1);
-        assert_eq!(def.committee_index, 5);
-        assert_eq!(def.voting_public_key.as_hex_string(), "0xaf3c7ddab7e293834710fca2d39d068f884455ede270e0d0293dc818e4f2f0f975355067e8437955cb29aec674e5c9e7");
-        assert_eq!(def.public_keys[0].as_hex_string(), "0x87a580d31d7bc69069b55f5a01995a610dd391a26dc9e36e81057a17211983a79266800ab8531f21f1083d7d84085007"); 
-        assert_eq!(def.public_keys[1].as_hex_string(), "0xaa440c566fcf34dedf233baf56cf5fb05bb420d9663b4208272545608c27c13d5b08174518c758ecd814f158f2b4a337"); 
-        assert_eq!(def.public_keys[2].as_hex_string(), "0xa5566f9ec3c6e1fdf362634ebec9ef7aceb0e460e5079714808388e5d48f4ae1e12897fed1bea951c17fa389d511e477"); 
-        assert_eq!(def.socket_addresses[0].to_string(), "127.0.0.1:12");
-        assert_eq!(def.socket_addresses[1].to_string(), "127.0.0.1:2523");
-        assert_eq!(def.socket_addresses[2].to_string(), "127.0.0.1:89");
+        assert_eq!(def.validator_id, 5);
+        assert_eq!(def.validator_public_key.as_hex_string(), "0xaf3c7ddab7e293834710fca2d39d068f884455ede270e0d0293dc818e4f2f0f975355067e8437955cb29aec674e5c9e7");
+        assert_eq!(def.operator_public_keys[0].as_hex_string(), "0x87a580d31d7bc69069b55f5a01995a610dd391a26dc9e36e81057a17211983a79266800ab8531f21f1083d7d84085007"); 
+        assert_eq!(def.operator_public_keys[1].as_hex_string(), "0xaa440c566fcf34dedf233baf56cf5fb05bb420d9663b4208272545608c27c13d5b08174518c758ecd814f158f2b4a337"); 
+        assert_eq!(def.operator_public_keys[2].as_hex_string(), "0xa5566f9ec3c6e1fdf362634ebec9ef7aceb0e460e5079714808388e5d48f4ae1e12897fed1bea951c17fa389d511e477"); 
+        assert_eq!(def.base_socket_addresses[0].to_string(), "127.0.0.1:12");
+        assert_eq!(def.base_socket_addresses[1].to_string(), "127.0.0.1:2523");
+        assert_eq!(def.base_socket_addresses[2].to_string(), "127.0.0.1:89");
     }
 
     #[test]
@@ -578,11 +578,11 @@ mod tests {
         let oc_str = r#"---
         total: 10
         threshold: 5
-        committee_index: 4
-        voting_public_key: 0x81283b7a20e1ca460ebd9bbd77005d557370cabb1f9a44f530c4c4c66230f675f8df8b4c2818851aa7d77a80ca5a4a5e 
+        validator_id: 4
+        validator_public_key: 0x81283b7a20e1ca460ebd9bbd77005d557370cabb1f9a44f530c4c4c66230f675f8df8b4c2818851aa7d77a80ca5a4a5e 
         ids: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-        public_keys: ["0xb3251b4920e44d934c757abee918fd6a4d2c35e04b2a6a61d165fb5c9cf93823bdcfd944d5de530d613a1f5cff1b9f32", "0x99de1824808e1d60d98b6c0e9116954d7e8df769c0ec61b4f1a0e6055aa5690a8e6bf78d69954e99dd0a78ceb2fcb962", "0x953aae269caa88654660abf65158cfa8671ab5a99440d6962ae93efac05261607448c9d9b0254362dfe65ab4c4782cab","0xa183f7351c6addce02d16cc021c914c2cda5b7d4df7c4020059668aeb7c8a392514a35035f1695ad73bce239c5bec8d3","0x92654abc1faccdcb4b1d4c9ea97356f52798026c31d90104a80561dc164317071f39d94152d964ddf8b5207da9991ca0","0xad3067733ade535c72043ab24715d33bf533a00c8c3e3c992832517c4f1fa08f80a71b02b05a315035262eca36465dc8","0x8cff5a31fa55d3f5db9e1c6075581b11c67c5d9a0e41d5e10b9a0e97d39e551f6b10fbeaae7e11036d9cb94eab947218","0x96b871bf391eaed3a3f5ba8860feddbb0a0d96f1ca76e5278f111be57564bf7915b75d5f991c98f0e5416dda1fdb2838","0xb6c3ec9f710ac05032f24694b839b4026821769fd48feaaa676e4d2aa1cade7b79e8f2943d3ede5e4adc627776c275f3","0xa9c50b8467534b0229e2a2e2f1918985fad68716d8e33814463e76aa6d4388069b13a3452006fa054176146794fa0b1f"]
-        socket_addresses: ["127.0.0.1:4001", "127.0.0.1:4002", "127.0.0.1:4003", "127.0.0.1:4004", "127.0.0.1:4005", "127.0.0.1:4006", "127.0.0.1:4007", "127.0.0.1:4008", "127.0.0.1:4009", "127.0.0.1:4010"]
+        operator_public_keys: ["0xb3251b4920e44d934c757abee918fd6a4d2c35e04b2a6a61d165fb5c9cf93823bdcfd944d5de530d613a1f5cff1b9f32", "0x99de1824808e1d60d98b6c0e9116954d7e8df769c0ec61b4f1a0e6055aa5690a8e6bf78d69954e99dd0a78ceb2fcb962", "0x953aae269caa88654660abf65158cfa8671ab5a99440d6962ae93efac05261607448c9d9b0254362dfe65ab4c4782cab","0xa183f7351c6addce02d16cc021c914c2cda5b7d4df7c4020059668aeb7c8a392514a35035f1695ad73bce239c5bec8d3","0x92654abc1faccdcb4b1d4c9ea97356f52798026c31d90104a80561dc164317071f39d94152d964ddf8b5207da9991ca0","0xad3067733ade535c72043ab24715d33bf533a00c8c3e3c992832517c4f1fa08f80a71b02b05a315035262eca36465dc8","0x8cff5a31fa55d3f5db9e1c6075581b11c67c5d9a0e41d5e10b9a0e97d39e551f6b10fbeaae7e11036d9cb94eab947218","0x96b871bf391eaed3a3f5ba8860feddbb0a0d96f1ca76e5278f111be57564bf7915b75d5f991c98f0e5416dda1fdb2838","0xb6c3ec9f710ac05032f24694b839b4026821769fd48feaaa676e4d2aa1cade7b79e8f2943d3ede5e4adc627776c275f3","0xa9c50b8467534b0229e2a2e2f1918985fad68716d8e33814463e76aa6d4388069b13a3452006fa054176146794fa0b1f"]
+        base_socket_addresses: ["127.0.0.1:4001", "127.0.0.1:4002", "127.0.0.1:4003", "127.0.0.1:4004", "127.0.0.1:4005", "127.0.0.1:4006", "127.0.0.1:4007", "127.0.0.1:4008", "127.0.0.1:4009", "127.0.0.1:4010"]
         "#;
         let def: OperatorCommitteeDefinition = serde_yaml::from_str(oc_str).unwrap();
         //let committees_dir = TempBuilder::new()

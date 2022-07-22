@@ -31,7 +31,7 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use types::{Address, Graffiti, Keypair, PublicKey, PublicKeyBytes};
+use types::{Address, Graffiti, Keypair, PublicKey, PublicKeyBytes, EthSpec};
 use url::{ParseError, Url};
 use validator_dir::Builder as ValidatorDirBuilder;
 
@@ -118,6 +118,7 @@ impl From<LockfileError> for Error {
 }
 
 /// A validator that is ready to sign messages.
+
 pub struct InitializedValidator {
     signing_method: Arc<SigningMethod>,
     graffiti: Option<Graffiti>,
@@ -177,12 +178,12 @@ impl InitializedValidator {
     /// ## Errors
     ///
     /// If the validator is unable to be initialized for whatever reason.
-    async fn from_definition(
+    async fn from_definition<T: EthSpec>(
         def: ValidatorDefinition,
         key_cache: &mut KeyCache,
         key_stores: &mut HashMap<PathBuf, Keystore>,
         committee_cache: &mut HashMap<u64, Arc<RwLock<OperatorCommittee>>>,
-        node: Option<Arc<Node>>,
+        node: Option<Arc<RwLock<Node<T>>>>,
     ) -> Result<Self, Error> {
         if !def.enabled {
             return Err(Error::UnableToInitializeDisabledValidator);
@@ -443,7 +444,8 @@ fn unlock_keystore_via_stdin_password(
 /// `ValidatorDefinition`. The `ValidatorDefinition` file is maintained as `self` is modified.
 ///
 /// Forms the fundamental list of validators that are managed by this validator client instance.
-pub struct InitializedValidators {
+/// 
+pub struct InitializedValidators<T: EthSpec> {
     /// A list of validator definitions which can be stored on-disk.
     definitions: ValidatorDefinitions,
     /// The directory that the `self.definitions` will be saved into.
@@ -451,23 +453,23 @@ pub struct InitializedValidators {
     /// The canonical set of validators.
     validators: HashMap<PublicKeyBytes, InitializedValidator>,
     /// The hotstuff node (only used for decentralized signing)
-    node: Option<Arc<Node>>,
+    node: Option<Arc<RwLock<Node<T>>>>,
     /// For logging via `slog`.
     log: Logger,
 }
 
-impl InitializedValidators {
+impl<T: EthSpec> InitializedValidators<T> {
     /// Instantiates `Self`, initializing all validators in `definitions`.
     pub async fn from_definitions(
         definitions: ValidatorDefinitions,
         validators_dir: PathBuf,
-        node: Option<Arc<Node>>,
+        node: Option<Arc<RwLock<Node<T>>>>,
         log: Logger,
     ) -> Result<Self, Error> {
         let mut this = Self {
             validators_dir,
             definitions,
-            validators: HashMap::default(),
+            validators: HashMap::<PublicKeyBytes, InitializedValidator>::default(),
             node,
             log,
         };
@@ -638,6 +640,10 @@ impl InitializedValidators {
     /// Returns a slice of all defined validators (regardless of their enabled state).
     pub fn validator_definitions(&self) -> &[ValidatorDefinition] {
         self.definitions.as_slice()
+    }
+
+    pub fn validator_definitions_(&mut self) -> &mut ValidatorDefinitions {
+        &mut self.definitions
     }
 
     /// Indicates if the `voting_public_key` exists in self and if it is enabled.
@@ -832,7 +838,7 @@ impl InitializedValidators {
                             disabled_uuids.remove(key_store.uuid());
                         }
 
-                        match InitializedValidator::from_definition(
+                        match InitializedValidator::from_definition::<T>(
                             def.clone(),
                             &mut key_cache,
                             &mut key_stores,
@@ -883,7 +889,7 @@ impl InitializedValidators {
                         }
                     }
                     SigningDefinition::Web3Signer { .. } => {
-                        match InitializedValidator::from_definition(
+                        match InitializedValidator::from_definition::<T>(
                             def.clone(),
                             &mut key_cache,
                             &mut key_stores,

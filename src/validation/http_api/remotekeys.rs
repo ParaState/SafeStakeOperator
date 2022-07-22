@@ -187,9 +187,9 @@ pub fn delete<T: SlotClock + 'static, E: EthSpec>(
     Ok(DeleteRemotekeysResponse { data: statuses })
 }
 
-fn delete_single_remotekey(
+fn delete_single_remotekey<E: EthSpec>(
     pubkey_bytes: &PublicKeyBytes,
-    initialized_validators: &mut InitializedValidators,
+    initialized_validators: &mut InitializedValidators<E>,
     task_executor: TaskExecutor,
 ) -> Result<DeleteRemotekeyStatus, String> {
     if let Some(handle) = task_executor.handle() {

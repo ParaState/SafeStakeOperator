@@ -226,7 +226,7 @@ pub fn delete<T: SlotClock + 'static, E: EthSpec>(
         .pubkeys
         .iter()
         .map(|pubkey_bytes| {
-            match delete_single_keystore(
+            match delete_single_keystore::<E>(
                 pubkey_bytes,
                 &mut initialized_validators,
                 task_executor.clone(),
@@ -279,9 +279,9 @@ pub fn delete<T: SlotClock + 'static, E: EthSpec>(
     })
 }
 
-fn delete_single_keystore(
+fn delete_single_keystore<T: EthSpec>(
     pubkey_bytes: &PublicKeyBytes,
-    initialized_validators: &mut InitializedValidators,
+    initialized_validators: &mut InitializedValidators<T>,
     task_executor: TaskExecutor,
 ) -> Result<DeleteKeystoreStatus, String> {
     if let Some(handle) = task_executor.handle() {

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::fs::create_dir_all;
 use serde_derive::{Deserialize, Serialize};
 use crate::DEFAULT_DVF_ROOT_DIR;
-
+use directory::{DEFAULT_VALIDATOR_DIR, DEFAULT_SECRET_DIR};
 /// The file name for the serialized `OperatorCommitteeDefinition` struct.
 pub const NODE_KEY_FILENAME: &str = "node_key.json";
 pub const DB_FILENAME: &str = "dvf_node_db";
@@ -13,10 +13,15 @@ pub const TRANSACTION_PORT_OFFSET: u16 = 0;
 pub const MEMPOOL_PORT_OFFSET: u16 = 1;
 pub const CONSENSUS_PORT_OFFSET: u16 = 2;
 pub const SIGNATURE_PORT_OFFSET: u16 = 3; 
-
+pub const DISCOVERY_PORT_OFFSET: u16 = 4;
+pub const BASE_ADDRESS: [u8; 4] = [127, 0, 0, 1];
+pub const BASE64_ENR : &str = "-IS4QHnRy1Wylt5A2Py5ukhApxV-ULq-sZaPZhrS2vLkTm1INQ2DcCq6LMcdANpoNTMkm4AzvFfxidTEirihxm1hIWIBgmlkgnY0gmlwhH8AAAGJc2VjcDI1NmsxoQKcjEU7tTbn1XAYmdCkvOsfNsQ6L2JP9XDz_spo-Y1PeoN1ZHCCIyo";
+pub const CONTRACT_ABI_PATH: &str = "abi/abi.json";
+pub const BACKEND_IP: [u8; 4] = [127, 0, 0, 1];
+pub const BACKEND_PORT: u16 = 80;
 #[derive(Clone, Serialize, Deserialize)]
 pub struct NodeConfig {
-    pub id: u64,
+    // pub id: u64,
     pub base_address: SocketAddr,
     pub transaction_address: SocketAddr,
     pub mempool_address: SocketAddr,
@@ -24,13 +29,16 @@ pub struct NodeConfig {
     pub signature_address: SocketAddr,
     pub base_store_path: PathBuf,
     pub node_key_path: PathBuf,
+    pub validator_dir: PathBuf,
+    pub secrets_dir: PathBuf,
+    pub backend_address: SocketAddr
 }
 
 impl Default for NodeConfig {
     fn default() -> Self {
         Self::new(
             1,
-            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+            IpAddr::V4(Ipv4Addr::new(BASE_ADDRESS[0], BASE_ADDRESS[1], BASE_ADDRESS[2], BASE_ADDRESS[3])),
             DEFAULT_BASE_PORT, 
         ) 
     }
@@ -47,8 +55,11 @@ impl NodeConfig {
             .join(DEFAULT_DVF_ROOT_DIR);
         let base_store_path = base_dir.join(DB_FILENAME);
         let node_key_path = base_dir.join(NODE_KEY_FILENAME);
+        let validator_dir = base_dir.join(DEFAULT_VALIDATOR_DIR);
+        let secrets_dir = base_dir.join(DEFAULT_SECRET_DIR);
+        let backend_ip = IpAddr::V4(Ipv4Addr::new(BACKEND_IP[0], BACKEND_IP[1], BACKEND_IP[2], BACKEND_IP[3]));
         Self {
-            id,
+            // id,
             base_address: SocketAddr::new(ip.clone(), base_port),
             transaction_address: SocketAddr::new(ip.clone(), base_port + TRANSACTION_PORT_OFFSET),
             mempool_address: SocketAddr::new(ip.clone(), base_port + MEMPOOL_PORT_OFFSET),
@@ -56,6 +67,9 @@ impl NodeConfig {
             signature_address: SocketAddr::new(ip.clone(), base_port + SIGNATURE_PORT_OFFSET),
             base_store_path,
             node_key_path,
+            validator_dir,
+            secrets_dir,
+            backend_address: SocketAddr::new(backend_ip, BACKEND_PORT)
         }
     }
 
@@ -63,7 +77,7 @@ impl NodeConfig {
         if id == 0 {
             panic!("Invalid id");
         }
-        self.id = id;
+        // self.id = id;
         self
     }
 

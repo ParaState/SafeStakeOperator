@@ -268,36 +268,8 @@ impl InitializedValidator {
                     voting_keypair: Arc::new(voting_keypair),
                 }
             }
-            SigningDefinition::Web3Signer {
-                url,
-                root_certificate_path,
-                request_timeout_ms,
-            } => {
-                let signing_url = build_web3_signer_url(&url, &def.voting_public_key)
-                    .map_err(|e| Error::InvalidWeb3SignerUrl(e.to_string()))?;
-                let request_timeout = request_timeout_ms
-                    .map(Duration::from_millis)
-                    .unwrap_or(DEFAULT_REMOTE_SIGNER_REQUEST_TIMEOUT);
 
-                let builder = Client::builder().timeout(request_timeout);
-
-                let builder = if let Some(path) = root_certificate_path {
-                    let certificate = load_pem_certificate(path)?;
-                    builder.add_root_certificate(certificate)
-                } else {
-                    builder
-                };
-
-                let http_client = builder
-                    .build()
-                    .map_err(Error::UnableToBuildWeb3SignerClient)?;
-
-                SigningMethod::Web3Signer {
-                    signing_url,
-                    http_client,
-                    voting_public_key: def.voting_public_key,
-                }
-            }
+            SigningDefinition::Web3Signer {..} => return Err(Error::InvalidActionOnRemoteValidator), 
 
             // [Zico]TODO: To be revised 
             SigningDefinition::DistributedKeystore {

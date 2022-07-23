@@ -132,7 +132,7 @@ impl<T: EthSpec> Node<T> {
             // validators_map: Arc::clone(&validators_map),
             // validator_operators_map: Arc::clone(&validator_operators_map)
         };
-        Discovery::spawn(self_address, base_port + DISCOVERY_PORT_OFFSET, key_ip_map.clone(), node.secret.clone(), Some(BASE64_ENR.to_string()));
+        Discovery::spawn(self_address, base_port + DISCOVERY_PORT_OFFSET, key_ip_map.clone(), node.secret.clone(), Some(node.config.boot_enr.to_string()));
 
         let contract_config = ContractConfig::default();
         ListenContract::spawn(contract_config, !secret_exists, node.secret.name.0.to_vec(), node.config.backend_address.clone(), tx_validator_command, validators_map.clone(), validator_operators_map.clone());

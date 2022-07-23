@@ -127,7 +127,9 @@ impl Config {
         }
 
         if cli_args.value_of("boot-enr").is_some() {
-            config.dvf_node_config.boot_enr = parse_required(cli_args, "boot-enr")?;
+            let boot_enr = parse_required(cli_args, "boot-enr")?;
+            info!(log, "Successfully read boot enr"; "boot-enr" => &boot_enr);
+            config.dvf_node_config.boot_enr = boot_enr;
         }
 
         let mut self_ip : Option<String> = None;

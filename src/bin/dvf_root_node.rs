@@ -35,7 +35,7 @@
 //! The parameters are optional.
 //!
 //!  For a simple CLI discovery service see [discv5-cli](https://github.com/AgeManning/discv5-cli)
-
+use discv5::enr::EnrPublicKey;
 use discv5::{
   enr,
   enr::{k256, CombinedKey},
@@ -97,6 +97,7 @@ async fn main() {
 
   // if the ENR is useful print it
   println!("Node Id: {}", enr.node_id());
+
   if enr.udp_socket().is_some() {
       println!("Base64 ENR: {}", enr.to_base64());
       println!("IP: {}, UDP_PORT:{}", enr.ip().unwrap(), enr.udp().unwrap());
@@ -120,10 +121,11 @@ async fn main() {
       match base64_enr.parse::<enr::Enr<enr::CombinedKey>>() {
           Ok(enr) => {
               println!(
-                  "ENR Read. ip: {:?}, udp_port {:?}, tcp_port: {:?}",
+                  "ENR Read. ip: {:?}, udp_port {:?}, tcp_port: {:?}, public key: {}",
                   enr.ip(),
                   enr.udp(),
-                  enr.tcp()
+                  enr.tcp(),
+                  base64::encode(&enr.public_key().encode()[..])
               );
               if let Err(e) = discv5.add_enr(enr) {
                   println!("ENR was not added: {}", e);

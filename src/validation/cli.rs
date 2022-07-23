@@ -80,7 +80,7 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 .takes_value(true)
         )
         .arg(
-            Arg::with_name("boot-ner")
+            Arg::with_name("boot-enr")
                 .long("boot-enr")
                 .value_name("BOOT_ENR")
                 .help(

@@ -23,14 +23,14 @@ use eth2_keystore::Keystore;
 use lighthouse_metrics::set_gauge;
 use lockfile::{Lockfile, LockfileError};
 use parking_lot::{MappedMutexGuard, Mutex, MutexGuard};
-use reqwest::{Certificate, Client, Error as ReqwestError};
+use reqwest::{Certificate, Error as ReqwestError};
 use slog::{debug, error, info, warn, Logger};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+// use std::time::Duration;
 use types::{Address, Graffiti, Keypair, PublicKey, PublicKeyBytes, EthSpec};
 use url::{ParseError, Url};
 use validator_dir::Builder as ValidatorDirBuilder;
@@ -38,9 +38,7 @@ use validator_dir::Builder as ValidatorDirBuilder;
 use crate::validation::key_cache;
 use crate::validation::key_cache::KeyCache;
 
-use crate::crypto::{ThresholdSignature};
 use crate::validation::{
-    operator::LocalOperator,
     OperatorCommittee};
 use parking_lot::{RwLock};
 use crate::node::node::Node;
@@ -51,7 +49,7 @@ use crate::node::dvfcore::DvfSigner;
 ///
 /// Set to 12 seconds since that's the duration of a slot. A remote signer that cannot sign within
 /// that time is outside the synchronous assumptions of Eth2.
-const DEFAULT_REMOTE_SIGNER_REQUEST_TIMEOUT: Duration = Duration::from_secs(12);
+// const DEFAULT_REMOTE_SIGNER_REQUEST_TIMEOUT: Duration = Duration::from_secs(12);
 
 // Use TTY instead of stdin to capture passwords from users.
 const USE_STDIN: bool = false;

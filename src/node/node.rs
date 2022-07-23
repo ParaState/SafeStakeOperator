@@ -29,7 +29,7 @@ use bls::{Keypair as BlsKeypair, SecretKey as BlsSecretKey};
 use crate::crypto::elgamal::{Ciphertext, Elgamal};
 use eth2_keystore::{KeystoreBuilder};
 use validator_dir::insecure_keys::{INSECURE_PASSWORD};
-use validator_dir::{ValidatorDir, BuilderError};
+use validator_dir::{BuilderError};
 use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
 use crate::validation::validator_dir::share_builder::{insecure_kdf, ShareBuilder};
 const THRESHOLD: u64 = 3;
@@ -60,6 +60,7 @@ impl<T: EthSpec> Node<T> {
         let secret_exists = config.node_key_path.exists();
         let self_address = config.base_address.ip();
         let secret = Node::<T>::open_or_create_secret(config.node_key_path.clone())?;
+        info!("node public key {}", secret.name.encode_base64());
 
         let tx_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let mempool_handler_map = Arc::new(RwLock::new(HashMap::new()));
@@ -190,6 +191,7 @@ impl<T: EthSpec> Node<T> {
                                                     operator_base_address.push(SocketAddr::new(ip.clone(), base_port + DISCOVERY_PORT_OFFSET));
                                                     operator_ids.push(operator.id);
 
+                                                    
                                                     let operator_pk = PublicKey::deserialize(&operator.shared_public_key).unwrap();
                                             
                                                     operator_public_keys.push(operator_pk);

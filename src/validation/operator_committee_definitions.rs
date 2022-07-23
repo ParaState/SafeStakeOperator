@@ -6,7 +6,7 @@
 use crate::validation::account_utils::{write_file_via_temporary};
 use directory::ensure_dir_exists;
 use serde_derive::{Deserialize, Serialize};
-use std::fs::{self, File};
+use std::fs::{File};
 use std::io;
 use std::path::{Path, PathBuf};
 use types::{PublicKey};

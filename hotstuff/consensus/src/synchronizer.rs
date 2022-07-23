@@ -119,7 +119,7 @@ impl Synchronizer {
         }
     }
 
-    async fn waiter(mut store: Store, wait_on: Digest, deliver: Block) -> ConsensusResult<Block> {
+    async fn waiter(store: Store, wait_on: Digest, deliver: Block) -> ConsensusResult<Block> {
         let _ = store.notify_read(wait_on.to_vec()).await?;
         Ok(deliver)
     }

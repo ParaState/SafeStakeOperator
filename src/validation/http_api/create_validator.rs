@@ -1,5 +1,5 @@
 use crate::validation::ValidatorStore;
-use crate::validation::account_utils::validator_definitions::{SigningDefinition, ValidatorDefinition};
+use crate::validation::account_utils::validator_definitions::{ValidatorDefinition};
 use crate::validation::account_utils::{
     eth2_wallet::{bip39::Mnemonic, WalletBuilder},
     random_mnemonic, random_password, ZeroizeString,

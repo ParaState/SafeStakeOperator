@@ -1,7 +1,4 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
-use ed25519_dalek as dalek;
-use ed25519_dalek::ed25519;
-use ed25519_dalek::Signer as _;
 use secp256k1::rand::thread_rng;
 use secp256k1::{generate_keypair, Secp256k1};
 use serde::{de, ser, Deserialize, Serialize};

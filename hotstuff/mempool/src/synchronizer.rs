@@ -83,7 +83,7 @@ impl Synchronizer {
     /// and then delivers its digest.
     async fn waiter(
         missing: Digest,
-        mut store: Store,
+        store: Store,
         deliver: Digest,
         mut handler: Receiver<()>,
     ) -> Result<Option<Digest>, StoreError> {

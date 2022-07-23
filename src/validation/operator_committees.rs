@@ -1,13 +1,9 @@
 use crate::validation::OperatorCommittee;
-use crate::utils::error::DvfError;
-use crate::validation::operator_committee_definitions::{OperatorCommitteeDefinition, OperatorCommitteeDefinitions};
+use crate::validation::operator_committee_definitions::{OperatorCommitteeDefinition};
 use crate::validation::operator::RemoteOperator;
 use crate::DEFAULT_CHANNEL_CAPACITY;
 use crate::node::config::SIGNATURE_PORT_OFFSET;
 use std::sync::Arc;
-use std::convert::TryInto;
-use std::path::PathBuf;
-use std::collections::HashMap;
 use tokio::sync::{RwLock};
 use tokio::sync::mpsc::{channel, Sender};
 use types::Hash256;

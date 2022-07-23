@@ -38,7 +38,7 @@ impl Discovery {
       builder.udp(udp_port);
       builder.build(&enr_key).unwrap()
     };
-    info!("Base64 ENR: {}", self_enr.to_base64());
+    info!("Base64 ENR: {}, IP: {:?}", self_enr.to_base64(), self_enr.ip().unwrap());
     // default configuration with packet filtering
     // let config = Discv5ConfigBuilder::new().enable_packet_filter().build();
 
@@ -72,7 +72,7 @@ impl Discovery {
       // start the discv5 service
       discv5.start(socket_addr).await.unwrap();
       // construct a 30 second interval to search for new peers.
-      let mut query_interval = tokio::time::interval(Duration::from_secs(30));
+      let mut query_interval = tokio::time::interval(Duration::from_secs(15));
       loop {
         tokio::select! {
           _ = query_interval.tick() => {

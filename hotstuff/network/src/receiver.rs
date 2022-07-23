@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures::stream::SplitSink;
 use futures::stream::StreamExt as _;
-use log::{debug, info, warn, error};
+use log::{info, warn, error};
 use std::error::Error;
 use std::net::SocketAddr;
 use tokio::net::{TcpListener, TcpStream};

@@ -1,4 +1,4 @@
-use hsconfig::{Committee as HotstuffCommittee, ConfigError, Parameters};
+use hsconfig::{Committee as HotstuffCommittee, Parameters};
 use consensus::Committee as ConsensusCommittee;
 use mempool::Committee as MempoolCommittee;
 use consensus::{Block, Consensus};
@@ -20,15 +20,13 @@ use types::{Keypair, EthSpec};
 use crate::validation::operator::{LocalOperator, TOperator};
 use futures::SinkExt;
 use crate::node::node::Node;
-use std::path::PathBuf;
 use futures::executor::block_on;
 use crate::utils::error::DvfError;
 use crate::validation::{OperatorCommittee};
 use tokio::sync::{RwLock};
 use parking_lot::{RwLock as ParkingRwLock};
-use eth2_hashing::{Context, Sha256Context};
 use crate::validation::operator_committee_definitions::OperatorCommitteeDefinition; 
-use crate::node::config::{NodeConfig, TRANSACTION_PORT_OFFSET, MEMPOOL_PORT_OFFSET, CONSENSUS_PORT_OFFSET, SIGNATURE_PORT_OFFSET};
+use crate::node::config::{TRANSACTION_PORT_OFFSET, MEMPOOL_PORT_OFFSET, CONSENSUS_PORT_OFFSET, SIGNATURE_PORT_OFFSET};
 use std::net::SocketAddr;
 
 

@@ -18,7 +18,7 @@ pub struct Processor;
 impl Processor {
     pub fn spawn(
         // The persistent storage.
-        mut store: Store,
+        store: Store,
         // Input channel to receive batches.
         mut rx_batch: Receiver<SerializedBatchMessage>,
         // Output channel to send out batches' digests.

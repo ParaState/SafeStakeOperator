@@ -9,16 +9,15 @@ use std::sync::{Arc};
 use tokio::sync::RwLock;
 use std::collections::HashMap;
 use std::{
-  net::{Ipv4Addr, SocketAddr, IpAddr},
+  net::{SocketAddr, IpAddr},
   time::Duration,
 };
 use std::option::Option;
-use hsconfig::Export as _;
 use hsconfig::Secret;
 
 pub struct Discovery {
-  enr: Enr<CombinedKey>,
-  enr_key: CombinedKey
+  // enr: Enr<CombinedKey>,
+  // enr_key: CombinedKey
 }
 impl Discovery {
   pub fn spawn (

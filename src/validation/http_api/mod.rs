@@ -20,7 +20,7 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
-use std::sync::{Arc, Weak};
+use std::sync::{Arc};
 use task_executor::TaskExecutor;
 use types::{ChainSpec, ConfigAndPreset, EthSpec};
 use validator_dir::Builder as ValidatorDirBuilder;

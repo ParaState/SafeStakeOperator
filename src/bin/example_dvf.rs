@@ -1,24 +1,24 @@
 #![recursion_limit = "256"]
 
-use environment::{EnvironmentBuilder, LoggerConfig};
-use dvf::simulator::validator_files::ValidatorFiles;
-use dvf::simulator::{testing_client_config, testing_validator_config};
-use dvf::simulator::{
-    local_network::{LocalNetwork},
-    checks
-};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::cmp::max;
-use futures::prelude::*;
-use rayon::prelude::*;
-use std::net::{IpAddr, Ipv4Addr};
-use tokio::time::sleep;
-use types::{Epoch, MainnetEthSpec, EthSpec};
-use beacon_node::{ClientGenesis};
-use env_logger::Env;
-use dvf::node::config::DEFAULT_BASE_PORT;
-use std::collections::HashMap;
-use std::net::SocketAddr;
+// use environment::{EnvironmentBuilder, LoggerConfig};
+// use dvf::simulator::validator_files::ValidatorFiles;
+// use dvf::simulator::{testing_client_config, testing_validator_config};
+// use dvf::simulator::{
+//     local_network::{LocalNetwork},
+//     checks
+// };
+// use std::time::{Duration, SystemTime, UNIX_EPOCH};
+// use std::cmp::max;
+// use futures::prelude::*;
+// use rayon::prelude::*;
+// use std::net::{IpAddr, Ipv4Addr};
+// use tokio::time::sleep;
+// use types::{Epoch, MainnetEthSpec, EthSpec};
+// use beacon_node::{ClientGenesis};
+// use env_logger::Env;
+// use dvf::node::config::DEFAULT_BASE_PORT;
+// use std::collections::HashMap;
+// use std::net::SocketAddr;
 
 pub fn simple_integration_example() -> Result<(), String> {
     // let mut logger = env_logger::Builder::from_env(Env::default().default_filter_or("info"));

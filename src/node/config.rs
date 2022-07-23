@@ -83,7 +83,7 @@ impl NodeConfig {
 
     pub fn set_base_dir(mut self, path: PathBuf) -> Self {
         if !path.exists() {
-            create_dir_all(&path);
+            let _ = create_dir_all(&path);
         }
         self.base_store_path = path.join(DB_FILENAME);
         self.node_key_path = path.join(NODE_KEY_FILENAME);

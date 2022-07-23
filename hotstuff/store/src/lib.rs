@@ -65,12 +65,12 @@ impl Store {
                         let result = DB::destroy(&Options::default(), p); 
                         match result {
                              Ok(()) => {
-                                 info!("DB deleted success");
-                                 sender.send(true);
+                                info!("DB deleted success");
+                                let _ = sender.send(true);
                              }
                              Err(e) => {
-                                 warn!("DB deleted failure: {}", e);
-                                 sender.send(false);
+                                warn!("DB deleted failure: {}", e);
+                                let _ = sender.send(false);
                              }
                         }
                         break;

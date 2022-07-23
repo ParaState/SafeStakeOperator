@@ -1,4 +1,4 @@
-use secp256k1::{All, Context, Secp256k1, SecretKey, PublicKey, ecdh};
+use secp256k1::{All, Secp256k1, SecretKey, PublicKey, ecdh};
 use sha256::{digest_bytes};
 use aes_gcm::{Aes128Gcm, Key, Nonce, Error};
 use aes_gcm::aead::{Aead, NewAead};
@@ -86,7 +86,7 @@ where R: Rng {
 
         let mut aes_ct = cipher.encrypt(nonce, msg)?;
 
-        cipher.decrypt(nonce, aes_ct.as_slice());
+        let _ = cipher.decrypt(nonce, aes_ct.as_slice());
 
         //nonce_bytes.extend_from_slice(aes_ct.as_slice());
         let aes_ct = [nonce_bytes, aes_ct].concat();

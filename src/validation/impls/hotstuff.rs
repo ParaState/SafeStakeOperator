@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::sync::{Arc};
-use std::{thread, time};
 use crate::validation::{
     generic_operator_committee::{TOperatorCommittee},
     operator::{TOperator},
@@ -11,7 +10,7 @@ use bls::{Hash256, Signature, PublicKey};
 use tokio::sync::{RwLock};
 use tokio::sync::mpsc::{Receiver};
 use futures::future::join_all;
-use log::{info, error};
+use log::{info};
 use tokio::sync::Notify;
 use async_trait::async_trait;
 

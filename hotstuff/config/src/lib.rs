@@ -1,8 +1,6 @@
 use consensus::{Committee as ConsensusCommittee, Parameters as ConsensusParameters};
 use crypto::{generate_secp256k_keypair, generate_production_keypair, PublicKey, SecretKey};
 use mempool::{Committee as MempoolCommittee, Parameters as MempoolParameters};
-use rand::rngs::StdRng;
-use rand::SeedableRng as _;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
@@ -68,7 +66,7 @@ impl Secret {
         Self { name, secret }
     }
 
-    pub fn insecure(state: u64) -> Self {
+    pub fn insecure() -> Self {
         // let mut rng = StdRng::seed_from_u64(state);
         let (name, secret) = generate_secp256k_keypair();
         Self { name, secret }
@@ -79,7 +77,7 @@ impl Export for Secret {}
 
 impl Default for Secret {
     fn default() -> Self {
-        Self::insecure(0) 
+        Self::insecure() 
     }
 }
 

@@ -1,10 +1,7 @@
 use crate::crypto::{ThresholdSignature};
-use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
-use crate::validation::operator_committee_definitions::{OperatorCommitteeDefinition, OperatorCommitteeDefinitions};
-use crate::validation::account_utils::{default_operator_committee_definition_path};
-use validator_dir::{ValidatorDir, BuilderError};
-use std::path::{Path, PathBuf};
-use validator_dir::insecure_keys::{INSECURE_PASSWORD,};
+// use validator_dir::{ValidatorDir, BuilderError};
+// use std::path::{Path, PathBuf};
+// use validator_dir::insecure_keys::{INSECURE_PASSWORD,};
 use types::test_utils::generate_deterministic_keypair;
 // use std::iter::zip;
 use std::collections::HashMap;

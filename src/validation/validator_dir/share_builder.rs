@@ -1,22 +1,19 @@
 //! Reference: lighthouse/common/validator_dir::builder
 
-use crate::crypto::{ThresholdSignature};
 use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
-use crate::validation::operator_committee_definitions::{OperatorCommitteeDefinition, OperatorCommitteeDefinitions};
+use crate::validation::operator_committee_definitions::{OperatorCommitteeDefinition};
 use crate::validation::account_utils::{default_operator_committee_definition_path};
 use validator_dir::{ValidatorDir, BuilderError};
 use std::path::{Path, PathBuf};
 use validator_dir::insecure_keys::{INSECURE_PASSWORD,};
-use types::test_utils::generate_deterministic_keypair;
 use eth2_keystore::{
     json_keystore::{Kdf, Scrypt},
     Keystore, KeystoreBuilder, PlainText, DKLEN,
 };
 use std::fs::{create_dir_all, File};
 use filesystem::create_with_600_perms;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use crate::node::config::DEFAULT_BASE_PORT;
-use crate::test_utils::{generate_deterministic_threshold_keypairs, ThresholdKeyPack};
+use std::net::{SocketAddr};
+use crate::test_utils::{generate_deterministic_threshold_keypairs};
 use bls::{PublicKey, Keypair};
 use std::collections::HashMap;
 

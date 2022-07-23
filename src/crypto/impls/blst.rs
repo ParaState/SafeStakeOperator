@@ -89,7 +89,7 @@ impl TThresholdSignature for BlstThresholdSignature {
                 blst::blst_p2_serialize(sig_in.as_mut_ptr(), &d);
             }
             let sig = blst_core::Signature::deserialize(&sig_in);
-            agg.0.add_signature(&sig.unwrap(), false);
+            let _ = agg.0.add_signature(&sig.unwrap(), false);
         }
         Signature::deserialize(&agg.0.to_signature().to_bytes()).unwrap()
     }

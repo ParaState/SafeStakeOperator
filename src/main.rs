@@ -370,6 +370,9 @@ fn run<E: EthSpec>(
         .value_of("debug-level")
         .ok_or("Expected --debug-level flag")?;
 
+    let mut logger = env_logger::Builder::from_env(Env::default().default_filter_or(debug_level));
+        logger.format_timestamp_millis();
+        logger.init();    
     let log_format = matches.value_of("log-format");
 
     let logfile_debug_level = matches

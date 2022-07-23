@@ -62,6 +62,24 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 .conflicts_with("datadir")
         )
         .arg(
+            Arg::with_name("ip")
+                .long("ip")
+                .value_name("NODE_IP")
+                .help(
+                    "This node's ip which is used for connections with other nodes"
+                )
+                .takes_value(true)
+        )
+        .arg(
+            Arg::with_name("base-port")
+                .long("base-port")
+                .value_name("BASE_PORT")
+                .help(
+                    "This node's BASE_PORT"
+                )
+                .takes_value(true)
+        )
+        .arg(
             Arg::with_name("delete-lockfiles")
             .long("delete-lockfiles")
             .help(

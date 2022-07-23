@@ -244,11 +244,6 @@ impl<T: EthSpec> Node<T> {
 
                                         // generate keypair
                                         let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
-
-                                        
-
-                                        
-                                        
                                         
                                         let def = OperatorCommitteeDefinition {
                                             total: operators.len() as u64,
@@ -260,8 +255,6 @@ impl<T: EthSpec> Node<T> {
                                             node_public_keys: node_public_keys,
                                             base_socket_addresses: operator_base_address
                                         };
-
-                                        // TODO: save sk 
 
                                         let committee_def_path = default_operator_committee_definition_path(&validator_pk, validator_dir.clone());
                                         def.to_file(committee_def_path).map_err(|e| format!("Unable to save committee definition: {:?}", e)).unwrap();

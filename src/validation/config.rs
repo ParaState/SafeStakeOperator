@@ -138,6 +138,7 @@ impl Config {
 
         match self_ip {
             Some(ip) => {
+                info!(log, "Successfully read node ip"; "ip" => &ip);
                 config.dvf_node_config.base_address.set_ip(IpAddr::V4(ip.parse::<Ipv4Addr>().unwrap()));
             },
             _ => {}
@@ -147,6 +148,7 @@ impl Config {
         if cli_args.value_of("base-port").is_some() {
             let base_port_str: String = parse_required(cli_args, "base-port")?;
             base_port = Some(base_port_str.parse::<u16>().unwrap());
+            info!(log, "Successfully read base port"; "base-port" => base_port.unwrap());
         }
 
         match base_port {

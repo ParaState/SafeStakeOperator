@@ -58,7 +58,7 @@ dirs = "3.0.1"
 directory = { path = "lighthouse/common/directory" }
 lockfile = { path = "lighthouse/common/lockfile" }
 environment = { path = "lighthouse/lighthouse/environment" }
-parking_lot = "0.12.0"
+parking_lot = {version = "0.12.0", features = ["send_guard"]}
 exit-future = "0.2.0"
 filesystem = { path = "lighthouse/common/filesystem" }
 hex = "0.4.2"

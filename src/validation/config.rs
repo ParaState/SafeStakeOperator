@@ -126,9 +126,8 @@ impl Config {
             secrets_dir = Some(parse_required(cli_args, "secrets-dir")?);
         }
 
-        let mut boot_enr : Option<String> = None;
         if cli_args.value_of("boot-enr").is_some() {
-            boot_enr = Some(parse_required(cli_args, "boot-enr")?);
+            config.dvf_node_config.boot_enr = parse_required(cli_args, "boot-enr")?;
         }
 
         let mut self_ip : Option<String> = None;

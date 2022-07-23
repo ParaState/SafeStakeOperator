@@ -15,7 +15,7 @@ pub const CONSENSUS_PORT_OFFSET: u16 = 2;
 pub const SIGNATURE_PORT_OFFSET: u16 = 3; 
 pub const DISCOVERY_PORT_OFFSET: u16 = 4;
 pub const BASE_ADDRESS: [u8; 4] = [127, 0, 0, 1];
-pub const BASE64_ENR : &str = "-IS4QHnRy1Wylt5A2Py5ukhApxV-ULq-sZaPZhrS2vLkTm1INQ2DcCq6LMcdANpoNTMkm4AzvFfxidTEirihxm1hIWIBgmlkgnY0gmlwhH8AAAGJc2VjcDI1NmsxoQKcjEU7tTbn1XAYmdCkvOsfNsQ6L2JP9XDz_spo-Y1PeoN1ZHCCIyo";
+pub const BASE64_ENR : &str = "-IS4QFerXwqYOe28mrjkMppF0MOHlWPXz4a3HPZK3wwX4oSVFhmgzEJQbaUMrsAV1e-8cyPJ3ooVQz_Z9fhgloUFE6UBgmlkgnY0gmlwhCNYD_SJc2VjcDI1NmsxoQPKY0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCIyg";
 pub const CONTRACT_ABI_PATH: &str = "abi/abi.json";
 pub const BACKEND_IP: [u8; 4] = [127, 0, 0, 1];
 pub const BACKEND_PORT: u16 = 80;
@@ -31,7 +31,8 @@ pub struct NodeConfig {
     pub node_key_path: PathBuf,
     pub validator_dir: PathBuf,
     pub secrets_dir: PathBuf,
-    pub backend_address: SocketAddr
+    pub backend_address: SocketAddr,
+    pub boot_enr: String
 }
 
 impl Default for NodeConfig {
@@ -70,6 +71,7 @@ impl NodeConfig {
             validator_dir,
             secrets_dir,
             backend_address: SocketAddr::new(backend_ip, BACKEND_PORT),
+            boot_enr: BASE64_ENR.to_string()
         }
     }
 

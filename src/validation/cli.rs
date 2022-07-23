@@ -80,6 +80,15 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 .takes_value(true)
         )
         .arg(
+            Arg::with_name("boot-ner")
+                .long("boot-enr")
+                .value_name("BOOT_ENR")
+                .help(
+                    "This is the enr of the root node"
+                )
+                .takes_value(true)
+        )
+        .arg(
             Arg::with_name("delete-lockfiles")
             .long("delete-lockfiles")
             .help(

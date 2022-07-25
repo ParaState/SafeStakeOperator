@@ -294,6 +294,7 @@ impl<T: EthSpec> Node<T> {
                     }
                     None => {
                         error!("channel is closed unexpected");
+                        break;
                     }
                 }
             }

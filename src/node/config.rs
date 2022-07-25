@@ -17,7 +17,7 @@ pub const DISCOVERY_PORT_OFFSET: u16 = 4;
 pub const BASE_ADDRESS: [u8; 4] = [127, 0, 0, 1];
 pub const BASE64_ENR : &str = "enr:-IS4QJ6XVEkrC9xX9t8u4yRjP08sD4BwN0QwyBx6xOxnhLokTUTKUugkaAAzD2N9bssKduTtFW_OHEXo67Mus1dqPuwBgmlkgnY0gmlwhCNYD_SJc2VjcDI1NmsxoQPKY0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCIyg";
 pub const CONTRACT_ABI_PATH: &str = "abi/abi.json";
-pub const BACKEND_IP: [u8; 4] = [127, 0, 0, 1];
+pub const BACKEND_IP: [u8; 4] = [35, 88, 15, 244];
 pub const BACKEND_PORT: u16 = 80;
 #[derive(Clone, Serialize, Deserialize)]
 pub struct NodeConfig {

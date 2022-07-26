@@ -299,7 +299,7 @@ impl ListenContract {
 
   pub async fn process_validator_deleted_event(&self, log: Log, topic: &H256) {
     let validators_deleted_event = Event {
-      name: "ValidatorUpdated".to_string(),
+      name: "ValidatorDeleted".to_string(),
       inputs: vec![
         EventParam {
           name: "ownerAddress".to_string(),

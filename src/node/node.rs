@@ -170,7 +170,7 @@ impl<T: EthSpec> Node<T> {
                         match validator_command {
                             ValidatorCommand::Start(validator) => {
                                 let validator_id = validator.id;
-                                let validator_address = std::str::from_utf8(validator.validator_address.as_bytes()).unwrap();
+                                // let validator_address = std::str::from_utf8(validator.validator_address.as_bytes()).unwrap();
                                 let validator_operators = validator_operators_map.read().await;
                                 let operators_vec = validator_operators.get(&validator_id);
 

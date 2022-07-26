@@ -24,9 +24,9 @@ const DEFAULT_DELETE_VALIDATOR_TOPIC: &str = "4c63bf11b116f386ae0aee6d8d6df531b5
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Operator {
   pub id: u64, 
-  pub node_public_key: Vec<u8>, // base64
-  pub shared_public_key: Vec<u8>, // 
-  pub encrypted_key: Vec<u8> // base64
+  pub node_public_key: Vec<u8>, 
+  pub shared_public_key: Vec<u8>, 
+  pub encrypted_key: Vec<u8> 
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -123,7 +123,7 @@ impl ListenContract {
           Some(eth_log) => {
             if eth_log.topics[0] == added_topic {
               info!("added topic");
-              listen_contract.process_validator_event(eth_log, &added_topic, ValidatorEventType::ADDED).await;
+              listen_contract.process_validator_add_or_update_event(eth_log, &added_topic, ValidatorEventType::ADDED).await;
             // } else if eth_log.topics[0] == updated_topic {
             //   info!("updated topic");
             //   listen_contract.process_validator_event(eth_log, &updated_topic, ValidatorEventType::UPDATED).await;
@@ -248,19 +248,6 @@ impl ListenContract {
 
     let validator_id = ListenContract::convert_publick_key_to_u64(public_key);
 
-    // match self.store.read(public_key.to_vec()).await.unwrap() {
-    //   Some(_) => {
-    //     // delete 
-    //     info!("discover validator is been deleted");
-    //     self.store.delete(public_key.to_vec()).await;
-    //     let _ = self.channel.send(ValidatorCommand::Stop(public_key.to_vec(), validator_id)).await;
-    //   }, 
-    //   None => {
-    //     // do notheing
-    //     info!("don't need to do anything");
-    //   }
-    // }
-
     // check self is included in this validators
     match self.validators_map.write().await.remove(&validator_id) {
       Some(validator) => {
@@ -272,7 +259,7 @@ impl ListenContract {
     }
   }
 
-  pub async fn process_validator_event(&self, log: Log, topic: &H256, event_type: ValidatorEventType) {
+  pub async fn process_validator_add_or_update_event(&self, log: Log, topic: &H256, event_type: ValidatorEventType) {
     let oess = ParamType::Tuple(vec![ParamType::Uint(256 as usize), ParamType::Bytes, ParamType::Bytes, ParamType::Bytes]);
     let event_name = match event_type {
       ValidatorEventType::ADDED => { "ValidatorAdded".to_string() },
@@ -306,11 +293,11 @@ impl ListenContract {
       data: log.data.0
     }).unwrap();
 
+    self.process_validator_info(parse_log, event_type).await;
   }
 
 
   pub async fn process_validator_deleted_event(&self, log: Log, topic: &H256) {
-    let oess = ParamType::Tuple(vec![ParamType::Uint(256 as usize), ParamType::Bytes, ParamType::Bytes, ParamType::Bytes]);
     let validators_deleted_event = Event {
       name: "ValidatorUpdated".to_string(),
       inputs: vec![
@@ -330,7 +317,8 @@ impl ListenContract {
     let parse_log = validators_deleted_event.parse_log(RawLog {
       topics: vec![Hash::from_slice(&topic.0)],
       data: log.data.0
-    });
+    }).unwrap();
+    self.process_validator_deleted(parse_log).await;
   }
 
   pub fn convert_publick_key_to_u64(publick_key: &Vec<u8>) -> u64 {

@@ -162,7 +162,7 @@ impl<T: EthSpec> Node<T> {
             let node = node;
             let secret = node.read().secret.clone();
             let sk = &secret.secret;
-            let pk = &secret.name;
+            let self_pk = &secret.name;
             let secret_key = secp256k1::SecretKey::from_slice(&sk.0).expect("Unable to load secret key");
             loop {
                 match rx_validator_command.recv().await {
@@ -183,7 +183,8 @@ impl<T: EthSpec> Node<T> {
                                         let mut operator_public_keys: Vec<PublicKey> = Vec::default();
                                         let mut node_public_keys: Vec<hscrypto::PublicKey> = Vec::default();
                                         for operator in operators {
-                                            let operator_public_key = String::from_utf8(operator.node_public_key.clone()).unwrap();
+
+                                            let operator_public_key = base64::encode(operator.node_public_key.clone());
                                             let ip = key_ip_map.get(&operator_public_key);
                                             // get all ips from 
                                             match ip {
@@ -191,17 +192,13 @@ impl<T: EthSpec> Node<T> {
                                                     operator_base_address.push(SocketAddr::new(ip.clone(), base_port + DISCOVERY_PORT_OFFSET));
                                                     operator_ids.push(operator.id);
 
-                                                    
-                                                    let operator_pk = PublicKey::deserialize(&operator.shared_public_key).unwrap();
-                                            
+                                                    let operator_pk = PublicKey::deserialize(&operator.shared_public_key).unwrap();                                            
                                                     operator_public_keys.push(operator_pk);
+                                                    let node_pk = hscrypto::PublicKey(operator.node_public_key.clone().try_into().unwrap());
 
-                                                    let node_pk = hscrypto::PublicKey::decode_base64(&String::from_utf8(operator.node_public_key.clone()).unwrap()).unwrap();
-
-
-                                                    if *pk == node_pk {
+                                                    if *self_pk == node_pk {
                                                         // decrypt 
-                                                        let mut rng = rand::thread_rng();
+                                                        let rng = rand::thread_rng();
                                                         let mut elgamal = Elgamal::new(rng);
 
                                                         let decoded_encrypted_key = base64::decode(&operator.encrypted_key).unwrap();

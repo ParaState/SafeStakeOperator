@@ -118,19 +118,25 @@ impl ListenContract {
       let mut sub = web3.eth_subscribe().subscribe_logs(filter).await.unwrap();
 
       loop {
-        let eth_log = sub.try_next().await.unwrap().unwrap();
-        if eth_log.topics[0] == added_topic {
-          info!("added topic");
-          listen_contract.process_validator_event(eth_log, &added_topic, ValidatorEventType::ADDED).await;
-        // } else if eth_log.topics[0] == updated_topic {
-        //   info!("updated topic");
-        //   listen_contract.process_validator_event(eth_log, &updated_topic, ValidatorEventType::UPDATED).await;
-        } else if eth_log.topics[0] == deleted_topic {
-          info!("deleted topic");
-          listen_contract.process_validator_deleted_event(eth_log, &deleted_topic).await;
-        } else {
-          error!("unkown topic");
+        // let eth_log = sub.try_next().await.unwrap().unwrap();
+        match sub.try_next().await.unwrap() {
+          Some(eth_log) => {
+            if eth_log.topics[0] == added_topic {
+              info!("added topic");
+              listen_contract.process_validator_event(eth_log, &added_topic, ValidatorEventType::ADDED).await;
+            // } else if eth_log.topics[0] == updated_topic {
+            //   info!("updated topic");
+            //   listen_contract.process_validator_event(eth_log, &updated_topic, ValidatorEventType::UPDATED).await;
+            } else if eth_log.topics[0] == deleted_topic {
+              info!("deleted topic");
+              listen_contract.process_validator_deleted_event(eth_log, &deleted_topic).await;
+            } else {
+              error!("unkown topic");
+            }
+          },
+          None => { error!("none event"); }
         }
+        
       }
       
     });

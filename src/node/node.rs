@@ -128,18 +128,15 @@ impl<T: EthSpec> Node<T> {
             consensus_handler_map: Arc::clone(&consensus_handler_map), 
             signature_handler_map: Arc::clone(&signature_handler_map),
             validator_store: None
-            // key_ip_map: Arc::clone(&key_ip_map),
-            // validators_map: Arc::clone(&validators_map),
-            // validator_operators_map: Arc::clone(&validator_operators_map)
         };
-        Discovery::spawn(self_address, base_port + DISCOVERY_PORT_OFFSET, key_ip_map.clone(), node.secret.clone(), Some(node.config.boot_enr.to_string()));
+        Discovery::spawn(self_address, base_port + DISCOVERY_PORT_OFFSET, Arc::clone(&key_ip_map), node.secret.clone(), Some(node.config.boot_enr.to_string()));
 
         let contract_config = ContractConfig::default();
         ListenContract::spawn(contract_config, !secret_exists, node.secret.name.0.to_vec(), node.config.backend_address.clone(), tx_validator_command, validators_map.clone(), validator_operators_map.clone());
 
         let node = Arc::new(ParkingRwLock::new(node));
 
-        Node::process_validator_command(Arc::clone(&node), validators_map, validator_operators_map, key_ip_map, rx_validator_command, base_port, validator_dir.clone(), secrets_dir);
+        Node::process_validator_command(Arc::clone(&node), validators_map, validator_operators_map, Arc::clone(&key_ip_map), rx_validator_command, base_port, validator_dir.clone(), secrets_dir);
 
         Ok(Some(node))
     }
@@ -283,9 +280,6 @@ impl<T: EthSpec> Node<T> {
 
                             },
                             ValidatorCommand::Stop(validator) => {
-                                
-
-
                             }
                         }
                     }

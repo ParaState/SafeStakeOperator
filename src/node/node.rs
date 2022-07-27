@@ -33,6 +33,10 @@ use validator_dir::{BuilderError};
 use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
 use crate::validation::validator_dir::share_builder::{insecure_kdf, ShareBuilder};
 use futures::future::join_all;
+use crate::validation::validator_dir::share_builder::{VOTING_KEYSTORE_SHARE_FILE};
+use directory::ensure_dir_exists;
+use crate::validation::account_utils::default_keystore_share_dir;
+
 const THRESHOLD: u64 = 3;
 fn with_wildcard_ip(mut addr: SocketAddr) -> SocketAddr {
     addr.set_ip("0.0.0.0".parse().unwrap());
@@ -182,6 +186,7 @@ impl<T: EthSpec> Node<T> {
                                         let mut operator_public_keys: Vec<PublicKey> = Vec::default();
                                         let mut node_public_keys: Vec<hscrypto::PublicKey> = Vec::default();
                                         let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
+                                        let mut keystore_share: Option<KeystoreShare> = None;
                                         for operator in operators {
 
                                             let operator_public_key = base64::encode(operator.node_public_key.clone());
@@ -217,12 +222,15 @@ impl<T: EthSpec> Node<T> {
                                                         .map_err(|e| BuilderError::InsecureKeysError(format!("Unable to build keystore: {:?}", e)))
                                                         .unwrap();
 
-                                                        let keystore_share = KeystoreShare::new(keystore, validator_pk.clone(), validator_id, operator.id);
+                                                        keystore_share = Some(KeystoreShare::new(keystore, validator_pk.clone(), validator_id, operator.id));
 
-                                                        ShareBuilder::new(validator_dir.clone())
-                                                        .password_dir(secret_dir.clone())
-                                                        .voting_keystore_share(keystore_share, INSECURE_PASSWORD)
-                                                        .build().unwrap();
+                                                        //let keystore_share_dir = default_keystore_share_dir(&keystore_share, validator_dir.clone());
+                                                        //ensure_dir_exists(&keystore_share_dir).unwrap();
+
+                                                        //ShareBuilder::new(validator_dir.clone())
+                                                        //.password_dir(secret_dir.clone())
+                                                        //.voting_keystore_share(keystore_share, INSECURE_PASSWORD)
+                                                        //.build().unwrap();
                                                     }
 
 
@@ -255,29 +263,46 @@ impl<T: EthSpec> Node<T> {
 
                                         let committee_def_path = default_operator_committee_definition_path(&validator_pk, validator_dir.clone());
                                         info!("path {:?}, pk {:?}", &committee_def_path, &validator_pk);
-                                        def.to_file(committee_def_path).map_err(|e| format!("Unable to save committee definition: error:{:?}", e)).unwrap();
+                                        def.to_file(committee_def_path.clone()).map_err(|e| format!("Unable to save committee definition: error:{:?}", e)).unwrap();
+
+                                        let keystore_share = keystore_share.unwrap();
+                                        let keystore_share_dir = default_keystore_share_dir(&keystore_share, validator_dir.clone());
+                                        ensure_dir_exists(&keystore_share_dir).unwrap();
+                                        let voting_keystore_share_path = keystore_share_dir
+                                            .join(format!("{}", VOTING_KEYSTORE_SHARE_FILE));
                                         
                                         let node = node.read();
                                         match &node.validator_store {
                                             Some(validator_store) => {
-                                                let initialized_validators_arc = validator_store.initialized_validators();
+                                                validator_store.add_validator_keystore_share(
+                                                    voting_keystore_share_path,
+                                                    String::from("YOUR_PASSWORD").into(),
+                                                    true,
+                                                    None,
+                                                    None,
+                                                    committee_def_path,
+                                                    keystore_share.master_id,
+                                                    keystore_share.share_id, 
+                                                ).await;
 
-                                                {
-                                                    let mut initialized_validators = initialized_validators_arc.write();
-                                                    let validator_definitions = initialized_validators.validator_definitions_();
-                                                    validator_definitions.discover_distributed_keystores(&validator_dir, &secret_dir, &log).unwrap();
-                                                }
-                                                
-                                                
-                                                
-                                                
-                                                // validator_definitions.save(&validator_dir).unwrap();
+                                                //let initialized_validators_arc = validator_store.initialized_validators();
 
-                                                // initialized_validators.update_validators().await.unwrap();
-                                                let add_feature = validator_definitions.as_slice().iter().map(|d| async move{
-                                                        validator_store.add_validator(d.clone()).await
-                                                });
-                                                join_all(add_feature).await;
+                                                //{
+                                                    //let mut initialized_validators = initialized_validators_arc.write();
+                                                    //let validator_definitions = initialized_validators.validator_definitions_();
+                                                    //validator_definitions.discover_distributed_keystores(&validator_dir, &secret_dir, &log).unwrap();
+                                                //}
+                                                
+                                                
+                                                
+                                                
+                                                //// validator_definitions.save(&validator_dir).unwrap();
+
+                                                //// initialized_validators.update_validators().await.unwrap();
+                                                //let add_feature = validator_definitions.as_slice().iter().map(|d| async move{
+                                                        //validator_store.add_validator(d.clone()).await
+                                                //});
+                                                //join_all(add_feature).await;
 
                                                 info!("after update validator");
                                             },

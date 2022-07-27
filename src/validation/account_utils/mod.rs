@@ -16,6 +16,7 @@ use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 use types::{PublicKey};
 
+
 pub mod validator_definitions;
 
 pub use eth2_keystore;
@@ -63,6 +64,16 @@ pub fn default_keystore_share_password_path<P: AsRef<Path>>(
     secrets_dir
         .as_ref()
         .join(format!("{}_{}", &keystore_share.master_public_key, keystore_share.share_id))
+}
+
+pub fn default_keystore_share_dir<P: AsRef<Path>>(
+    keystore_share: &KeystoreShare,
+    validators_dir: P,
+) -> PathBuf {
+    validators_dir
+        .as_ref()
+        .join(format!("{}", keystore_share.master_public_key))
+        .join(format!("{}", keystore_share.share_id))
 }
 
 /// Returns the default path where an operator committee definition should be stored.

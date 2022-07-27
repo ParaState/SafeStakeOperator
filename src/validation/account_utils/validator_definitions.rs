@@ -165,6 +165,43 @@ impl ValidatorDefinition {
             },
         })
     }
+
+    /// Create a new definition for a voting keystore share at the given `voting_keystore_share_path` that can
+    /// be unlocked with `voting_keystore_share_password`.
+    ///
+    /// ## Notes
+    ///
+    /// This function does not check the password against the keystore.
+    pub fn new_keystore_share_with_password<P: AsRef<Path>>(
+        voting_keystore_share_path: P,
+        voting_keystore_share_password: Option<ZeroizeString>,
+        graffiti: Option<GraffitiString>,
+        suggested_fee_recipient: Option<Address>,
+        operator_committee_definition_path: P,
+        operator_committee_index: u64,
+        operator_id: u64
+    ) -> Result<Self, Error> {
+        let voting_keystore_share_path = voting_keystore_share_path.as_ref().into();
+        let keystore_share =
+            KeystoreShare::from_json_file(&voting_keystore_share_path).map_err(Error::UnableToOpenKeystore)?;
+        let voting_public_key = keystore_share.master_public_key;
+
+        Ok(ValidatorDefinition {
+            enabled: true,
+            voting_public_key,
+            description: keystore_share.keystore.description().unwrap_or("").to_string(),
+            graffiti,
+            suggested_fee_recipient,
+            signing_definition: SigningDefinition::DistributedKeystore {
+                voting_keystore_share_path,
+                voting_keystore_share_password_path: None,
+                voting_keystore_share_password,
+                operator_committee_definition_path: Some(operator_committee_definition_path.as_ref().into()), 
+                operator_committee_index,
+                operator_id,
+            },
+        })
+    }
 }
 
 /// A list of `ValidatorDefinition` that serves as a serde-able configuration file which defines a

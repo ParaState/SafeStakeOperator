@@ -264,9 +264,12 @@ impl<T: EthSpec> Node<T> {
                                                 
                                                 let validator_definitions = initialized_validators.validator_definitions_();
                                                 validator_definitions.discover_distributed_keystores(&validator_dir, &secret_dir, &log).unwrap();
-                                                validator_definitions.save(&validator_dir).unwrap();
+                                                // validator_definitions.save(&validator_dir).unwrap();
 
-                                                initialized_validators.update_validators().await.unwrap();
+                                                // initialized_validators.update_validators().await.unwrap();
+                                                let _ = validator_definitions.as_slice().iter().map(|d| 
+                                                    validator_store.add_validator(d.clone())
+                                                );
 
                                                 info!("after update validator");
                                             },

@@ -180,6 +180,7 @@ impl<T: EthSpec> Node<T> {
                                         let mut operator_ids: Vec<u64> = Vec::default();
                                         let mut operator_public_keys: Vec<PublicKey> = Vec::default();
                                         let mut node_public_keys: Vec<hscrypto::PublicKey> = Vec::default();
+                                        let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
                                         for operator in operators {
 
                                             let operator_public_key = base64::encode(operator.node_public_key.clone());
@@ -215,7 +216,7 @@ impl<T: EthSpec> Node<T> {
                                                         .map_err(|e| BuilderError::InsecureKeysError(format!("Unable to build keystore: {:?}", e)))
                                                         .unwrap();
 
-                                                        let keystore_share = KeystoreShare::new(keystore, shared_public_key, validator_id, operator.id);
+                                                        let keystore_share = KeystoreShare::new(keystore, validator_pk.clone(), validator_id, operator.id);
 
                                                         ShareBuilder::new(validator_dir.clone())
                                                         .password_dir(secret_dir.clone())
@@ -238,7 +239,7 @@ impl<T: EthSpec> Node<T> {
                                         }
 
                                         // generate keypair
-                                        let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
+                                        
                                         
                                         let def = OperatorCommitteeDefinition {
                                             total: operators.len() as u64,
@@ -252,7 +253,8 @@ impl<T: EthSpec> Node<T> {
                                         };
 
                                         let committee_def_path = default_operator_committee_definition_path(&validator_pk, validator_dir.clone());
-                                        def.to_file(committee_def_path).map_err(|e| format!("Unable to save committee definition: {:?}", e)).unwrap();
+                                        info!("path {:?}, pk {:?}", &committee_def_path, &validator_pk);
+                                        def.to_file(committee_def_path).map_err(|e| format!("Unable to save committee definition: error:{:?}", e)).unwrap();
                                         
                                         let node = node.read();
                                         match &node.validator_store {

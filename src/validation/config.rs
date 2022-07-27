@@ -174,8 +174,11 @@ impl Config {
 
         ensure_dir_exists(&config.validator_dir)?;
         ensure_dir_exists(&config.secrets_dir)?;
-
-        config.dvf_node_config = config.dvf_node_config.set_secret_dir(config.secrets_dir.clone()).set_validator_dir(config.validator_dir.clone());
+        let base_dir = dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(DEFAULT_ROOT_DIR)
+            .join(DEFAULT_HARDCODED_NETWORK);
+        config.dvf_node_config = config.dvf_node_config.set_secret_dir(config.secrets_dir.clone()).set_validator_dir(config.validator_dir.clone()).set_node_key_path(base_dir.clone()).set_store_path(base_dir);
         if !config.validator_dir.exists() {
             fs::create_dir_all(&config.validator_dir)
                 .map_err(|e| format!("Failed to create {:?}: {:?}", config.validator_dir, e))?;

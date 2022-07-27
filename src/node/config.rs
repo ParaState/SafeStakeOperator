@@ -111,4 +111,14 @@ impl NodeConfig {
         self.secrets_dir = secret_dir;
         self
     }
+
+    pub fn set_node_key_path(mut self, base_dir: PathBuf) -> Self {
+        self.node_key_path = base_dir.join(NODE_KEY_FILENAME);
+        self
+    }
+
+    pub fn set_store_path(mut self, base_dir: PathBuf) -> Self {
+        self.base_store_path = base_dir.join(DB_FILENAME);
+        self
+    }
 }

@@ -175,6 +175,7 @@ impl Config {
         ensure_dir_exists(&config.validator_dir)?;
         ensure_dir_exists(&config.secrets_dir)?;
 
+        config.dvf_node_config = config.dvf_node_config.set_secret_dir(config.secrets_dir.clone()).set_validator_dir(config.validator_dir.clone());
         if !config.validator_dir.exists() {
             fs::create_dir_all(&config.validator_dir)
                 .map_err(|e| format!("Failed to create {:?}: {:?}", config.validator_dir, e))?;

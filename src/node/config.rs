@@ -54,6 +54,7 @@ impl NodeConfig {
         let base_dir = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join(DEFAULT_DVF_ROOT_DIR);
+
         let base_store_path = base_dir.join(DB_FILENAME);
         let node_key_path = base_dir.join(NODE_KEY_FILENAME);
         let validator_dir = base_dir.join(DEFAULT_VALIDATOR_DIR);
@@ -98,6 +99,16 @@ impl NodeConfig {
         self.mempool_address.set_port(new_port + MEMPOOL_PORT_OFFSET);
         self.consensus_address.set_port(new_port + CONSENSUS_PORT_OFFSET);
         self.signature_address.set_port(new_port + SIGNATURE_PORT_OFFSET);
+        self
+    }
+
+    pub fn set_validator_dir(mut self, validator_dir: PathBuf) -> Self {
+        self.validator_dir = validator_dir;
+        self
+    }
+
+    pub fn set_secret_dir(mut self, secret_dir: PathBuf) -> Self {
+        self.secrets_dir = secret_dir;
         self
     }
 }

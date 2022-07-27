@@ -263,10 +263,10 @@ impl<T: EthSpec> Node<T> {
                                                 let mut initialized_validators = initialized_validators_arc.write();
                                                 
                                                 let validator_definitions = initialized_validators.validator_definitions_();
-
                                                 validator_definitions.discover_distributed_keystores(&validator_dir, &secret_dir, &log).unwrap();
-
                                                 validator_definitions.save(&validator_dir).unwrap();
+
+                                                initialized_validators.update_validators().await.unwrap();
                                             },
                                             _ => {error!("unexpected error happen"); }
                                         }

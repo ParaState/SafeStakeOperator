@@ -267,6 +267,8 @@ impl<T: EthSpec> Node<T> {
                                                 validator_definitions.save(&validator_dir).unwrap();
 
                                                 initialized_validators.update_validators().await.unwrap();
+
+                                                info!("after update validator");
                                             },
                                             _ => {error!("unexpected error happen"); }
                                         }

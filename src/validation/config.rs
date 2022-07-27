@@ -177,7 +177,7 @@ impl Config {
         let base_dir = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join(DEFAULT_ROOT_DIR)
-            .join(DEFAULT_HARDCODED_NETWORK);
+            .join(get_network_dir(cli_args));
         config.dvf_node_config = config.dvf_node_config.set_secret_dir(config.secrets_dir.clone()).set_validator_dir(config.validator_dir.clone()).set_node_key_path(base_dir.clone()).set_store_path(base_dir);
         if !config.validator_dir.exists() {
             fs::create_dir_all(&config.validator_dir)

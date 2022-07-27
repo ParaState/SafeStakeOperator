@@ -32,6 +32,7 @@ use validator_dir::insecure_keys::{INSECURE_PASSWORD};
 use validator_dir::{BuilderError};
 use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
 use crate::validation::validator_dir::share_builder::{insecure_kdf, ShareBuilder};
+use futures::future::join_all;
 const THRESHOLD: u64 = 3;
 fn with_wildcard_ip(mut addr: SocketAddr) -> SocketAddr {
     addr.set_ip("0.0.0.0".parse().unwrap());
@@ -267,9 +268,10 @@ impl<T: EthSpec> Node<T> {
                                                 // validator_definitions.save(&validator_dir).unwrap();
 
                                                 // initialized_validators.update_validators().await.unwrap();
-                                                let _ = validator_definitions.as_slice().iter().map(|d| 
-                                                    validator_store.add_validator(d.clone())
-                                                );
+                                                let add_feature = validator_definitions.as_slice().iter().map(|d| async move{
+                                                        validator_store.add_validator(d.clone()).await
+                                                });
+                                                join_all(add_feature).await;
 
                                                 info!("after update validator");
                                             },

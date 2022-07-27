@@ -13,7 +13,7 @@ use tokio::sync::mpsc::{channel, Receiver};
 use slog::{Logger, o};
 /// The default channel capacity for this module.
 use crate::node::dvfcore::{ DvfSignatureReceiverHandler};
-use crate::node::config::{NodeConfig, DISCOVERY_PORT_OFFSET, BASE64_ENR};
+use crate::node::config::{NodeConfig, DISCOVERY_PORT_OFFSET};
 use std::path::PathBuf;
 use std::net::IpAddr;
 use crate::node::contract::{ValidatorCommand, Validator, Operator};

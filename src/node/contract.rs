@@ -89,13 +89,6 @@ impl ListenContract {
   ) {
 
     tokio::spawn(async move {
-      let web3: Web3<WebSocket> = Web3::new(WebSocket::new(&config.transport_url).await.unwrap());
-      let address: Address = Address::from_slice(&hex::decode(&config.contract_address).unwrap());
-      let contract = Contract::from_json(web3.eth(), address, &config.abi_json.as_bytes()).unwrap();
-      let added_topic = H256::from_slice(&hex::decode(config.added_topic).unwrap());
-      // let updated_topic = H256::from_slice(&hex::decode(config.updated_topic).unwrap());
-      let deleted_topic = H256::from_slice(&hex::decode(config.deleted_topic).unwrap());
-
       let listen_contract = Self {
         node_public_key,
         channel,
@@ -110,12 +103,16 @@ impl ListenContract {
         info!("request from backend");
       }
 
-      // listen from smart contract
-      let filter = FilterBuilder::default().address(vec![contract.address()])
-          // .topics(Some(vec![added_topic, updated_topic, deleted_topic]), None, None, None)
-          .topics(Some(vec![added_topic, deleted_topic]), None, None, None)
-          .build();
+      let added_topic = H256::from_slice(&hex::decode(config.added_topic).unwrap());
+      // let updated_topic = H256::from_slice(&hex::decode(config.updated_topic).unwrap());
+      let deleted_topic = H256::from_slice(&hex::decode(config.deleted_topic).unwrap());
       loop {
+        let web3: Web3<WebSocket> = Web3::new(WebSocket::new(&config.transport_url).await.unwrap());
+        // listen from smart contract
+        let filter = FilterBuilder::default().address(vec![Address::from_slice(&hex::decode(&config.contract_address).unwrap())])
+        // .topics(Some(vec![added_topic, updated_topic, deleted_topic]), None, None, None)
+          .topics(Some(vec![added_topic.clone(), deleted_topic.clone()]), None, None, None)
+          .build();
         let mut sub = web3.eth_subscribe().subscribe_logs(filter.clone()).await.unwrap();
         loop {
           // let eth_log = sub.try_next().await.unwrap().unwrap();

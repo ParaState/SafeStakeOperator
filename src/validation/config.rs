@@ -7,6 +7,7 @@ use directory::{
     get_network_dir, DEFAULT_HARDCODED_NETWORK, DEFAULT_ROOT_DIR, DEFAULT_SECRET_DIR,
     DEFAULT_VALIDATOR_DIR,
 };
+use directory::ensure_dir_exists;
 use eth2::types::Graffiti;
 use sensitive_url::SensitiveUrl;
 use serde_derive::{Deserialize, Serialize};
@@ -170,6 +171,9 @@ impl Config {
                 .join(get_network_dir(cli_args))
                 .join(DEFAULT_SECRET_DIR)
         });
+
+        ensure_dir_exists(&config.validator_dir)?;
+        ensure_dir_exists(&config.secrets_dir)?;
 
         if !config.validator_dir.exists() {
             fs::create_dir_all(&config.validator_dir)

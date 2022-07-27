@@ -66,7 +66,8 @@ impl<T: EthSpec> Node<T> {
         let mempool_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let consensus_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let signature_handler_map = Arc::new(RwLock::new(HashMap::new()));
-        let key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>> = Arc::new(RwLock::new(HashMap::new()));
+
+        let key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>> = Arc::new(RwLock::new(HashMap::from([(base64::encode(&secret.name), config.base_address.ip().clone())])));
         let validators_map: Arc<RwLock<HashMap<u64, Validator>>> = Arc::new(RwLock::new(HashMap::new()));
         let validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>> = Arc::new(RwLock::new(HashMap::new()));
 
@@ -186,7 +187,7 @@ impl<T: EthSpec> Node<T> {
                                             // get all ips from 
                                             match ip {
                                                 Some(ip) => {
-                                                    operator_base_address.push(SocketAddr::new(ip.clone(), base_port + DISCOVERY_PORT_OFFSET));
+                                                    operator_base_address.push(SocketAddr::new(ip.clone(), base_port));
                                                     operator_ids.push(operator.id);
 
                                                     let operator_pk = PublicKey::deserialize(&operator.shared_public_key).unwrap();                                            
@@ -197,10 +198,8 @@ impl<T: EthSpec> Node<T> {
                                                         // decrypt 
                                                         let rng = rand::thread_rng();
                                                         let mut elgamal = Elgamal::new(rng);
-
-                                                        let decoded_encrypted_key = base64::decode(&operator.encrypted_key).unwrap();
                                                         
-                                                        let ciphertext = Ciphertext::from_bytes(&decoded_encrypted_key);
+                                                        let ciphertext = Ciphertext::from_bytes(&operator.encrypted_key);
                                                         let plain_shared_key = elgamal.decrypt(&ciphertext, &secret_key).unwrap();
 
                                                         let shared_secret_key = BlsSecretKey::deserialize(&plain_shared_key).unwrap();

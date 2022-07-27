@@ -1,7 +1,6 @@
 use web3::{
   Web3,
   transports::WebSocket,
-  contract::{Contract},
   types::{FilterBuilder, Address, H256, Log}, 
   futures::{TryStreamExt}
 }; 

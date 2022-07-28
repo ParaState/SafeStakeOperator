@@ -203,7 +203,11 @@ impl<T: EthSpec> Node<T> {
                                                         let mut elgamal = Elgamal::new(rng);
                                                         
                                                         let ciphertext = Ciphertext::from_bytes(&operator.encrypted_key);
-                                                        let plain_shared_key = elgamal.decrypt(&ciphertext, &secret_key).unwrap();
+                                                        let plain_shared_key = elgamal.decrypt(&ciphertext, &secret_key)
+                                                            .map_err(|e| format!("Unable to decrypt: ciphertext({:?}), secret_key({})", 
+                                                                                 hex::encode(operator.encrypted_key.as_slice()),
+                                                                                 secret_key.display_secret())
+                                                            ).unwrap();
 
                                                         let shared_secret_key = BlsSecretKey::deserialize(&plain_shared_key).unwrap();
 

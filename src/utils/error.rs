@@ -18,6 +18,8 @@ pub enum DvfError {
     InsufficientValidSignatures {got: usize, expected: usize},
     /// Invalid operator signature
     InvalidSignatureShare {id: u64},
+    /// Invalid operator id 
+    InvalidOperatorId {id: u64},
     /// Different length
     DifferentLength {x: usize, y: usize},
     /// 

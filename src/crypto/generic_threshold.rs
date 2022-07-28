@@ -141,6 +141,9 @@ where
 
         let total = sigs.len();
         for i in 0..total {
+            if ids[i] == 0 {
+                return Err(DvfError::InvalidOperatorId {id: ids[i]});
+            }
             if valid_set.contains(&ids[i]) {
                 continue;
             }

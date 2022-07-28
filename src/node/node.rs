@@ -10,7 +10,6 @@ use tokio::sync::RwLock;
 use parking_lot::RwLock as ParkingRwLock;
 use std::net::SocketAddr;
 use tokio::sync::mpsc::{channel, Receiver};
-use slog::{Logger, o};
 /// The default channel capacity for this module.
 use crate::node::dvfcore::{ DvfSignatureReceiverHandler};
 use crate::node::config::{NodeConfig, DISCOVERY_PORT_OFFSET};
@@ -158,7 +157,6 @@ impl<T: EthSpec> Node<T> {
     }
 
     pub fn process_validator_command(node: Arc<ParkingRwLock<Node<T>>>, validators_map: Arc<RwLock<HashMap<u64, Validator>>>, validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>, operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,  mut rx_validator_command: Receiver<ValidatorCommand>, base_port: u16, validator_dir: PathBuf, secret_dir: PathBuf) {
-        //let log = Logger::root(slog::Discard, o!("service" => "process_validator_command"));
         tokio::spawn(async move {
             let node = node;
             let secret = node.read().secret.clone();
@@ -270,7 +268,7 @@ impl<T: EthSpec> Node<T> {
                                         let node = node.read();
                                         match &node.validator_store {
                                             Some(validator_store) => {
-                                                validator_store.add_validator_keystore_share(
+                                                let _ = validator_store.add_validator_keystore_share(
                                                     voting_keystore_share_path,
                                                     voting_keystore_share_password_path,
                                                     true,

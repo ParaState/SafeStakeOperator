@@ -191,7 +191,7 @@ impl ListenContract {
               _ => None
             };
             let opeartor = Operator {
-              id : id.unwrap(),
+              id : id.unwrap() + 1, // 0 is a reserved id for threshold signature, so operator id should start from 1
               node_public_key: node_public_key.unwrap().clone(),
               shared_public_key: shared_publick_key.unwrap().clone(),
               encrypted_key: encrypted_key.unwrap().clone()

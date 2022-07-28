@@ -15,7 +15,7 @@ use std::io;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 use types::{PublicKey};
-
+use crate::validation::validator_dir::share_builder::{VOTING_KEYSTORE_SHARE_FILE};
 
 pub mod validator_definitions;
 
@@ -74,6 +74,14 @@ pub fn default_keystore_share_dir<P: AsRef<Path>>(
         .as_ref()
         .join(format!("{}", keystore_share.master_public_key))
         .join(format!("{}", keystore_share.share_id))
+}
+
+pub fn default_keystore_share_path<P: AsRef<Path>>(
+    keystore_share: &KeystoreShare,
+    validators_dir: P,
+) -> PathBuf {
+    default_keystore_share_dir(keystore_share, validators_dir)
+        .join(format!("{}", VOTING_KEYSTORE_SHARE_FILE))
 }
 
 /// Returns the default path where an operator committee definition should be stored.

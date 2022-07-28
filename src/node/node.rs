@@ -32,10 +32,8 @@ use validator_dir::insecure_keys::{INSECURE_PASSWORD};
 use validator_dir::{BuilderError};
 use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
 use crate::validation::validator_dir::share_builder::{insecure_kdf, ShareBuilder};
-use futures::future::join_all;
-use crate::validation::validator_dir::share_builder::{VOTING_KEYSTORE_SHARE_FILE};
-use directory::ensure_dir_exists;
-use crate::validation::account_utils::default_keystore_share_dir;
+use crate::validation::account_utils::default_keystore_share_password_path;
+use crate::validation::account_utils::default_keystore_share_path;
 
 const THRESHOLD: u64 = 3;
 fn with_wildcard_ip(mut addr: SocketAddr) -> SocketAddr {
@@ -160,7 +158,7 @@ impl<T: EthSpec> Node<T> {
     }
 
     pub fn process_validator_command(node: Arc<ParkingRwLock<Node<T>>>, validators_map: Arc<RwLock<HashMap<u64, Validator>>>, validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>, operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,  mut rx_validator_command: Receiver<ValidatorCommand>, base_port: u16, validator_dir: PathBuf, secret_dir: PathBuf) {
-        let log = Logger::root(slog::Discard, o!("service" => "process_validator_command"));
+        //let log = Logger::root(slog::Discard, o!("service" => "process_validator_command"));
         tokio::spawn(async move {
             let node = node;
             let secret = node.read().secret.clone();
@@ -216,21 +214,21 @@ impl<T: EthSpec> Node<T> {
                                                         let shared_key_pair = BlsKeypair::from_components(shared_public_key.clone(), shared_secret_key);
 
                                                         let keystore = KeystoreBuilder::new(&shared_key_pair, INSECURE_PASSWORD, "".into())
-                                                        .map_err(|e| BuilderError::InsecureKeysError(format!("Unable to create keystore builder: {:?}", e))).unwrap()
-                                                        .kdf(insecure_kdf())
-                                                        .build()
-                                                        .map_err(|e| BuilderError::InsecureKeysError(format!("Unable to build keystore: {:?}", e)))
-                                                        .unwrap();
+                                                            .map_err(|e| BuilderError::InsecureKeysError(format!("Unable to create keystore builder: {:?}", e))).unwrap()
+                                                            .kdf(insecure_kdf())
+                                                            .build()
+                                                            .map_err(|e| BuilderError::InsecureKeysError(format!("Unable to build keystore: {:?}", e)))
+                                                            .unwrap();
 
                                                         keystore_share = Some(KeystoreShare::new(keystore, validator_pk.clone(), validator_id, operator.id));
 
                                                         //let keystore_share_dir = default_keystore_share_dir(&keystore_share, validator_dir.clone());
                                                         //ensure_dir_exists(&keystore_share_dir).unwrap();
 
-                                                        //ShareBuilder::new(validator_dir.clone())
-                                                        //.password_dir(secret_dir.clone())
-                                                        //.voting_keystore_share(keystore_share, INSECURE_PASSWORD)
-                                                        //.build().unwrap();
+                                                        ShareBuilder::new(validator_dir.clone())
+                                                            .password_dir(secret_dir.clone())
+                                                            .voting_keystore_share(keystore_share.clone().unwrap(), INSECURE_PASSWORD)
+                                                            .build().unwrap();
                                                     }
 
 
@@ -266,17 +264,15 @@ impl<T: EthSpec> Node<T> {
                                         def.to_file(committee_def_path.clone()).map_err(|e| format!("Unable to save committee definition: error:{:?}", e)).unwrap();
 
                                         let keystore_share = keystore_share.unwrap();
-                                        let keystore_share_dir = default_keystore_share_dir(&keystore_share, validator_dir.clone());
-                                        ensure_dir_exists(&keystore_share_dir).unwrap();
-                                        let voting_keystore_share_path = keystore_share_dir
-                                            .join(format!("{}", VOTING_KEYSTORE_SHARE_FILE));
+                                        let voting_keystore_share_path = default_keystore_share_path(&keystore_share, validator_dir.clone());
+                                        let voting_keystore_share_password_path = default_keystore_share_password_path(&keystore_share, secret_dir.clone());
                                         
                                         let node = node.read();
                                         match &node.validator_store {
                                             Some(validator_store) => {
                                                 validator_store.add_validator_keystore_share(
                                                     voting_keystore_share_path,
-                                                    String::from("YOUR_PASSWORD").into(),
+                                                    voting_keystore_share_password_path,
                                                     true,
                                                     None,
                                                     None,
@@ -318,7 +314,7 @@ impl<T: EthSpec> Node<T> {
 
 
                             },
-                            ValidatorCommand::Stop(validator) => {
+                            ValidatorCommand::Stop(_validator) => {
                             }
                         }
                     }

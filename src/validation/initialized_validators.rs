@@ -180,7 +180,7 @@ impl InitializedValidator {
         def: ValidatorDefinition,
         key_cache: &mut KeyCache,
         key_stores: &mut HashMap<PathBuf, Keystore>,
-        committee_cache: &mut HashMap<u64, Arc<RwLock<OperatorCommittee>>>,
+        //committee_cache: &mut HashMap<u64, Arc<RwLock<OperatorCommittee>>>,
         node: Option<Arc<RwLock<Node<T>>>>,
     ) -> Result<Self, Error> {
         if !def.enabled {
@@ -275,8 +275,8 @@ impl InitializedValidator {
                 voting_keystore_share_password_path,
                 voting_keystore_share_password,
                 operator_committee_definition_path, 
-                operator_committee_index,
-                operator_id,
+                operator_committee_index: _,
+                operator_id: _,
             } => {
                 // [TODO] Zico: Start copying from LocalKeystore. Find a way to reuse.
                 use std::collections::hash_map::Entry::*;
@@ -358,7 +358,8 @@ impl InitializedValidator {
                 ).await;
 
                 SigningMethod::DistributedKeystore {
-                    voting_keystore_lockfile: <_>::default(),
+                    //voting_keystore_lockfile: <_>::default(),
+                    voting_keystore_lockfile: voting_keystore_share_lockfile,
                     voting_public_key: validator_public_key,
                     dvf_signer: signer,
                 }
@@ -806,7 +807,7 @@ impl<T: EthSpec> InitializedValidators<T> {
     pub(crate) async fn update_validators(&mut self) -> Result<(), Error> {
         //use key cache if available
         let mut key_stores = HashMap::new();
-        let mut committee_cache = HashMap::new();
+        //let mut committee_cache = HashMap::new();
 
         // Create a lock file for the cache
         let key_cache_path = KeyCache::cache_file_path(&self.validators_dir);
@@ -840,7 +841,7 @@ impl<T: EthSpec> InitializedValidators<T> {
                             def.clone(),
                             &mut key_cache,
                             &mut key_stores,
-                            &mut committee_cache,
+                            //&mut committee_cache,
                             None,
                         )
                         .await
@@ -891,7 +892,7 @@ impl<T: EthSpec> InitializedValidators<T> {
                             def.clone(),
                             &mut key_cache,
                             &mut key_stores,
-                            &mut committee_cache,
+                            //&mut committee_cache,
                             None,
                         )
                         .await
@@ -931,9 +932,9 @@ impl<T: EthSpec> InitializedValidators<T> {
                         let pubkey_bytes = def.voting_public_key.compress();
 
                         // [TODO] Zico: revisit here
-                        //if self.validators.contains_key(&pubkey_bytes) {
-                            //continue;
-                        //}
+                        if self.validators.contains_key(&pubkey_bytes) {
+                            continue;
+                        }
 
                         if let Some(key_store) = key_stores.get(voting_keystore_share_path) {
                             disabled_uuids.remove(key_store.uuid());
@@ -943,7 +944,7 @@ impl<T: EthSpec> InitializedValidators<T> {
                             def.clone(),
                             &mut key_cache,
                             &mut key_stores,
-                            &mut committee_cache,
+                            //&mut committee_cache,
                             self.node.clone(),
                         )
                         .await

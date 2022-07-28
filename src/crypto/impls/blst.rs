@@ -94,7 +94,7 @@ impl TThresholdSignature for BlstThresholdSignature {
         Signature::deserialize(&agg.0.to_signature().to_bytes()).unwrap()
     }
 
-    fn threshold_aggregate(&self, sigs: &[&Signature], pks: &[&PublicKey], msg: Hash256) -> Result<Signature, DvfError> {
-        Ok(self.unsafe_aggregate(sigs, &[0, 2]))
+    fn threshold_aggregate(&self, sigs: &[&Signature], _pks: &[&PublicKey], _msg: Hash256) -> Result<Signature, DvfError> {
+        Err(DvfError::UnexpectedCall(String::from("threshold_aggregate"))) 
     }
 }

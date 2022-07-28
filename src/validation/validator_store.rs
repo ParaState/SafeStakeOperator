@@ -171,7 +171,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
     pub async fn add_validator_keystore_share<P: AsRef<Path>>(
         &self,
         voting_keystore_share_path: P,
-        password: ZeroizeString,
+        voting_keystore_share_password_path: P,
         enable: bool,
         graffiti: Option<GraffitiString>,
         suggested_fee_recipient: Option<Address>,
@@ -179,9 +179,9 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         operator_committee_index: u64,
         operator_id: u64
     ) -> Result<ValidatorDefinition, String> {
-        let mut validator_def = ValidatorDefinition::new_keystore_share_with_password(
+        let mut validator_def = ValidatorDefinition::new_keystore_share_with_password_path(
             voting_keystore_share_path,
-            Some(password),
+            voting_keystore_share_password_path,
             graffiti.map(Into::into),
             suggested_fee_recipient,
             operator_committee_definition_path,

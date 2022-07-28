@@ -22,6 +22,8 @@ pub enum DvfError {
     DifferentLength {x: usize, y: usize},
     /// 
     InvalidLength,
+    /// Should not call the function specified by the string
+    UnexpectedCall(String),
     ///
     Unknown
 }

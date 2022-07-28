@@ -74,7 +74,7 @@ impl TOperator for RemoteOperator {
         // Err(DvfError::Unknown)
         let dvf_message = DvfMessage { validator_id: self.validator_id, message: msg.to_fixed_bytes().to_vec()};
         let serialize_msg = bincode::serialize(&dvf_message).unwrap();
-        for retry in 0..3 {
+        for _ in 0..3 {
             let receiver = self.network.send(self.signature_address, Bytes::from(serialize_msg.clone())).await;
             let result = timeout(Duration::from_millis(timeout_mill), receiver).await; 
             match result {
@@ -86,12 +86,12 @@ impl TOperator for RemoteOperator {
                                     info!("Received a signature from operator {}/{} ({:?})", self.operator_id, self.validator_id, self.signature_address);
                                     return Ok(bls_signature);
                                 }
-                                Err(e) => {
+                                Err(_) => {
                                     warn!("Deserialize failed from operator {}/{}, retry...", self.operator_id, self.validator_id);
                                 }
                             }
                         },
-                        Err(e) => {
+                        Err(_) => {
                             warn!("recv is interrupted.");
                         }
                     }
@@ -109,7 +109,7 @@ impl TOperator for RemoteOperator {
         self.operator_public_key.clone()
     }
 
-    async fn propose(&self, msg: Hash256) { }
+    async fn propose(&self, _msg: Hash256) { }
 
 }
 

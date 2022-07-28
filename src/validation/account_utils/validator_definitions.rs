@@ -167,14 +167,14 @@ impl ValidatorDefinition {
     }
 
     /// Create a new definition for a voting keystore share at the given `voting_keystore_share_path` that can
-    /// be unlocked with `voting_keystore_share_password`.
+    /// be unlocked with password stored at `voting_keystore_share_password_path`.
     ///
     /// ## Notes
     ///
     /// This function does not check the password against the keystore.
-    pub fn new_keystore_share_with_password<P: AsRef<Path>>(
+    pub fn new_keystore_share_with_password_path<P: AsRef<Path>>(
         voting_keystore_share_path: P,
-        voting_keystore_share_password: Option<ZeroizeString>,
+        voting_keystore_share_password_path: P,
         graffiti: Option<GraffitiString>,
         suggested_fee_recipient: Option<Address>,
         operator_committee_definition_path: P,
@@ -194,8 +194,8 @@ impl ValidatorDefinition {
             suggested_fee_recipient,
             signing_definition: SigningDefinition::DistributedKeystore {
                 voting_keystore_share_path,
-                voting_keystore_share_password_path: None,
-                voting_keystore_share_password,
+                voting_keystore_share_password_path: Some(voting_keystore_share_password_path.as_ref().into()),
+                voting_keystore_share_password: None,
                 operator_committee_definition_path: Some(operator_committee_definition_path.as_ref().into()), 
                 operator_committee_index,
                 operator_id,
@@ -450,6 +450,9 @@ impl ValidatorDefinitions {
                 // Get the voting public key
                 //let voting_public_key = get_validator_public_key(operator_committee_index);
                 let voting_public_key = keystore_share.master_public_key.clone();
+                if known_pubkeys.contains(&voting_public_key) {
+                    return None;
+                }
 
                 Some(ValidatorDefinition {
                     enabled: true,

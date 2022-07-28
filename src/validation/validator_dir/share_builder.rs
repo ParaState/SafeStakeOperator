@@ -16,6 +16,8 @@ use std::net::{SocketAddr};
 use crate::test_utils::{generate_deterministic_threshold_keypairs};
 use bls::{PublicKey, Keypair};
 use std::collections::HashMap;
+use crate::validation::account_utils::default_keystore_share_dir;
+use crate::validation::account_utils::default_keystore_share_password_path;
 
 
 pub const VOTING_KEYSTORE_SHARE_FILE: &str = "voting-keystore-share.json";
@@ -61,30 +63,33 @@ impl ShareBuilder {
         let (voting_keystore_share, voting_password) = self
             .voting_keystore_share
             .ok_or(BuilderError::UninitializedVotingKeystore)?;
-        let voting_public_key = &voting_keystore_share.master_public_key;
+        //let voting_public_key = &voting_keystore_share.master_public_key;
 
-        let dir = self.base_validators_dir
-            .join(format!("{}", &voting_public_key))
-            .join(format!("{}", voting_keystore_share.share_id));
+        let keystore_share_dir = default_keystore_share_dir(&voting_keystore_share, self.base_validators_dir.clone());
 
-        if dir.exists() {
-            return Err(BuilderError::DirectoryAlreadyExists(dir));
+        //let dir = self.base_validators_dir
+            //.join(format!("{}", &voting_public_key))
+            //.join(format!("{}", voting_keystore_share.share_id));
+
+        if keystore_share_dir.exists() {
+            return Err(BuilderError::DirectoryAlreadyExists(keystore_share_dir));
         } else {
-            create_dir_all(&dir).map_err(BuilderError::UnableToCreateDir)?;
+            create_dir_all(&keystore_share_dir).map_err(BuilderError::UnableToCreateDir)?;
         }
 
         if let Some(password_dir) = self.password_dir.as_ref() {
             // Write the voting password to file.
             write_password_to_file(
-                password_dir.join(format!("{}_{}", &voting_public_key, voting_keystore_share.share_id)),
+                default_keystore_share_password_path(&voting_keystore_share, password_dir),
+                //password_dir.join(format!("{}_{}", &voting_public_key, voting_keystore_share.share_id)),
                 voting_password.as_bytes(),
             )?;
         }
 
         // Write the voting keystore share to file.
-        write_keystore_share_to_file(dir.join(VOTING_KEYSTORE_SHARE_FILE), &voting_keystore_share)?;
+        write_keystore_share_to_file(keystore_share_dir.join(VOTING_KEYSTORE_SHARE_FILE), &voting_keystore_share)?;
 
-        ValidatorDir::open(dir).map_err(BuilderError::UnableToOpenDir)
+        ValidatorDir::open(keystore_share_dir).map_err(BuilderError::UnableToOpenDir)
     }
 
     ///// Generate the voting keystore share using a deterministic, well-known, **unsafe** keypair.

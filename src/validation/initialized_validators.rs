@@ -30,7 +30,6 @@ use std::fs::{self, File};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-// use std::time::Duration;
 use types::{Address, Graffiti, Keypair, PublicKey, PublicKeyBytes, EthSpec};
 use url::{ParseError, Url};
 use validator_dir::Builder as ValidatorDirBuilder;
@@ -38,8 +37,6 @@ use validator_dir::Builder as ValidatorDirBuilder;
 use crate::validation::key_cache;
 use crate::validation::key_cache::KeyCache;
 
-use crate::validation::{
-    OperatorCommittee};
 use parking_lot::{RwLock};
 use crate::node::node::Node;
 use crate::node::dvfcore::DvfSigner;

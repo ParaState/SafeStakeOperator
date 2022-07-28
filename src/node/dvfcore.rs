@@ -273,7 +273,7 @@ impl DvfCore {
         keypair: Keypair,
         tx_consensus: Sender<Hash256>,
     ) -> exit_future::Signal {
-        let mut node = node.write();
+        let node = node.read();
         let (tx_commit, rx_commit) = channel(CHANNEL_CAPACITY);
         let (tx_consensus_to_mempool, rx_consensus_to_mempool) = channel(CHANNEL_CAPACITY);
         let (tx_mempool_to_consensus, rx_mempool_to_consensus) = channel(CHANNEL_CAPACITY);

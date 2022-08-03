@@ -105,7 +105,7 @@ docker run -it safestake /bin/bash
 
 ## Documentation
 
-Run the following to generate documentation in `target/doc/ruby/`:
+Run the following to generate documentation in `target/doc/dvf/`:
 
 ```shell
 cargo doc --no-deps

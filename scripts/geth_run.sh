@@ -1,0 +1,11 @@
+(geth \
+--ropsten \
+--http \
+--datadir /var/lib/goethereum \
+--metrics \
+--metrics.expensive \
+--pprof \
+--http.api="engine,eth,web3,net,debug" \
+--http.corsdomain "*" \
+--authrpc.jwtsecret=/var/lib/goethereum/jwtsecret \
+--override.terminaltotaldifficulty 50000000000000000 > geth_output 2>&1 &)

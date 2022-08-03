@@ -1,7 +1,7 @@
 SCRIPT_PATH="${BASH_SOURCE:-$0}"
 ABS_DIRECTORY="$(dirname "${SCRIPT_PATH}")"
 
-(${ABS_DIRECTORY}/../target/debug/dvf validator_client \
+(${ABS_DIRECTORY}/../target/release/dvf validator_client \
     --debug-level info \
     --network ropsten \
     --ip 35.88.15.244 \

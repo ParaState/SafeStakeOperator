@@ -50,10 +50,16 @@ cargo build --release
 This step is ONLY for SafeStake's service provider. Skip this if you just want to run an operator node.
 
 ```shell
-./scripts/dvf_root_run.sh
+(./target/release/dvf_root_node 35.88.15.244 9005 > boot_node_output 2>&1 &)
 ```
 
-Save the ENR output to the log file `boot_node_output`, for example, like this:
+- `35.88.15.244` is the IP of the running machine. Change it to your machine's IP.
+
+- `9005`?
+
+
+
+The log file `boot_node_output` contains an ENR output, for example, like this:
 
 ```
 enr:-IS4QNyznRo6EasKc-YC_u7A_tJN3EmFM-GppAvaR33tanOSfNo0XZYh3vTyFtW_LhhKnI0i2kzeCSP8BBoZIwg0ihIBgmlkgnY0gmlwhCNYD_SJc2VjcDI1NmsxoQPKY0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCIy0
@@ -64,24 +70,68 @@ enr:-IS4QNyznRo6EasKc-YC_u7A_tJN3EmFM-GppAvaR33tanOSfNo0XZYh3vTyFtW_LhhKnI0i2kze
 Start the `geth` client and let it sync with the blockchain. The syncing process might take some time (from hours to one day depending on your network environment).
 
 ```shell
-./scripts/geth_run.sh
+(geth \
+    --ropsten \
+    --http \
+    --datadir /var/lib/goethereum \
+    --metrics \
+    --metrics.expensive \
+    --pprof \
+    --http.api="engine,eth,web3,net,debug" \
+    --http.corsdomain "*" \
+    --authrpc.jwtsecret=/var/lib/goethereum/jwtsecret \
+    --override.terminaltotaldifficulty 50000000000000000 \
+> geth_output 2>&1 &)
 ```
+
+- `--ropsten`: run geth on the `ropsten` testnet. Use other values if target a different net.
+
+
 
 After syncing, start the beacon node:
 
 ```shell
-./scripts/beacon_run.sh
+(./lighthouse/target/release/lighthouse bn \
+    --network ropsten \
+    --datadir /var/lib/lighthouse \
+    --staking \
+    --http-allow-sync-stalled \
+    --merge \
+    --execution-endpoints http://127.0.0.1:8551 \
+    --metrics \
+    --validator-monitor-auto \
+    --jwt-secrets="/var/lib/goethereum/jwtsecret" \
+    --terminal-total-difficulty-override 50000000000000000 \
+> bn_output 2>&1 &)
+tail -f bn_output
 ```
+
+- `--network` : Specify the target net
+
+
 
 Start the operator node:
 
 ```shell
-# Please update the `--boot-enr` argument in the script with the ENR of 
-# the root node (provided by SafeStake's service provider)
-./scripts/dvf_operator_run.sh
+(./target/release/dvf validator_client \
+    --debug-level info \
+    --network ropsten \
+    --ip 35.88.15.244 \
+    --base-port 25000 \
+    --boot-enr enr:-IS4QNyznRo6EasKc-YC_u7A_tJN3EmFM-GppAvaR33tanOSfNo0XZYh3vTyFtW_LhhKnI0i2kzeCSP8BBoZIwg0ihIBgmlkgnY0gmlwhCNYD_SJc2VjcDI1NmsxoQPKY0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCIy0 \
+> dvf_output 2>&1 &)
+tail -f dvf_output
 ```
 
+- `--network` : Specify the target net
 
+- `--ip` : Provide the IP of the running machine
+
+- `--base-port`: Specify a base port for the Hotstuff protocol. 4 continuous ports need to be available via this setting. For example, `--base-port 25000` will require `25000-25003` to be available.
+
+- `--boot-enr` : Specify the ENR of the root node
+  
+  
 
 ## Docker
 

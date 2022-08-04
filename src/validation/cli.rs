@@ -70,15 +70,15 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 )
                 .takes_value(true)
         )
-        .arg(
-            Arg::with_name("base-port")
-                .long("base-port")
-                .value_name("BASE_PORT")
-                .help(
-                    "This node's BASE_PORT"
-                )
-                .takes_value(true)
-        )
+        // .arg(
+        //     Arg::with_name("base-port")
+        //         .long("base-port")
+        //         .value_name("BASE_PORT")
+        //         .help(
+        //             "This node's BASE_PORT"
+        //         )
+        //         .takes_value(true)
+        // )
         .arg(
             Arg::with_name("boot-enr")
                 .long("boot-enr")

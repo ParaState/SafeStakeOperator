@@ -46,7 +46,67 @@ These two points are detailed in the above architecture (i.e., user X is a valid
 
 ## Get Started
 
-### Installation
+In our eco-system, validators are delegating their tasks to operators and there is no need for deployment of validators. Therefore, we will discuss below two relevant deployment sections, one for *SafeStake Service Provider*, and one for *Operator*. Please only read the corresponding section for your deployment.
+
+### Depoly SafeStake Service Provider
+
+SafeStake service provider contains several components:
+
+- A web server and frontend
+
+- A nodejs backend (for necessary communication with operators)
+
+- A root node service (for peer discovery in a p2p network)
+
+#### Installation
+
+Clone this repository:
+
+```shell
+git clone --recurse-submodules https://github.com/zicofish/dvf.git
+cd dvf
+```
+
+Install Rust and build lighthouse and this project:
+
+```shell
+# Install Rust
+curl --tlsv1.2 https://sh.rustup.rs -sSf | sh
+
+# Build lighthouse
+cd lighthouse
+cargo build --release
+./target/release/lighthouse --version
+cd ..
+
+# Build our project
+cargo build --release
+./target/release/dvf --version
+```
+
+### Start the Root Node Service
+
+Run the following to start
+
+```shell
+(./target/release/dvf_root_node 35.88.15.244 9005 > boot_node_output 2>&1 &)
+```
+
+- `35.88.15.244` is the IP of the running machine. Change it to your machine's IP.
+
+- `9005` is the port that the root node will be listening on.
+
+The log file `boot_node_output` contains an ENR output, for example, like this:
+
+```
+enr:-IS4QNyznRo6EasKc-YC_u7A_tJN3EmFM-GppAvaR33tanOSfNo0XZYh3vTyFtW_LhhKnI0i2kzeCSP8BBoZIwg0ihIBgmlkgnY0gmlwhCNYD_SJc2VjcDI1NmsxoQPKY0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCIy0
+```
+
+#### Start the
+
+### Depoly Operator
+
+### #### Installation
 
 Clone this repository:
 
@@ -77,24 +137,6 @@ cd ..
 # Build our project
 cargo build --release
 ./target/release/dvf --version
-```
-
-### Start the Root Node Service
-
-This step is ONLY for SafeStake's service provider. Skip this if you just want to run an operator node.
-
-```shell
-(./target/release/dvf_root_node 35.88.15.244 9005 > boot_node_output 2>&1 &)
-```
-
-- `35.88.15.244` is the IP of the running machine. Change it to your machine's IP.
-
-- `9005` is the port that the root node will be listening on.
-
-The log file `boot_node_output` contains an ENR output, for example, like this:
-
-```
-enr:-IS4QNyznRo6EasKc-YC_u7A_tJN3EmFM-GppAvaR33tanOSfNo0XZYh3vTyFtW_LhhKnI0i2kzeCSP8BBoZIwg0ihIBgmlkgnY0gmlwhCNYD_SJc2VjcDI1NmsxoQPKY0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCIy0
 ```
 
 ### Start an Operator

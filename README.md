@@ -30,7 +30,13 @@ Based on the above introduction, it is critical that a validator should guarante
 
 ### Operator
 
-Briefly speaking, an operator is a party who holds a share of a validator's private validation key and signs duties with this key share. SafeStake uses a $(t,n)$-threshold BLS signature scheme to enable this feature. Namely, a validation key is split into $n$ shares, each of which is held by an operator. The key can NOT be reconstructed with less than $t$ shares. In the work flow, an operator can produce a signature share by signing a duty. Afterwards, if $t$ or more signature shares are collected, we can produce a valid signature that is equivalent to one signed by the original validation key.
+Briefly speaking, an operator is a party who holds a share of a validator's private validation key and signs duties with this key share. SafeStake uses a $(t,n)$-threshold BLS signature scheme to enable this feature. Namely, a validation key is split into $n$ shares, each of which is held by an operator. The key can NOT be reconstructed with less than $t$ shares. In the work flow, an operator can produce a signature share by signing a duty. Afterwards, if $t$ or more signature shares are collected, we can produce a valid signature that is equivalent to one signed by the original validation key. 
+
+
+
+Before signing a duty, the committee of operators for a validator need to first agree on the duty to be signed. This requires a consensus protocol. Please be aware that *this consensus is NOT the ETH2 Proof of Stake consensus*. A BFT consensus protocol is enough for this purpose. SafeStake uses [***Hotstuff***](https://github.com/asonnino/hotstuff) to achieve the duty agreement among the committee of operators.
+
+
 
 ### SafeStake Service Provider
 
@@ -58,7 +64,11 @@ SafeStake service provider contains several components:
 
 - A root node service (for peer discovery in a p2p network)
 
-#### Installation
+#### Root Node Service
+
+The duty agreement (using Hotstuff) among operators requires that these operators know IP of each other in a p2p network. Therefore, SafeSake provides a root node such that operators can consult and join the p2p network.
+
+##### Installation
 
 Clone this repository:
 
@@ -84,9 +94,9 @@ cargo build --release
 ./target/release/dvf --version
 ```
 
-### Start the Root Node Service
+##### Start Service
 
-Run the following to start
+Run the following to start the root node service:
 
 ```shell
 (./target/release/dvf_root_node 35.88.15.244 9005 > boot_node_output 2>&1 &)
@@ -102,11 +112,19 @@ The log file `boot_node_output` contains an ENR output, for example, like this:
 enr:-IS4QNyznRo6EasKc-YC_u7A_tJN3EmFM-GppAvaR33tanOSfNo0XZYh3vTyFtW_LhhKnI0i2kzeCSP8BBoZIwg0ihIBgmlkgnY0gmlwhCNYD_SJc2VjcDI1NmsxoQPKY0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCIy0
 ```
 
-#### Start the
+#### Web Server
+
+TODO
+
+#### NodeJS Backend
+
+TODO
+
+
 
 ### Depoly Operator
 
-### #### Installation
+#### Installation
 
 Clone this repository:
 
@@ -139,7 +157,7 @@ cargo build --release
 ./target/release/dvf --version
 ```
 
-### Start an Operator
+#### Start an Operator
 
 Start the `geth` client and let it sync with the blockchain. The syncing process might take some time (from hours to one day depending on your network environment).
 

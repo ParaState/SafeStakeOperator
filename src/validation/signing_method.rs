@@ -268,7 +268,7 @@ impl SigningMethod {
                                 duty: duty.to_string()
                             };
                             let client = reqwest::Client::new();
-                            let mut url = Url::parse("http://example.com").map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
+                            let mut url = Url::parse("http://example.com/v1/collect_performance").map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
                             url.set_ip_host(IpAddr::V4(Ipv4Addr::new(BACKEND_IP[0], BACKEND_IP[1], BACKEND_IP[2], BACKEND_IP[3]))).unwrap();
                             url.set_port(Some(BACKEND_PORT)).unwrap();
                             let _ = client.post(url).json(&request_body).send().await.map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;

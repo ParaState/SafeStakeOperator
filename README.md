@@ -1,6 +1,6 @@
 # SafeStake
 
-SafeStake is a decentralized validation framework for performing ETH2 duties and its backend is designed on top of [Lighthouse](https://github.com/sigp/lighthouse).
+SafeStake is a decentralized validation framework for performing ETH2 duties and its backend is designed on top of [Lighthouse](https://github.com/sigp/lighthouse) (ETH2 consensus client) and [Hotstuff](https://github.com/asonnino/hotstuff) (a BFT consensus library).
 
 ## Architecture
 
@@ -43,8 +43,6 @@ cargo build --release
 ./target/release/dvf --version
 ```
 
-
-
 ### Start the Root Node Service
 
 This step is ONLY for SafeStake's service provider. Skip this if you just want to run an operator node.
@@ -56,8 +54,6 @@ This step is ONLY for SafeStake's service provider. Skip this if you just want t
 - `35.88.15.244` is the IP of the running machine. Change it to your machine's IP.
 
 - `9005` is the port that the root node will be listening on.
-
-
 
 The log file `boot_node_output` contains an ENR output, for example, like this:
 
@@ -86,8 +82,6 @@ Start the `geth` client and let it sync with the blockchain. The syncing process
 
 - `--ropsten`: run geth on the `ropsten` testnet. Use other values if target a different net.
 
-
-
 After syncing, start the beacon node:
 
 ```shell
@@ -108,8 +102,6 @@ tail -f bn_output
 
 - `--network` : Specify the target net
 
-
-
 Start the operator node:
 
 ```shell
@@ -129,8 +121,6 @@ tail -f dvf_output
 - `--boot-enr` : Specify the ENR of the root node
 
 NOTE: The operator node requires ports `25000-25003` to be available for the Hotstuff protocol.
-  
-  
 
 ## Docker
 

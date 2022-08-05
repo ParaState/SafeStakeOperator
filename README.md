@@ -55,7 +55,7 @@ This step is ONLY for SafeStake's service provider. Skip this if you just want t
 
 - `35.88.15.244` is the IP of the running machine. Change it to your machine's IP.
 
-- `9005`?
+- `9005` is the port that the root node will be listening on.
 
 
 
@@ -117,7 +117,6 @@ Start the operator node:
     --debug-level info \
     --network ropsten \
     --ip 35.88.15.244 \
-    --base-port 25000 \
     --boot-enr enr:-IS4QNyznRo6EasKc-YC_u7A_tJN3EmFM-GppAvaR33tanOSfNo0XZYh3vTyFtW_LhhKnI0i2kzeCSP8BBoZIwg0ihIBgmlkgnY0gmlwhCNYD_SJc2VjcDI1NmsxoQPKY0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCIy0 \
 > dvf_output 2>&1 &)
 tail -f dvf_output
@@ -127,9 +126,9 @@ tail -f dvf_output
 
 - `--ip` : Provide the IP of the running machine
 
-- `--base-port`: Specify a base port for the Hotstuff protocol. 4 continuous ports need to be available via this setting. For example, `--base-port 25000` will require `25000-25003` to be available.
-
 - `--boot-enr` : Specify the ENR of the root node
+
+NOTE: The operator node requires ports `25000-25003` to be available for the Hotstuff protocol.
   
   
 

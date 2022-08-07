@@ -1,39 +1,117 @@
 version: '3'
 services:
   dvf_root_node:
+    volumes:
+      - dvf-data:/var/log/dvf
     build: 
       context: .
+      args:
+        CPU_NUM: 16
       dockerfile: Dockerfile
-    command: "boot"
+    command: "/app/docker-entrypoint boot"
     expose:
       - "9005"
     ports:
       - "9005:9005"
+  get-enr:
+    image: busybox:latest
+      #command: 'cat /data/dvf_root.log | grep "Base64" | cut -d" " -f3 > /data/enr_info.log'
+    command: "sh -x ./get_enr.sh"
+    volumes:
+      - dvf-data:/data
+      - ./scripts/get_enr.sh:/get_enr.sh
+    depends_on:
+      dvf_root_node:
+         condition: service_started
   geth:
-    build: 
-      context: ./geth
-      dockerfile: Dockerfile
+    image: ethereum/client-go:stable
+      #build: 
+      #  context: ./geth
+      #  dockerfile: Dockerfile
+    volumes:
+      - geth-data:/data/geth
     expose:
       - "8545"
     ports:
       - "8545:8545"
+      - "8546:8546"
+      - "30303:30303"
+    command:
+      [
+        # Blockchain sync mode ("snap", "full" or "light")
+        "--syncmode=light",
+        # Megabytes of memory allocated to internal caching
+        "--cache=8192",
+        # Enable the WS-RPC server
+        "--ws",
+        "--ws.addr=0.0.0.0",
+        # Enable the HTTP-RPC server
+        "--http",
+        "--http.addr=0.0.0.0",
+        "--http.vhosts=*",
+        "--http.api='engine,eth,web3,net,debug'",
+        "--http.corsdomain",
+        # Enable GraphQL on the HTTP-RPC server. Note that GraphQL can only be started if an HTTP server is started as well.
+        "--graphql",
+        "--graphql.vhosts=*",
+        # Enable metrics collection and reporting
+        "--metrics",
+        "--metrics.expensive",
+        "--pprof",
+        # Ethereum mainnet
+        "--ropsten",
+        # Maximum number of network peers (network disabled if set to 0) (default: 50)
+        "--maxpeers=30",
+        # Data directory for the databases and keystore (default: "/root/.ethereum")
+        "--override.terminaltotaldifficulty=50000000000000000",
+        "--datadir=/data/geth"
+      ]
+
   lighthouse:
     build: 
       context: ./lighthouse
       dockerfile: Dockerfile
-    command: 'lighthouse bn --network ropsten --datadir /var/lib/lighthouse --http 0.0.0.0 --staking--http-allow-sync-stalled --merge --execution-endpoints http://geth:8545 --metrics --validator-monitor-auto --jwt-secrets="/var/lib/goethereum/jwtsecret"  --terminal-total-difficulty-override 50000000000000000 > bn_output 2>&1 &)'
+    command:
+      [
+        "lighthouse",
+        "bn",
+        "--network=ropsten",
+        "--datadir=/var/lib/lighthouse",
+        "--http=0.0.0.0",
+        "--staking",
+        "--http-allow-sync-stalled",
+        "--merge",
+        "--execution-endpoints=http://geth:8545",
+        "--metrics",
+        "--validator-monitor-auto",
+        "--terminal-total-difficulty-override=50000000000000000"
+      ]
 
     expose:
       - "5052"
     ports:
       - "5052:5052"
     depends_on:
-     - geth
-  operator:
-    build: 
-      context: ./
-      dockerfile: Dockerfile
-    command:
-     "enr"
-    depends_on:
-     - lighthouse
+      - geth
+        #  operator:
+        #    build: 
+        #      context: ./
+        #      dockerfile: Dockerfile
+        #    command:
+        #     "enr"
+        #    depends_on:
+        #     - lighthouse
+
+volumes:
+  dvf-data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /data/dvf
+  geth-data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /data/geth

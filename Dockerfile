@@ -6,6 +6,8 @@ ARG CPU_NUM=1
 RUN cargo build -j $CPU_NUM --release
 
 FROM ubuntu:22.04
+COPY . /app
+WORKDIR /app
 RUN apt-get update && apt-get -y upgrade && apt-get install -y --no-install-recommends \
   libssl-dev \
   curl \

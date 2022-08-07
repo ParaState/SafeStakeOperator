@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 my_ip=`curl ifconfig.me`
 
 if [[ "$1" == "boot" ]]; then

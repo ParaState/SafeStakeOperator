@@ -1,3 +1,14 @@
 #!/bin/sh
 my_ip=`curl ifconfig.me`
-/usr/local/bin/dvf_root_node $my_ip 9005 > /var/log/boot_node_output 2>&1 &
+if [ "$1" == "root" ]; then
+  /usr/local/bin/dvf_root_node $my_ip 9005 > /var/log/boot_node_output 2>&1 &
+elif [ -z "$1" ]; then
+  /usr/local/bin/dvf validator_client \
+    --debug-level info \
+    --network ropsten \
+    --ip $my_ip \
+    --boot-enr enr: $1 > dvf_output 2>&1 &
+else
+  echo "Please input first argument(root or enr)"
+  exit 1
+fi

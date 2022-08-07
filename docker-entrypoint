@@ -1,15 +1,18 @@
 #!/bin/bash
-my_ip=`curl ifconfig.me`
+START_PRO=$1
+NODE_IP=`curl -s ifconfig.me`
 
-if [[ "$1" == "boot" ]]; then
-  /usr/local/bin/dvf_root_node $my_ip 9005 > /var/log/boot_node_output 2>&1 &
-elif [[ -n "$1" ]]; then
+if [[ "$START_PRO" == "boot" ]]; then
+  mkdir -p /var/log/dvf
+  /usr/local/bin/dvf_root_node $NODE_IP 9005 > /var/log/dvf/dvf_root.log 2>&1
+elif [[ -n "$START_PRO" ]]; then
+  mkdir -p /var/log/dvf
   /usr/local/bin/dvf validator_client \
     --debug-level info \
     --network ropsten \
-    --ip $my_ip \
-    --boot-enr enr: $1 > dvf_output 2>&1 &
+    --ip $NODE_IP \
+    --boot-enr $START_PRO > /var/log/dvf/dvf_output 2>&1
 else
-  echo "Please input first argument(root or enr)"
+  echo "Please input first argument(root or enr) !"
   exit 1
 fi

@@ -7,6 +7,7 @@ RUN cargo build --release
 FROM ubuntu:22.04
 RUN apt-get update && apt-get -y upgrade && apt-get install -y --no-install-recommends \
   libssl-dev \
+  curl \
   ca-certificates \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*

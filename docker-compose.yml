@@ -21,7 +21,8 @@ services:
     build: 
       context: ./lighthouse
       dockerfile: Dockerfile
-    command: 'lighthouse bn --network ropsten --datadir /var/lib/lighthouse --http 0.0.0.0 --staking--http-allow-sync-stalled --merge --execution-endpoints http://127.0.0.1:8551 --metrics --validator-monitor-auto --jwt-secrets="/var/lib/goethereum/jwtsecret"  --terminal-total-difficulty-override 50000000000000000 > bn_output 2>&1 &)'
+    command: 'lighthouse bn --network ropsten --datadir /var/lib/lighthouse --http 0.0.0.0 --staking--http-allow-sync-stalled --merge --execution-endpoints http://geth:8545 --metrics --validator-monitor-auto --jwt-secrets="/var/lib/goethereum/jwtsecret"  --terminal-total-difficulty-override 50000000000000000 > bn_output 2>&1 &)'
+
     expose:
       - "5052"
     ports:

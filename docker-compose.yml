@@ -1,0 +1,49 @@
+version: '3'
+services:
+  dvf_root_node:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    expose:
+      - "9005"
+    ports:
+      - "9005:9005"
+  geth:
+    build: 
+      context: ./geth
+      dockerfile: Dockerfile
+    expose:
+      - "8551"
+    ports:
+      - "8551:8551"
+  lighthouse:
+    build: 
+      context: ./lighthouse
+      dockerfile: Dockerfile
+    expose:
+      - "5052"
+    ports:
+      - "5052:5052"
+    depends_on:
+     - geth
+  operator:
+    build: 
+      context: ./
+      dockerfile: Dockerfile-purchaser-api
+    expose:
+      - "3031"
+    ports:
+      - "3031:3031"
+  ruby-ui:
+    stdin_open: true
+    tty: true
+    build: 
+      context: ./Ruby_milestone2
+      dockerfile: Dockerfile-ruby-ui
+    ports:
+      - "3000:3000"
+    depends_on:
+      - zeropool
+      - authority-api
+      - owner-api
+      - purchaser-api

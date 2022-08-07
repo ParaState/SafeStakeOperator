@@ -1,2 +1,3 @@
+#!/bin/sh
 my_ip=`curl ifconfig.me`
 /usr/local/bin/dvf_root_node $my_ip 9005 > /var/log/boot_node_output 2>&1 &

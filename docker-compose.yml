@@ -13,13 +13,14 @@ services:
       context: ./geth
       dockerfile: Dockerfile
     expose:
-      - "8551"
+      - "8545"
     ports:
-      - "8551:8551"
+      - "8545:8545"
   lighthouse:
     build: 
       context: ./lighthouse
       dockerfile: Dockerfile
+    command: 'lighthouse bn --network ropsten --datadir /var/lib/lighthouse --staking--http-allow-sync-stalled --merge --execution-endpoints http://127.0.0.1:8551 --metrics --validator-monitor-auto --jwt-secrets="/var/lib/goethereum/jwtsecret"  --terminal-total-difficulty-override 50000000000000000 > bn_output 2>&1 &)'
     expose:
       - "5052"
     ports:

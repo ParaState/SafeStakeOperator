@@ -2,7 +2,8 @@ FROM rust:1.58.1-bullseye AS builder
 RUN apt-get update && apt-get -y upgrade && apt-get install -y cmake libclang-dev
 COPY . /app
 WORKDIR /app
-RUN cargo build --release
+ARG CPU_NUM=1
+RUN cargo build -j $CPU_NUM --release
 
 FROM ubuntu:22.04
 RUN apt-get update && apt-get -y upgrade && apt-get install -y --no-install-recommends \

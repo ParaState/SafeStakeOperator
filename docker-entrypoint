@@ -1,8 +1,9 @@
 #!/bin/sh
 my_ip=`curl ifconfig.me`
-if [ "$1" == "root" ]; then
+
+if [[ "$1" == "boot" ]]; then
   /usr/local/bin/dvf_root_node $my_ip 9005 > /var/log/boot_node_output 2>&1 &
-elif [ -z "$1" ]; then
+elif [[ -n "$1" ]]; then
   /usr/local/bin/dvf validator_client \
     --debug-level info \
     --network ropsten \

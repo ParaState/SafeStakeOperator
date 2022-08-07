@@ -14,3 +14,5 @@ RUN apt-get update && apt-get -y upgrade && apt-get install -y --no-install-reco
   && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/dvf_root_node /usr/local/bin/dvf_root_node
 COPY --from=builder /app/target/release/dvf /usr/local/bin/dvf
+EXPOSE 9005
+ENTRYPOINT ["/app/docker-entrypoint"]

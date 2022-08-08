@@ -177,6 +177,7 @@ Start the `geth` client and let it sync with the blockchain. The syncing process
 ```
 
 - `--ropsten`: run geth on the `ropsten` testnet. Use other values if target a different net.
+- `geth` uses port `8551` to communicate with lighthouse, hence this port should be accessible from the beacon node.
 
 After syncing, start the beacon node:
 
@@ -197,6 +198,7 @@ tail -f bn_output
 ```
 
 - `--network` : Specify the target net
+- beacon node uses port `5052` to communicate with the following operator node, hence this port should be accessible from the operator node.
 
 Start the operator node:
 

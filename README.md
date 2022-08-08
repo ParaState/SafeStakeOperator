@@ -114,13 +114,22 @@ enr:-IS4QNyznRo6EasKc-YC_u7A_tJN3EmFM-GppAvaR33tanOSfNo0XZYh3vTyFtW_LhhKnI0i2kze
 
 #### Web Server
 
-TODO
+Clone repositories:
 
-#### NodeJS Backend
+```shell
+git clone https://github.com/zeuson0/docker_safe_stake
+cd docker_safe_stake
+git clone https://github.com/zeuson0/safestake-web
+git clone https://github.com/zeuson0/safestake-explorer
+git clone https://github.com/zeuson0/safestake-server
+```
+After that, You can modify the `.env` to set the environments, like mysql, smart contract address, etc.
 
-TODO
-
-
+Deploy services:
+```shell
+cd docker_safe_stake
+docker-compose up -d
+```
 
 ### Depoly Operator
 

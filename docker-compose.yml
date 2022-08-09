@@ -66,6 +66,8 @@ services:
         "--jwt-secrets=/data/geth/jwtsecret",
         "--http",
         "--listen-address=0.0.0.0",
+        "--http-address=0.0.0.0",
+        "--http-port=5052",
         "--staking",
         "--http-allow-sync-stalled",
         "--merge",

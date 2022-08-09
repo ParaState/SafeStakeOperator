@@ -32,11 +32,7 @@ Based on the above introduction, it is critical that a validator should guarante
 
 Briefly speaking, an operator is a party who holds a share of a validator's private validation key and signs duties with this key share. SafeStake uses a $(t,n)$-threshold BLS signature scheme to enable this feature. Namely, a validation key is split into $n$ shares, each of which is held by an operator. The key can NOT be reconstructed with less than $t$ shares. In the work flow, an operator can produce a signature share by signing a duty. Afterwards, if $t$ or more signature shares are collected, we can produce a valid signature that is equivalent to one signed by the original validation key. 
 
-
-
 Before signing a duty, the committee of operators for a validator need to first agree on the duty to be signed. This requires a consensus protocol. Please be aware that *this consensus is NOT the ETH2 Proof of Stake consensus*. A BFT consensus protocol is enough for this purpose. SafeStake uses [***Hotstuff***](https://github.com/asonnino/hotstuff) to achieve the duty agreement among the committee of operators.
-
-
 
 ### SafeStake Service Provider
 
@@ -47,8 +43,6 @@ SafeStake provides services to enable the above features and connects validators
 - a user who is a valid validator (has deposited 32 ETH beforehand) can choose a set of $n$ operators to run its duties.
 
 These two points are detailed in the above architecture (i.e., user X is a validator, user Y is an operator).
-
-
 
 ## Get Started
 
@@ -112,6 +106,8 @@ The log file `boot_node_output` contains an ENR output, for example, like this:
 enr:-IS4QNyznRo6EasKc-YC_u7A_tJN3EmFM-GppAvaR33tanOSfNo0XZYh3vTyFtW_LhhKnI0i2kzeCSP8BBoZIwg0ihIBgmlkgnY0gmlwhCNYD_SJc2VjcDI1NmsxoQPKY0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCIy0
 ```
 
+NOTE: ***SafeStake should maintain such ENR(s) of root node(s) on its website, so that users who are registering as operators can use them to start operator nodes.***
+
 #### Web Server
 
 Clone repositories:
@@ -123,9 +119,11 @@ git clone https://github.com/zeuson0/safestake-web
 git clone https://github.com/zeuson0/safestake-explorer
 git clone https://github.com/zeuson0/safestake-server
 ```
+
 After that, You can modify the `.env` to set the environments, like mysql, smart contract address, etc.
 
 Deploy services:
+
 ```shell
 cd docker_safe_stake
 docker-compose up -d
@@ -133,7 +131,15 @@ docker-compose up -d
 
 ### Depoly Operator
 
-#### Installation
+An operator should run three pieces of software in order to join SafeStake's eco-system:
+
+- An Eth1 execution client (we use `geth` as an example below)
+
+- A lighthouse beacon node client
+
+- A SafeStake operator node client
+
+#### Preparation
 
 Clone this repository:
 

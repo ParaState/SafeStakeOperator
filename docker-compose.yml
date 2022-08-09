@@ -79,7 +79,16 @@ services:
       - "5052:5052"
     depends_on:
       - geth
-
+  operator:
+    volumes:
+      - dvf-data:/data
+    build:
+      context: .
+      args:
+        CPU_NUM: 16
+      dockerfile: Dockerfile
+    command: "/app/docker-entrypoint enr"
+    
 volumes:
   dvf-data:
     driver: local

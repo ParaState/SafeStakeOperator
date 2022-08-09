@@ -47,7 +47,7 @@ services:
         "--authrpc.jwtsecret=/data/geth/jwtsecret",
         "--override.terminaltotaldifficulty=50000000000000000",
         # Blockchain sync mode ("snap", "full" or "light")
-        "--syncmode=light",
+        # "--syncmode=light",
       ]
 
   lighthouse:

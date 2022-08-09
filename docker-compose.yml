@@ -82,12 +82,13 @@ services:
   operator:
     volumes:
       - dvf-data:/data
+      - dvf-data:/var/log/dvf
     build:
       context: .
       args:
         CPU_NUM: 16
       dockerfile: Dockerfile
-    command: "/app/docker-entrypoint enr"
+    command: bash -c "enr=`cat /data/enr_info.log` && /app/docker-entrypoint $enr"
     
 volumes:
   dvf-data:

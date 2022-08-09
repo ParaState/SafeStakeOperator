@@ -11,7 +11,7 @@ elif [[ -n "$START_PRO" ]]; then
     --debug-level info \
     --network ropsten \
     --ip $NODE_IP \
-    --boot-enr $START_PRO > /var/log/dvf/dvf_output 2>&1
+    --boot-enr $START_PRO > /var/log/dvf/operator_output.log 2>&1
 else
   echo "Please input first argument(root or enr) !"
   exit 1

@@ -72,6 +72,7 @@ services:
         "--http-allow-sync-stalled",
         "--merge",
         "--execution-endpoints=http://geth:8545",
+        "--eth1-endpoints=http://geth:8545",
         "--metrics",
         "--validator-monitor-auto",
         "--terminal-total-difficulty-override=50000000000000000"

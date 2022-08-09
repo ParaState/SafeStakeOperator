@@ -316,7 +316,17 @@ impl<T: EthSpec> Node<T> {
 
 
                             },
-                            ValidatorCommand::Stop(_validator) => {
+                            ValidatorCommand::Stop(validator) => {
+                                let node = node.read();
+                                match &node.validator_store {
+                                    Some(validator_store) => {
+                                        let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
+
+                                        validator_store.stop_validator_keystore(&validator_pk).await;
+                                    }
+                                    _ => {error!("unexpected error happen"); }
+
+                                }
                             }
                         }
                     }

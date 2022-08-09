@@ -39,7 +39,7 @@ log = "0.4.0"
 tokio-util = { version = "0.6.2", features = ["codec"] }
 bytes = "1.0.1"
 downcast-rs = "1.2.0"
-
+chrono = "0.4.20"
 
 tree_hash = "0.4.1"
 clap = "2.33.3"

@@ -247,7 +247,8 @@ pub struct DvfPerformanceRequest {
     pub operators: Vec<u64>,
     pub slot: u64,
     pub epoch: u64,
-    pub duty: String
+    pub duty: String,
+    pub time: i64
 }
 
 pub struct DvfCore {

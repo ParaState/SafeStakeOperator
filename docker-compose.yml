@@ -43,7 +43,7 @@ services:
         "--metrics.expensive",
         "--pprof",
         "--http.api='engine,eth,web3,net,debug'",
-        "--http.corsdomain *",
+        "--http.corsdomain='*'",
         "--authrpc.jwtsecret=/data/geth/jwtsecret",
         "--override.terminaltotaldifficulty=50000000000000000",
         # Blockchain sync mode ("snap", "full" or "light")

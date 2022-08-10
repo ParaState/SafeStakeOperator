@@ -73,6 +73,11 @@ services:
       - "5052"
     ports:
       - "5052:5052"
+    healthcheck:
+     test: ["CMD", "telnet", "localhost 5052"]
+     interval: 1m30s
+     timeout: 10s
+     retries: 3
     depends_on:
       geth:
         condition: service_healthy
@@ -86,6 +91,9 @@ services:
         CPU_NUM: 16
       dockerfile: Dockerfile
     command: bash -c "enr=`cat /data/enr_info.log` && /app/docker-entrypoint $enr"
+    depends_on:
+      lighthouse:
+        condition: service_healthy
     
 volumes:
   dvf-data:

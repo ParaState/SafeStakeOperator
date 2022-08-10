@@ -7,5 +7,6 @@ apt-get clean && \
 rm -rf /var/lib/apt/lists/*
 
 COPY . /app
+RUN ["chmod", "+x", "/app/docker-entrypoint"]
 
 ENTRYPOINT ["/app/docker-entrypoint"]

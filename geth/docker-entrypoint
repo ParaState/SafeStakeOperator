@@ -3,11 +3,11 @@
 --ropsten \
 --http \
 --http.addr="0.0.0.0"  
---datadir /var/lib/goethereum \
+--datadir /data/geth \
 --metrics \
 --metrics.expensive \
 --pprof \
 --http.api="engine,eth,web3,net,debug" \
 --http.corsdomain "*" \
---authrpc.jwtsecret=/var/lib/goethereum/jwtsecret \
---override.terminaltotaldifficulty 50000000000000000 > geth_output 2>&1 &)
+--authrpc.jwtsecret=/data/geth/jwtsecret \
+--override.terminaltotaldifficulty 50000000000000000 > geth_output 2>&1 )

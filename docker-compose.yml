@@ -47,8 +47,7 @@ services:
       - lighthouse-data:/data/lighthouse
     command:
       [
-        "sh -x ./wait_for.sh geth:8545",
-        "&&",
+        "apt update && apt install netcat && sh -x /wait_for.sh geth:8545 &&",
         "lighthouse",
         "bn",
         "--network=ropsten",

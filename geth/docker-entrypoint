@@ -3,6 +3,7 @@
 --ropsten \
 --http \
 --http.addr "0.0.0.0" \
+--http.vhosts "*" \
 --http.port "8545" \
 --authrpc.addr "0.0.0.0" \
 --authrpc.vhosts "*" \

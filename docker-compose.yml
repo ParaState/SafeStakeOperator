@@ -37,17 +37,20 @@ services:
       - "8545:8545"
       - "8551:8551"
       - "30303:30303"
+    healthcheck:
+     test: ["CMD", "telnet", "localhost 8545"]
+     interval: 1m30s
+     timeout: 10s
+     retries: 3
   lighthouse:
     build: 
       context: ./lighthouse
       dockerfile: Dockerfile
     volumes:
-      - ./scripts/wait_for.sh:/wait_for.sh
       - geth-data:/data/geth
       - lighthouse-data:/data/lighthouse
     command:
       [
-        "apt update && apt install netcat && sh -x /wait_for.sh geth:8545 &&",
         "lighthouse",
         "bn",
         "--network=ropsten",
@@ -71,7 +74,8 @@ services:
     ports:
       - "5052:5052"
     depends_on:
-      - geth
+      geth:
+        condition: service_healthy
   operator:
     volumes:
       - dvf-data:/data

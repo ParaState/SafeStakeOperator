@@ -38,7 +38,7 @@ services:
       - "8551:8551"
       - "30303:30303"
     healthcheck:
-     test: ["CMD", "telnet", "localhost 8545"]
+     test: ["CMD", "telnet", "127.0.0.1 8545"]
      interval: 1m30s
      timeout: 10s
      retries: 3
@@ -74,7 +74,7 @@ services:
     ports:
       - "5052:5052"
     healthcheck:
-     test: ["CMD", "telnet", "localhost 5052"]
+     test: ["CMD", "telnet", "127.0.0.1 5052"]
      interval: 1m30s
      timeout: 10s
      retries: 3
@@ -92,6 +92,8 @@ services:
       dockerfile: Dockerfile
     command: bash -c "enr=`cat /data/enr_info.log` && /app/docker-entrypoint $enr"
     depends_on:
+      get-enr:
+        condition: service_started
       lighthouse:
         condition: service_healthy
     

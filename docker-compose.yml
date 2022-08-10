@@ -62,6 +62,7 @@ services:
         "--execution-endpoints=http://geth:8551",
         "--eth1-endpoints=http://geth:8545",
         "--metrics",
+        "--http-allow-origin='*'",
         "--validator-monitor-auto",
         "--terminal-total-difficulty-override=50000000000000000"
       ]

@@ -2,17 +2,21 @@
 (geth \
 --ropsten \
 --http \
---http.addr="0.0.0.0" \
---http.port="8545" \
---authrpc.addr="0.0.0.0" \
---authrpc.port="8551" \
---discovery.port="30303" \
---port="30303" \
---datadir=/data/geth \
+--http.addr "0.0.0.0" \
+--http.port "8545" \
+--authrpc.addr "0.0.0.0" \
+--authrpc.vhosts "*" \
+--authrpc.port "8551" \
+--discovery.port "30303" \
+--port "30303" \
+--datadir /data/geth \
 --metrics \
+--metrics.addr "0.0.0.0" \
 --metrics.expensive \
 --pprof \
---http.api="engine,eth,web3,net,debug" \
+--pprof.addr "0.0.0.0" \
+--http.api "engine,eth,web3,net,debug" \
+
 --http.corsdomain "*" \
---authrpc.jwtsecret=/data/geth/jwtsecret \
+--authrpc.jwtsecret /data/geth/jwtsecret \
 --override.terminaltotaldifficulty 50000000000000000 > geth_output 2>&1 )

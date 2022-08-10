@@ -10,9 +10,6 @@
 --discovery.port "30303" \
 --port "30303" \
 --datadir /data/geth \
---metrics \
---metrics.addr "0.0.0.0" \
---metrics.expensive \
 --pprof \
 --pprof.addr "0.0.0.0" \
 --http.api "engine,eth,web3,net,debug" \

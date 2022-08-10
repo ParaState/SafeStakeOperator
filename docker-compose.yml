@@ -37,16 +37,18 @@ services:
       - "8545:8545"
       - "8551:8551"
       - "30303:30303"
-      
   lighthouse:
     build: 
       context: ./lighthouse
       dockerfile: Dockerfile
     volumes:
+      - ./scripts/wait_for.sh:/wait_for.sh
       - geth-data:/data/geth
       - lighthouse-data:/data/lighthouse
     command:
       [
+        "sh -x ./wait_for.sh geth:8545",
+        "&&",
         "lighthouse",
         "bn",
         "--network=ropsten",

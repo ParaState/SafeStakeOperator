@@ -24,32 +24,15 @@ services:
       dvf_root_node:
          condition: service_started
   geth:
-    image: ethereum/client-go:stable
+    build:
+      context: ./geth
+      dockerfile: Dockerfile
     volumes:
       - geth-data:/data/geth
     expose:
-      - "8545"
       - "8551"
     ports:
-      - "8545:8545"
       - "8551:8551"
-      - "30303:30303"
-    command:
-      [
-        "--ropsten",
-        "--http",
-        "--http.addr=0.0.0.0",
-        "--datadir=/data/geth",
-        "--metrics",
-        "--metrics.expensive",
-        "--pprof",
-        "--http.api='engine,eth,web3,net,debug'",
-        "--http.corsdomain='*'",
-        "--authrpc.jwtsecret=/data/geth/jwtsecret",
-        "--override.terminaltotaldifficulty=50000000000000000",
-        # Blockchain sync mode ("snap", "full" or "light")
-        # "--syncmode=light",
-      ]
 
   lighthouse:
     build: 
@@ -73,7 +56,6 @@ services:
         "--http-allow-sync-stalled",
         "--merge",
         "--execution-endpoints=http://geth:8551",
-        "--eth1-endpoints=http://geth:8545",
         "--metrics",
         "--validator-monitor-auto",
         "--terminal-total-difficulty-override=50000000000000000"

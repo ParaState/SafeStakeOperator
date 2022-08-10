@@ -28,6 +28,7 @@ services:
       context: ./geth
       dockerfile: Dockerfile
     volumes:
+      - jwt-data:/data/jwt
       - geth-data:/data/geth
     expose:
       - "8545"
@@ -48,6 +49,7 @@ services:
       dockerfile: Dockerfile
     volumes:
       - geth-data:/data/geth
+      - jwt-data:/data/jwt
       - lighthouse-data:/data/lighthouse
     command:
       [
@@ -55,7 +57,7 @@ services:
         "bn",
         "--network=ropsten",
         "--datadir=/data/lighthouse",
-        "--jwt-secrets=/data/geth/jwtsecret",
+        "--jwt-secrets=/data/jwt/jwtsecret",
         "--http",
         "--listen-address=0.0.0.0",
         "--http-address=0.0.0.0",
@@ -116,3 +118,9 @@ volumes:
       o: bind
       type: none
       device: /data/lighthouse
+  jwt-data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /data/jwt

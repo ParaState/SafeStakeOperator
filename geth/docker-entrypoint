@@ -16,5 +16,5 @@
 --http.api "engine,eth,web3,net,debug" \
 
 --http.corsdomain "*" \
---authrpc.jwtsecret /data/geth/jwtsecret \
+--authrpc.jwtsecret /data/jwt/jwtsecret \
 --override.terminaltotaldifficulty 50000000000000000 > /data/geth/logs/geth_output.log 2>&1 )

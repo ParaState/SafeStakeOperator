@@ -1,0 +1,13 @@
+version: '3'
+services:
+  dvf_root_node:
+    build: 
+      context: .
+      args:
+        CPU_NUM: 16
+      dockerfile: Dockerfile
+    command: "/app/docker-entrypoint boot"
+    expose:
+      - "9005"
+    ports:
+      - "9005:9005"

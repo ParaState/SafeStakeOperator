@@ -52,14 +52,13 @@ services:
         condition: service_started
   operator:
     volumes:
-      - dvf-data:/data
-      - dvf-data:/var/log/dvf
+      - operator-data: /data/operator
     build:
       context: .
       args:
         CPU_NUM: 16
       dockerfile: Dockerfile
-    command: "/app/docker-entrypoint $enr"
+    command: "${ENR}"
     depends_on:
       lighthouse:
         condition: service_started
@@ -83,3 +82,9 @@ volumes:
       o: bind
       type: none
       device: /data/jwt
+  operator-data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /data/operator

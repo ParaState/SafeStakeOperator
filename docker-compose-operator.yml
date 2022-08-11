@@ -52,7 +52,7 @@ services:
         condition: service_started
   operator:
     volumes:
-      - operator-data:/data/operator
+      - operator-data:/root/.lighthouse
     build:
       context: .
       args:

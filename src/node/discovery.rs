@@ -81,7 +81,6 @@ impl Discovery {
             let metrics = discv5.metrics();
             let connected_peers = discv5.connected_peers();
             info!("Connected peers: {}, Active sessions: {}, Unsolicited requests/s: {:.2}", connected_peers, metrics.active_sessions, metrics.unsolicited_requests_per_second);
-            info!("Searching for peers...");
             // execute a FINDNODE query
             match discv5.find_node(target_random_node_id).await {
               Err(e) => error!("Find Node result failed: {:?}", e),

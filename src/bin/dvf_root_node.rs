@@ -45,9 +45,12 @@ use std::{
   net::{Ipv4Addr, SocketAddr},
   time::Duration,
 };
+use store::Store;
 
 #[tokio::main]
 async fn main() {
+
+  let store = Store::new("~/.lighthouse/root_node.db").unwrap();
   let filter_layer = tracing_subscriber::EnvFilter::try_from_default_env()
       .or_else(|_| tracing_subscriber::EnvFilter::try_new("info"))
       .unwrap();
@@ -156,7 +159,17 @@ async fn main() {
                   Err(e) => println!("Find Node result failed: {:?}", e),
                   Ok(v) => {
                       // found a list of ENR's print their NodeIds
-                      let node_ips = v.iter().map(|enr| enr.ip()).collect::<Vec<_>>();
+                      for enr in &v {
+                        match enr.ip() {
+                            Some(ip) => {
+                                store.write(ip.octets().to_vec(), enr.to_base64().as_bytes().to_vec()).await;
+                            },
+                            None => { }
+                        }
+                      }
+                      let node_ips = v.iter().map(|enr| {
+                        enr.ip()
+                    }).collect::<Vec<_>>();
                       for node_ip in node_ips {
                           println!("Node: {:?}", node_ip);
                       }

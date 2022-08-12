@@ -21,7 +21,7 @@ use task_executor::TaskExecutor;
 use types::{
     attestation::Error as AttestationError, graffiti::GraffitiString, Address, AggregateAndProof,
     Attestation, BeaconBlock, BlindedPayload, ChainSpec, ContributionAndProof, Domain, Epoch,
-    EthSpec, ExecPayload, Fork, Graffiti, Hash256, Keypair, PublicKeyBytes, SelectionProof,
+    EthSpec, ExecPayload, Fork, Graffiti, Hash256, Keypair, PublicKeyBytes, PublicKey, SelectionProof,
     Signature, SignedAggregateAndProof, SignedBeaconBlock, SignedContributionAndProof, Slot,
     SyncAggregatorSelectionData, SyncCommitteeContribution, SyncCommitteeMessage,
     SyncSelectionProof, SyncSubnetId,
@@ -833,6 +833,14 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         *last_prune = current_epoch;
 
         info!(self.log, "Completed pruning of slashing protection DB");
+    }
+
+    /// Stop a validator
+    pub async fn stop_validator_keystore(
+        &self,
+        pubkey: &PublicKey
+    ) {
+        self.validators.write().delete_definition_and_keystore(pubkey).await.unwrap();
     }
 
     //pub fn is_duty_leader(&self, pubkey: &PublicKeyBytes, nonce: u64) -> bool {

@@ -21,6 +21,7 @@ use crate::node::dvfcore::{DvfSigner, DvfPerformanceRequest};
 use crate::node::config::{BACKEND_IP, BACKEND_PORT};
 use std::net::{IpAddr, Ipv4Addr};
 pub use web3signer::Web3SignerObject;
+use chrono::prelude::*;
 
 mod web3signer;
 
@@ -256,7 +257,7 @@ impl SigningMethod {
                         _ => { (Slot::new(0 as u64), "ERROR") }
                     };
 
-                    
+                    let dt : DateTime<Utc> = Utc::now();
                     match dvf_signer.sign(signing_root).await {
                         Ok((signature, ids)) => {
                             let request_body = DvfPerformanceRequest {
@@ -265,7 +266,8 @@ impl SigningMethod {
                                 operators: ids, 
                                 slot: slot.as_u64(),
                                 epoch: signing_context.epoch.as_u64(),
-                                duty: duty.to_string()
+                                duty: duty.to_string(),
+                                time: Utc::now().signed_duration_since(dt).num_milliseconds()
                             };
                             let client = reqwest::Client::new();
                             let mut url = Url::parse("http://example.com/v1/collect_performance").map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;

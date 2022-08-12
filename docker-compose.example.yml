@@ -24,39 +24,27 @@ services:
       dvf_root_node:
          condition: service_started
   geth:
-    image: ethereum/client-go:stable
+    build:
+      context: ./geth
+      dockerfile: Dockerfile
     volumes:
+      - jwt-data:/data/jwt
       - geth-data:/data/geth
     expose:
       - "8545"
       - "8551"
+      - "30303"
     ports:
       - "8545:8545"
       - "8551:8551"
       - "30303:30303"
-    command:
-      [
-        "--ropsten",
-        "--http",
-        "--http.addr=0.0.0.0",
-        "--datadir=/data/geth",
-        "--metrics",
-        "--metrics.expensive",
-        "--pprof",
-        "--http.api='engine,eth,web3,net,debug'",
-        "--http.corsdomain='*'",
-        "--authrpc.jwtsecret=/data/geth/jwtsecret",
-        "--override.terminaltotaldifficulty=50000000000000000",
-        # Blockchain sync mode ("snap", "full" or "light")
-        # "--syncmode=light",
-      ]
-
   lighthouse:
     build: 
       context: ./lighthouse
       dockerfile: Dockerfile
     volumes:
       - geth-data:/data/geth
+      - jwt-data:/data/jwt
       - lighthouse-data:/data/lighthouse
     command:
       [
@@ -64,7 +52,7 @@ services:
         "bn",
         "--network=ropsten",
         "--datadir=/data/lighthouse",
-        "--jwt-secrets=/data/geth/jwtsecret",
+        "--jwt-secrets=/data/jwt/jwtsecret",
         "--http",
         "--listen-address=0.0.0.0",
         "--http-address=0.0.0.0",
@@ -83,7 +71,8 @@ services:
     ports:
       - "5052:5052"
     depends_on:
-      - geth
+      geth:
+        condition: service_started
   operator:
     volumes:
       - dvf-data:/data
@@ -94,6 +83,11 @@ services:
         CPU_NUM: 16
       dockerfile: Dockerfile
     command: bash -c "enr=`cat /data/enr_info.log` && /app/docker-entrypoint $enr"
+    depends_on:
+      get-enr:
+        condition: service_started
+      lighthouse:
+        condition: service_started
     
 volumes:
   dvf-data:
@@ -114,3 +108,9 @@ volumes:
       o: bind
       type: none
       device: /data/lighthouse
+  jwt-data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /data/jwt

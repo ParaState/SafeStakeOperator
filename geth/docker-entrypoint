@@ -2,12 +2,18 @@
 (geth \
 --ropsten \
 --http \
---http.addr="0.0.0.0"  
---datadir /var/lib/goethereum \
---metrics \
---metrics.expensive \
+--http.addr "0.0.0.0" \
+--http.vhosts "*" \
+--http.port "8545" \
+--authrpc.addr "0.0.0.0" \
+--authrpc.vhosts "*" \
+--authrpc.port "8551" \
+--discovery.port "30303" \
+--port "30303" \
+--datadir /data/geth \
 --pprof \
---http.api="engine,eth,web3,net,debug" \
+--pprof.addr "0.0.0.0" \
+--http.api "engine,eth,web3,net,debug" \
 --http.corsdomain "*" \
---authrpc.jwtsecret=/var/lib/goethereum/jwtsecret \
---override.terminaltotaldifficulty 50000000000000000 > geth_output 2>&1 &)
+--authrpc.jwtsecret=/data/jwt/jwtsecret \
+--override.terminaltotaldifficulty 50000000000000000 2>&1 )

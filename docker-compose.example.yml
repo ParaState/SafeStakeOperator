@@ -1,0 +1,116 @@
+version: '3'
+services:
+  dvf_root_node:
+    volumes:
+      - dvf-data:/var/log/dvf
+    build: 
+      context: .
+      args:
+        CPU_NUM: 16
+      dockerfile: Dockerfile
+    command: "/app/docker-entrypoint boot"
+    expose:
+      - "9005"
+    ports:
+      - "9005:9005"
+  get-enr:
+    image: busybox:latest
+      #command: 'cat /data/dvf_root.log | grep "Base64" | cut -d" " -f3 > /data/enr_info.log'
+    command: "sh -x ./get_enr.sh"
+    volumes:
+      - dvf-data:/data
+      - ./scripts/get_enr.sh:/get_enr.sh
+    depends_on:
+      dvf_root_node:
+         condition: service_started
+  geth:
+    build:
+      context: ./geth
+      dockerfile: Dockerfile
+    volumes:
+      - jwt-data:/data/jwt
+      - geth-data:/data/geth
+    expose:
+      - "8545"
+      - "8551"
+      - "30303"
+    ports:
+      - "8545:8545"
+      - "8551:8551"
+      - "30303:30303"
+  lighthouse:
+    build: 
+      context: ./lighthouse
+      dockerfile: Dockerfile
+    volumes:
+      - geth-data:/data/geth
+      - jwt-data:/data/jwt
+      - lighthouse-data:/data/lighthouse
+    command:
+      [
+        "lighthouse",
+        "bn",
+        "--network=ropsten",
+        "--datadir=/data/lighthouse",
+        "--jwt-secrets=/data/jwt/jwtsecret",
+        "--http",
+        "--listen-address=0.0.0.0",
+        "--http-address=0.0.0.0",
+        "--http-port=5052",
+        "--staking",
+        "--http-allow-sync-stalled",
+        "--merge",
+        "--execution-endpoints=http://geth:8551",
+        "--eth1-endpoints=http://geth:8545",
+        "--metrics",
+        "--validator-monitor-auto",
+        "--terminal-total-difficulty-override=50000000000000000"
+      ]
+    expose:
+      - "5052"
+    ports:
+      - "5052:5052"
+    depends_on:
+      geth:
+        condition: service_started
+  operator:
+    volumes:
+      - dvf-data:/data
+      - dvf-data:/var/log/dvf
+    build:
+      context: .
+      args:
+        CPU_NUM: 16
+      dockerfile: Dockerfile
+    command: bash -c "enr=`cat /data/enr_info.log` && /app/docker-entrypoint $enr"
+    depends_on:
+      get-enr:
+        condition: service_started
+      lighthouse:
+        condition: service_started
+    
+volumes:
+  dvf-data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /data/dvf
+  geth-data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /data/geth
+  lighthouse-data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /data/lighthouse
+  jwt-data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /data/jwt

@@ -53,7 +53,7 @@ vim .env
 sudo docker compose -f  docker-compose-operator.yml build
 ```
 
-## Running
+## Run
 ### Run your operator
 ```
 sudo docker compose -f  docker-compose-operator.yml up -d

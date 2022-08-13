@@ -116,12 +116,12 @@ impl Committee {
             .collect()
     }
 
-    /// Returns the ssv address of a spefic node
+    /// Returns the ss address of a spefic node
     pub fn signature_address(&self, name: &PublicKey) -> Option<SocketAddr> {
         self.authorities.get(name).map(|x| x.signature_address)
     }
 
-    /// Returns the ssv address of a spefic node
+    /// Returns the ss address of a spefic node
     pub fn broadcast_signature_addresses(&self, myself: &PublicKey) -> Vec<SocketAddr> {
         self.authorities
         .iter()

@@ -70,6 +70,14 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 )
                 .takes_value(true)
         )
+        .arg(
+            Arg::with_name("api")
+                .long("api")
+                .value_name("API")
+                .help(
+                    "The api where the operator to send performance request"
+                ).takes_value(true)
+        )
         // .arg(
         //     Arg::with_name("base-port")
         //         .long("base-port")

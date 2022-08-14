@@ -4,6 +4,7 @@ use std::fs::create_dir_all;
 use serde_derive::{Deserialize, Serialize};
 use crate::DEFAULT_DVF_ROOT_DIR;
 use directory::{DEFAULT_VALIDATOR_DIR, DEFAULT_SECRET_DIR};
+use tokio::sync::OnceCell;
 /// The file name for the serialized `OperatorCommitteeDefinition` struct.
 pub const NODE_KEY_FILENAME: &str = "node_key.json";
 pub const DB_FILENAME: &str = "dvf_node_db";
@@ -19,6 +20,7 @@ pub const BASE64_ENR : &str = "enr:-IS4QJ6XVEkrC9xX9t8u4yRjP08sD4BwN0QwyBx6xOxnh
 pub const CONTRACT_ABI_PATH: &str = "abi/abi.json";
 pub const BACKEND_IP: [u8; 4] = [35, 88, 15, 244];
 pub const BACKEND_PORT: u16 = 80;
+pub static API_ADDRESS: OnceCell<String> = OnceCell::const_new();
 #[derive(Clone, Serialize, Deserialize)]
 pub struct NodeConfig {
     // pub id: u64,

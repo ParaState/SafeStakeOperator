@@ -16,7 +16,7 @@ use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use types::{Address, GRAFFITI_BYTES_LEN};
-use crate::node::config::NodeConfig;
+use crate::node::config::{NodeConfig,API_ADDRESS};
 
 pub const DEFAULT_BEACON_NODE: &str = "http://localhost:5052/";
 
@@ -151,6 +151,13 @@ impl Config {
             let base_port_str: String = parse_required(cli_args, "base-port")?;
             base_port = Some(base_port_str.parse::<u16>().unwrap());
             info!(log, "Successfully read base port"; "base-port" => base_port.unwrap());
+        }
+
+        if cli_args.value_of("api").is_some() {
+            let api_str: String = parse_required(cli_args, "api")?;
+            info!(log, "Successfully read api address"; "api" => &api_str);
+            API_ADDRESS.set(api_str).unwrap();
+            
         }
 
         match base_port {

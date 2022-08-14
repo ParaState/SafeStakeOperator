@@ -18,7 +18,7 @@ use types::*;
 use url::Url;
 use web3signer::{ForkInfo, SigningRequest, SigningResponse};
 use crate::node::dvfcore::{DvfSigner, DvfPerformanceRequest};
-use crate::node::config::{BACKEND_IP, BACKEND_PORT};
+use crate::node::config::{BACKEND_IP, API_ADDRESS};
 use std::net::{IpAddr, Ipv4Addr};
 pub use web3signer::Web3SignerObject;
 use chrono::prelude::*;
@@ -270,9 +270,9 @@ impl SigningMethod {
                                 time: Utc::now().signed_duration_since(dt).num_milliseconds()
                             };
                             let client = reqwest::Client::new();
-                            let mut url = Url::parse("http://example.com/v1/collect_performance").map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
-                            url.set_ip_host(IpAddr::V4(Ipv4Addr::new(BACKEND_IP[0], BACKEND_IP[1], BACKEND_IP[2], BACKEND_IP[3]))).unwrap();
-                            url.set_port(Some(BACKEND_PORT)).unwrap();
+                            let url = Url::parse(API_ADDRESS.get().unwrap()).map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
+                            // url.set_ip_host(IpAddr::V4(Ipv4Addr::new(BACKEND_IP[0], BACKEND_IP[1], BACKEND_IP[2], BACKEND_IP[3]))).unwrap();
+                            // url.set_port(Some(BACKEND_PORT)).unwrap();
                             let _ = client.post(url).json(&request_body).send().await.map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
 
                             Ok(signature)

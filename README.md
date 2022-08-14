@@ -17,7 +17,7 @@ SafeStake is a decentralized validation framework for performing ETH2 duties and
 
 ## Installation
 
-### Login your server
+### Login your server([jumpserver](https://www.jumpserver.org/) recommand)
 ### Install Docker and Docker compose
 * [install docker engine](https://docs.docker.com/engine/install/)
 * [install docker compose](https://docs.docker.com/compose/install/)

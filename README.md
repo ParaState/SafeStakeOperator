@@ -38,7 +38,7 @@ openssl rand -hex 32 | tr -d "\n" | sudo tee /data/jwt/jwtsecret
 ### Clone operator code from github
 
 ```
-git clone --recurse-submodules https://github.com/ParaState/SafeStake.git
+git clone --recurse-submodules https://github.com/ParaState/SafeStakeOperator.git
 ```
 
 ### Fill enr you get in testnet.xyz

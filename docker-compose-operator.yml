@@ -56,7 +56,7 @@ services:
     build:
       context: .
       args:
-        CPU_NUM: 16
+        CPU_NUM: 8
       dockerfile: Dockerfile
     command: "${ENR}"
     depends_on:

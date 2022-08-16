@@ -18,7 +18,7 @@ services:
       - "8546:8546"
       - "8547:8547"
       - "8551:8551"
-      - "30303:30303"
+      - "30303:30303/udp"
   lighthouse:
     build: 
       context: ./lighthouse
@@ -52,7 +52,8 @@ services:
       - "9000"
     ports:
       - "5052:5052"
-      - "9000:9000"
+      - "9000:9000/tcp"
+      - "9000:9000/udp"
     depends_on:
       geth:
         condition: service_started
@@ -76,7 +77,7 @@ services:
       - "25001:25001"
       - "25002:25002"
       - "25003:25003"
-      - "25004:25004"
+      - "25004:25004/udp"
     depends_on:
       lighthouse:
         condition: service_started

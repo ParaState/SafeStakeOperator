@@ -9,10 +9,14 @@ services:
       - geth-data:/data/geth
     expose:
       - "8545"
+      - "8546"
+      - "8547"
       - "8551"
       - "30303"
     ports:
       - "8545:8545"
+      - "8546:8546"
+      - "8547:8547"
       - "8551:8551"
       - "30303:30303"
   lighthouse:
@@ -45,8 +49,10 @@ services:
       ]
     expose:
       - "5052"
+      - "9000"
     ports:
       - "5052:5052"
+      - "9000:9000"
     depends_on:
       geth:
         condition: service_started
@@ -59,6 +65,18 @@ services:
         CPU_NUM: 8
       dockerfile: Dockerfile
     command: "${ENR}"
+    expose:
+      - "25000"
+      - "25001"
+      - "25002"
+      - "25003"
+      - "25004"
+    ports:
+      - "25000:25000"
+      - "25001:25001"
+      - "25002:25002"
+      - "25003:25003"
+      - "25004:25004"
     depends_on:
       lighthouse:
         condition: service_started

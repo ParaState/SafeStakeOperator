@@ -8,7 +8,7 @@ elif [[ -n "$START_PRO" && "$START_PRO" != "boot" ]]; then
   /usr/local/bin/dvf validator_client \
     --debug-level info \
     --network ropsten \
-    --beacon-nodes http://lighthouse:5052 \
+    --beacon-nodes http://127.0.0.1:5052 \
     --api https://api-testnet.safestake.xyz/v1/collect_performance \
     --ip $NODE_IP \
     --boot-enr $START_PRO 2>&1

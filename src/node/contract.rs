@@ -319,9 +319,13 @@ impl ListenContract {
     self.process_validator_deleted(parse_log).await;
   }
 
-  pub fn convert_publick_key_to_u64(publick_key: &Vec<u8>) -> u64 {
+  pub fn convert_publick_key_to_u64(public_key: &Vec<u8>) -> u64 {
     let mut little_endian: [u8; 8] = [0; 8];
-    let _ = little_endian.iter_mut().enumerate().map(|(i, x)| { *x = publick_key[i]; });
+    let mut i = 0;
+    for elem in little_endian.iter_mut() {
+        *elem = public_key[i];
+        i = i + 1;
+    } 
     let id = u64::from_le_bytes(little_endian);
     id 
   } 

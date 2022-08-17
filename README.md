@@ -4,6 +4,8 @@
 SafeStake is a decentralized validation framework for performing ETH2 duties and its backend is designed on top of Lighthouse (ETH2 consensus client) and Hotstuff (a BFT consensus library).
 
 ## Dependencies
+### Server 
+
  * Public Static Network IP 
  * Hardware(recommend)
    * CPU: 4
@@ -14,6 +16,9 @@ SafeStake is a decentralized validation framework for performing ETH2 duties and
  * Software
    * Docker
    * Docker Compose 
+
+### Set firewall rule
+![firewall rule](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/firewall_rule.png?raw=true)
 
 ## Installation
 
@@ -38,11 +43,13 @@ openssl rand -hex 32 | tr -d "\n" | sudo tee /data/jwt/jwtsecret
 ### Clone operator code from github
 
 ```
-git clone --recurse-submodules https://github.com/ParaState/SafeStakeOperator.git
+git clone --recurse-submodules https://github.com/ParaState/SafeStakeOperator.git dvf
 ```
 
 ### Fill enr you get in testnet.xyz
 enr configure 
+
+**It has default value in latest source code**
 
 ```
 cd dvf

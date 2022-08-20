@@ -59,9 +59,10 @@ impl<T: EthSpec> Node<T> {
     pub fn new(
         config: NodeConfig
     ) -> Result<Option<Arc<ParkingRwLock<Self>>>, ConfigError> {
-        let secret_exists = config.node_key_path.exists();
         let self_address = config.base_address.ip();
+        let secret_dir = config.secrets_dir.clone();
         let secret = Node::<T>::open_or_create_secret(config.node_key_path.clone())?;
+        
         info!("node public key {}", secret.name.encode_base64());
 
         let tx_handler_map = Arc::new(RwLock::new(HashMap::new()));
@@ -95,10 +96,7 @@ impl<T: EthSpec> Node<T> {
             secret.name, signature_address
         );
 
-        let (tx_validator_command, mut rx_validator_command) = channel(5);
-
-
-        
+        let (tx_validator_command, rx_validator_command) = channel(2);
         //// set dvfcore handler map
         //let dvfcore_handler_map : Arc<RwLock<HashMap<u64, DvfReceiverHandler>>>= Arc::new(RwLock::new(HashMap::new()));
         //let (tx_dvfinfo, rx_dvfinfo) = channel(1);
@@ -135,11 +133,13 @@ impl<T: EthSpec> Node<T> {
         Discovery::spawn(self_address, base_port + DISCOVERY_PORT_OFFSET, Arc::clone(&key_ip_map), node.secret.clone(), Some(node.config.boot_enr.to_string()));
 
         let contract_config = ContractConfig::default();
-        ListenContract::spawn(contract_config, !secret_exists, node.secret.name.0.to_vec(), node.config.backend_address.clone(), tx_validator_command, validators_map.clone(), validator_operators_map.clone());
+        ListenContract::spawn(contract_config.clone(), node.secret.name.0.to_vec(), tx_validator_command.clone(), validators_map.clone(), validator_operators_map.clone());
+
+        ListenContract::pull_from_contract(contract_config, node.secret.name.0.to_vec(), tx_validator_command, validators_map.clone(), validator_operators_map.clone(), secret_dir.parent().unwrap().to_path_buf());
 
         let node = Arc::new(ParkingRwLock::new(node));
 
-        Node::process_validator_command(Arc::clone(&node), validators_map, validator_operators_map, Arc::clone(&key_ip_map), rx_validator_command, base_port, validator_dir.clone(), secrets_dir);
+        Node::process_validator_command(Arc::clone(&node), validator_operators_map, Arc::clone(&key_ip_map), rx_validator_command, base_port, validator_dir.clone(), secrets_dir);
 
         Ok(Some(node))
     }
@@ -156,7 +156,7 @@ impl<T: EthSpec> Node<T> {
         }
     }
 
-    pub fn process_validator_command(node: Arc<ParkingRwLock<Node<T>>>, validators_map: Arc<RwLock<HashMap<u64, Validator>>>, validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>, operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,  mut rx_validator_command: Receiver<ValidatorCommand>, base_port: u16, validator_dir: PathBuf, secret_dir: PathBuf) {
+    pub fn process_validator_command(node: Arc<ParkingRwLock<Node<T>>>, validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>, operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,  mut rx_validator_command: Receiver<ValidatorCommand>, base_port: u16, validator_dir: PathBuf, secret_dir: PathBuf) {
         tokio::spawn(async move {
             let node = node;
             let secret = node.read().secret.clone();
@@ -204,7 +204,7 @@ impl<T: EthSpec> Node<T> {
                                                         
                                                         let ciphertext = Ciphertext::from_bytes(&operator.encrypted_key);
                                                         let plain_shared_key = elgamal.decrypt(&ciphertext, &secret_key)
-                                                            .map_err(|e| format!("Unable to decrypt: ciphertext({:?}), secret_key({})", 
+                                                            .map_err(|_e| format!("Unable to decrypt: ciphertext({:?}), secret_key({})", 
                                                                                  hex::encode(operator.encrypted_key.as_slice()),
                                                                                  secret_key.display_secret())
                                                             ).unwrap();

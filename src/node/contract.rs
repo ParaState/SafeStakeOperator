@@ -1,25 +1,27 @@
 use web3::{
   Web3,
   transports::WebSocket,
-  types::{FilterBuilder, Address, H256, Log}, 
+  types::{FilterBuilder, Address, H256, Log, BlockNumber, U64}, 
   futures::{TryStreamExt}
 }; 
 use web3::ethabi::{Event, EventParam, ParamType, RawLog, Hash, token};
 use serde::{Deserialize, Serialize};
-use std::net::{SocketAddr};
+use serde_derive::{Deserialize as DeriveDeserialize, Serialize as DeriveSerialize};
 use log::{info, error};
 use tokio::sync::{mpsc};
 use std::sync::{Arc};
 use tokio::sync::RwLock;
 use std::collections::HashMap;
-
+use std::fs::{File,remove_file};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 const DEFAULT_ABI_JSON: &str = "[{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"validatorPublicKey\",\"type\":\"bytes\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"index\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"operatorPublicKey\",\"type\":\"bytes\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"sharedPublicKey\",\"type\":\"bytes\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"encryptedKey\",\"type\":\"bytes\"}],\"name\":\"OessAdded\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"string\",\"name\":\"name\",\"type\":\"string\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"ownerAddress\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"publicKey\",\"type\":\"bytes\"}],\"name\":\"OperatorAdded\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"string\",\"name\":\"name\",\"type\":\"string\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"publicKey\",\"type\":\"bytes\"}],\"name\":\"OperatorDeleted\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"ownerAddress\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"publicKey\",\"type\":\"bytes\"},{\"components\":[{\"internalType\":\"uint256\",\"name\":\"index\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"operatorPublicKey\",\"type\":\"bytes\"},{\"internalType\":\"bytes\",\"name\":\"sharedPublicKey\",\"type\":\"bytes\"},{\"internalType\":\"bytes\",\"name\":\"encryptedKey\",\"type\":\"bytes\"}],\"indexed\":false,\"internalType\":\"struct ISSVNetwork.Oess[]\",\"name\":\"oessList\",\"type\":\"tuple[]\"}],\"name\":\"ValidatorAdded\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"ownerAddress\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"publicKey\",\"type\":\"bytes\"}],\"name\":\"ValidatorDeleted\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"ownerAddress\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"publicKey\",\"type\":\"bytes\"},{\"components\":[{\"internalType\":\"uint256\",\"name\":\"index\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"operatorPublicKey\",\"type\":\"bytes\"},{\"internalType\":\"bytes\",\"name\":\"sharedPublicKey\",\"type\":\"bytes\"},{\"internalType\":\"bytes\",\"name\":\"encryptedKey\",\"type\":\"bytes\"}],\"indexed\":false,\"internalType\":\"struct ISSVNetwork.Oess[]\",\"name\":\"oessList\",\"type\":\"tuple[]\"}],\"name\":\"ValidatorUpdated\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"string\",\"name\":\"_name\",\"type\":\"string\"},{\"internalType\":\"address\",\"name\":\"_ownerAddress\",\"type\":\"address\"},{\"internalType\":\"bytes\",\"name\":\"_publicKey\",\"type\":\"bytes\"}],\"name\":\"addOperator\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_ownerAddress\",\"type\":\"address\"},{\"internalType\":\"bytes\",\"name\":\"_publicKey\",\"type\":\"bytes\"},{\"internalType\":\"bytes[]\",\"name\":\"_operatorPublicKeys\",\"type\":\"bytes[]\"},{\"internalType\":\"bytes[]\",\"name\":\"_sharesPublicKeys\",\"type\":\"bytes[]\"},{\"internalType\":\"bytes[]\",\"name\":\"_encryptedKeys\",\"type\":\"bytes[]\"}],\"name\":\"addValidator\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"_publicKey\",\"type\":\"bytes\"}],\"name\":\"deleteOperator\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"_publicKey\",\"type\":\"bytes\"}],\"name\":\"deleteValidator\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"operatorCount\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"\",\"type\":\"bytes\"}],\"name\":\"operators\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"name\",\"type\":\"string\"},{\"internalType\":\"address\",\"name\":\"ownerAddress\",\"type\":\"address\"},{\"internalType\":\"bytes\",\"name\":\"publicKey\",\"type\":\"bytes\"},{\"internalType\":\"uint256\",\"name\":\"score\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"_operatorPublicKey\",\"type\":\"bytes\"},{\"internalType\":\"uint256\",\"name\":\"_validatorsPerOperator\",\"type\":\"uint256\"}],\"name\":\"setValidatorsPerOperator\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"_validatorsPerOperatorLimit\",\"type\":\"uint256\"}],\"name\":\"setValidatorsPerOperatorLimit\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"_publicKey\",\"type\":\"bytes\"},{\"internalType\":\"bytes[]\",\"name\":\"_operatorPublicKeys\",\"type\":\"bytes[]\"},{\"internalType\":\"bytes[]\",\"name\":\"_sharesPublicKeys\",\"type\":\"bytes[]\"},{\"internalType\":\"bytes[]\",\"name\":\"_encryptedKeys\",\"type\":\"bytes[]\"}],\"name\":\"updateValidator\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"validatorCount\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"_operatorPublicKey\",\"type\":\"bytes\"}],\"name\":\"validatorsPerOperatorCount\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"validatorsPerOperatorLimit\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]";
 const DEFAULT_TRANSPORT_URL: &str = "wss://ropsten.infura.io/ws/v3/3cda22fb4f704870b3d2fafa70688a2e";
 const DEFAULT_CONTRACT_ADDRESS: &str = "EE56aB0FfAD43e003a1c0517E6583D036A1A56b2";
 const DEFAULT_ADD_VALIDATOR_TOPIC: &str = "8674c0b4bd63a0814bf1ae6d64d71cf4886880a8bdbd3d7c1eca89a37d1e9271";
 const DEFAULT_UPDATE_VALIDATOR_TOPIC: &str = "4c63bf11b116f386ae0aee6d8d6df531b5ed877eb5d2073119ddb4769ba3f312";
 const DEFAULT_DELETE_VALIDATOR_TOPIC: &str = "4c63bf11b116f386ae0aee6d8d6df531b5ed877eb5d2073119ddb4769ba3f312";
-
+const CONTRACTRECORDFIL: &str = "contract_record.yml";
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Operator {
   pub id: u64, 
@@ -54,6 +56,7 @@ pub struct ListenContract {
   validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>
 }
 
+#[derive(Clone)]
 pub struct ContractConfig {
   pub transport_url: String, 
   pub contract_address: String, 
@@ -61,6 +64,42 @@ pub struct ContractConfig {
   pub updated_topic: String,
   pub deleted_topic: String,
   pub abi_json: String
+}
+
+#[derive(Clone, PartialEq, DeriveSerialize, DeriveDeserialize)]
+pub struct ContractRecord {
+    pub block_num: u64
+}
+
+
+impl ContractRecord {
+  pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
+    let file = File::options()
+        .read(true)
+        .write(false)
+        .create(false)
+        .open(path)
+        .unwrap();
+    serde_yaml::from_reader(file).unwrap()
+  }
+
+  pub fn to_file<P: AsRef<Path>>(&self, path: P) {
+    let file = File::options()
+        .write(true)
+        .read(true)
+        .create_new(true)
+        .open(path)
+        .unwrap();
+    serde_yaml::to_writer(file, self).unwrap()
+  }
+  
+  pub fn open_or_create_contract_record(path: &PathBuf) -> Self {
+    if path.exists() {
+      ContractRecord::from_file(path)
+    } else {
+      Self { block_num: 0 }
+    }
+  }
 }
 
 impl ContractConfig {
@@ -77,11 +116,80 @@ impl ContractConfig {
 }
 
 impl ListenContract {
+  pub fn pull_from_contract(
+    config: ContractConfig,
+    node_public_key: Vec<u8>,
+    channel: mpsc::Sender<ValidatorCommand>,
+    validators_map: Arc<RwLock<HashMap<u64, Validator>>>,
+    validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>,
+    base_dir: PathBuf
+  ) {
+    tokio::spawn(async move {
+      let contract = Self {
+        node_public_key,
+        channel,
+        validators_map,
+        validator_operators_map
+      };
+
+      let contract_record_path = base_dir.join(CONTRACTRECORDFIL);
+      
+      let mut contract_record = ContractRecord::open_or_create_contract_record(&contract_record_path);
+
+      if contract_record.block_num == 0 {
+        let web3 : Web3<WebSocket> = Web3::new(WebSocket::new(&config.transport_url).await.unwrap());
+        contract_record.block_num = match web3.eth().block_number().await {
+          Ok(number) => { number.as_u64() },
+          Err(error) => {
+            error!("can't get current block number {:?}", error);
+            12825550 
+          }
+        };
+      }
+
+      let added_topic = H256::from_slice(&hex::decode(config.added_topic).unwrap());
+      let deleted_topic = H256::from_slice(&hex::decode(config.deleted_topic).unwrap());
+      let mut query_interval = tokio::time::interval(Duration::from_secs(60 * 5));
+      loop {
+        tokio::select! {
+          _ = query_interval.tick() => {
+            let web3: Web3<WebSocket> = Web3::new(WebSocket::new(&config.transport_url).await.unwrap());
+            let filter = FilterBuilder::default().
+              address(vec![Address::from_slice(&hex::decode(&config.contract_address).unwrap())]).
+              topics(Some(vec![added_topic.clone(), deleted_topic.clone()]), None, None, None)
+              .from_block(BlockNumber::Number(U64::from(contract_record.block_num as u64)))
+              .build();
+            let logs = web3.eth().logs(filter).await.unwrap();
+            info!("get {} logs", &logs.len());
+            if logs.len() == 0 {
+              contract_record.block_num = web3.eth().block_number().await.unwrap().as_u64();
+            }
+            for log in logs {
+              contract_record.block_num = log.block_number.unwrap().as_u64() + 1;
+              if log.topics[0] == added_topic {
+                info!("added topic");
+                contract.process_validator_add_or_update_event(log, &added_topic, ValidatorEventType::ADDED).await;
+              } else if log.topics[0] == deleted_topic {
+                info!("deleted topic");
+                contract.process_validator_deleted_event(log, &deleted_topic).await;
+              } else {
+                error!("unkown topic");
+              }
+            }
+            if contract_record_path.exists() {
+              remove_file(&contract_record_path).unwrap();
+            }
+            contract_record.to_file(&contract_record_path);
+          }
+        }
+      }
+    });
+  }
+
+
   pub fn spawn (
     config: ContractConfig,
-    first_start: bool,
     node_public_key: Vec<u8>,
-    dvf_backend_address: SocketAddr,
     channel: mpsc::Sender<ValidatorCommand>,
     validators_map: Arc<RwLock<HashMap<u64, Validator>>>,
     validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>
@@ -94,13 +202,6 @@ impl ListenContract {
         validators_map,
         validator_operators_map
       };
-
-      if first_start {
-        info!("first start");
-        // save state into store
-      } else {
-        info!("request from backend");
-      }
 
       let added_topic = H256::from_slice(&hex::decode(config.added_topic).unwrap());
       // let updated_topic = H256::from_slice(&hex::decode(config.updated_topic).unwrap());
@@ -204,8 +305,15 @@ impl ListenContract {
       }).collect();
 
       if included_self {
-        // save committee information to db, notify to start a dvf core
-        // self.store.write(public_key.to_vec(), bincode::serialize(&operators_list).unwrap()).await;
+        {
+          match self.validators_map.read().await.get(&validator_id) {
+            Some(_) => { 
+              info!("validator already exists");
+              return; 
+            },
+            None => {}
+          }
+        }
         self.validators_map.write().await.insert(validator_id, Validator {
           id: validator_id,
           validator_address: address.clone(),
@@ -234,10 +342,10 @@ impl ListenContract {
   }
 
   pub async fn process_validator_deleted(&self, eth_log: web3::ethabi::Log) {
-    let address = match &eth_log.params[0].value {
-      token::Token::Address(address) => Some(address),
-      _ => None
-    }.unwrap();
+    // let address = match &eth_log.params[0].value {
+    //   token::Token::Address(address) => Some(address),
+    //   _ => None
+    // }.unwrap();
 
     let public_key = match &eth_log.params[1].value {
       token::Token::Bytes(public_key) => Some(public_key),

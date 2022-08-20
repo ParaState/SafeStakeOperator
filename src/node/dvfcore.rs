@@ -147,7 +147,7 @@ impl DvfSigner {
         let node_tmp = Arc::clone(&node_para);
         let node = node_tmp.read();
         // find operator id from operatorCommitteeDefinition
-        let operator_index : Vec<usize> = committee_def.node_public_keys.iter().enumerate().filter(|&(i, x)| {
+        let operator_index : Vec<usize> = committee_def.node_public_keys.iter().enumerate().filter(|&(_i, x)| {
             node.secret.name == *x
         }).map(|(i, _)| i).collect();
         assert_eq!(operator_index.len(), 1);

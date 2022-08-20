@@ -78,14 +78,6 @@ impl NodeConfig {
         }
     }
 
-    pub fn set_id(mut self, id: u64) -> Self {
-        if id == 0 {
-            panic!("Invalid id");
-        }
-        // self.id = id;
-        self
-    }
-
     pub fn set_base_dir(mut self, path: PathBuf) -> Self {
         if !path.exists() {
             let _ = create_dir_all(&path);

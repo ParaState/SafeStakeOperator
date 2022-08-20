@@ -326,7 +326,6 @@ impl InitializedValidator {
                     key_cache.add(keypair.clone(), voting_keystore.uuid(), password);
                     keypair
                 };
-                println!("{} ", 322);
                 // [TODO] Zico: revisit this check, because def.voting_public_key is the master public key, while voting_keypair is a share.
                 //if voting_keypair.pk != def.voting_public_key {
                     //return Err(Error::VotingPublicKeyMismatch {
@@ -338,15 +337,11 @@ impl InitializedValidator {
                 // Append a `.lock` suffix to the voting keystore.
                 let lockfile_path = get_lockfile_path(&voting_keystore_share_path)
                     .ok_or_else(|| Error::BadVotingKeystorePath(voting_keystore_share_path.clone()))?;
-                println!("{} ", 344);
                 let voting_keystore_share_lockfile = Mutex::new(Some(Lockfile::new(lockfile_path)?));
                 // [TODO] Zico: End copying from LocalKeystore. Find a way to reuse.
-
-                println!("{} ", 348);
                 let committee_def_path = operator_committee_definition_path.ok_or(Error::NoCommitteeDefinition)?;
                 let committee_def = OperatorCommitteeDefinition::from_file(committee_def_path).map_err(Error::UnableToParseCommitteeDefinition)?; 
                 let validator_public_key = committee_def.validator_public_key.clone();
-                println!("{} ", 352);
                 let signer = DvfSigner::spawn(
                     node.unwrap(),
                     committee_def.validator_id,

@@ -9,7 +9,7 @@ elif [[ -n "$START_PRO" && "$START_PRO" != "boot" ]]; then
     --debug-level info \
     --network ropsten \
     --beacon-nodes http://127.0.0.1:5052 \
-    --api https://api-testnet.safestake.xyz/v1/collect_performance \
+    --api https://api-dev.safestake.xyz/v1/collect_performance \
     --ip $NODE_IP \
     --boot-enr $START_PRO 2>&1
 else

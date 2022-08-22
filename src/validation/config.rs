@@ -161,9 +161,9 @@ impl Config {
             
         }
 
-        if cli_args.value_of("contract_address").is_some() {
-            let contract_address_str: String = parse_required(cli_args, "contract_address")?;
-            info!(log, "Successfully read contract_address"; "contract_address" => &contract_address_str);
+        if cli_args.value_of("contract-address").is_some() {
+            let contract_address_str: String = parse_required(cli_args, "contract-address")?;
+            info!(log, "Successfully read contract-address"; "contract-address" => &contract_address_str);
             DEFAULT_CONTRACT_ADDRESS.set(contract_address_str).unwrap();
         }
 

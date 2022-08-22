@@ -7,9 +7,10 @@ use network::{Receiver as NetworkReceiver};
 use std::sync::{Arc};
 use std::collections::HashMap;
 use tokio::sync::RwLock;
+use tokio::time::{sleep, Duration};
 use parking_lot::RwLock as ParkingRwLock;
 use std::net::SocketAddr;
-use tokio::sync::mpsc::{channel, Receiver};
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 /// The default channel capacity for this module.
 use crate::node::dvfcore::{ DvfSignatureReceiverHandler};
 use crate::node::config::{NodeConfig, DISCOVERY_PORT_OFFSET, DB_FILENAME};
@@ -96,7 +97,7 @@ impl<T: EthSpec> Node<T> {
             secret.name, signature_address
         );
 
-        let (tx_validator_command, rx_validator_command) = channel(2);
+        let (tx_validator_command, rx_validator_command) = channel(3);
         //// set dvfcore handler map
         //let dvfcore_handler_map : Arc<RwLock<HashMap<u64, DvfReceiverHandler>>>= Arc::new(RwLock::new(HashMap::new()));
         //let (tx_dvfinfo, rx_dvfinfo) = channel(1);
@@ -135,11 +136,11 @@ impl<T: EthSpec> Node<T> {
         let contract_config = ContractConfig::default();
         ListenContract::spawn(contract_config.clone(), node.secret.name.0.to_vec(), tx_validator_command.clone(), validators_map.clone(), validator_operators_map.clone());
 
-        ListenContract::pull_from_contract(contract_config, node.secret.name.0.to_vec(), tx_validator_command, validators_map.clone(), validator_operators_map.clone(), secret_dir.parent().unwrap().to_path_buf());
+        ListenContract::pull_from_contract(contract_config, node.secret.name.0.to_vec(), tx_validator_command.clone(), validators_map.clone(), validator_operators_map.clone(), secret_dir.parent().unwrap().to_path_buf());
 
         let node = Arc::new(ParkingRwLock::new(node));
 
-        Node::process_validator_command(Arc::clone(&node), validator_operators_map, Arc::clone(&key_ip_map), rx_validator_command, base_port, validator_dir.clone(), secrets_dir);
+        Node::process_validator_command(Arc::clone(&node), validator_operators_map, Arc::clone(&key_ip_map), rx_validator_command, tx_validator_command, base_port, validator_dir.clone(), secrets_dir);
 
         Ok(Some(node))
     }
@@ -156,7 +157,7 @@ impl<T: EthSpec> Node<T> {
         }
     }
 
-    pub fn process_validator_command(node: Arc<ParkingRwLock<Node<T>>>, validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>, operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,  mut rx_validator_command: Receiver<ValidatorCommand>, base_port: u16, validator_dir: PathBuf, secret_dir: PathBuf) {
+    pub fn process_validator_command(node: Arc<ParkingRwLock<Node<T>>>, validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>, operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,  mut rx_validator_command: Receiver<ValidatorCommand>, tx_validator_command: Sender<ValidatorCommand>, base_port: u16, validator_dir: PathBuf, secret_dir: PathBuf) {
         tokio::spawn(async move {
             let node = node;
             let secret = node.read().secret.clone();
@@ -244,6 +245,9 @@ impl<T: EthSpec> Node<T> {
                                         }
                                         if operator_base_address.len() != operators.len() {
                                             error!("there are not sufficient operators being discovered");
+                                            sleep(Duration::from_secs(10)).await;
+                                            let _ = tx_validator_command.send(ValidatorCommand::Start(validator)).await;
+                                            info!("process the validator again");
                                             continue;
                                         }
 

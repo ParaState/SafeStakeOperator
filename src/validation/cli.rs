@@ -78,6 +78,13 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                     "The api where the operator to send performance request"
                 ).takes_value(true)
         )
+        .arg(
+            Arg::with_name("contract_address")
+            .long("contract_address")
+            .value_name("CONTRACT_ADDRESS")
+            .help("The contract address")
+            .takes_value(true)
+        )
         // .arg(
         //     Arg::with_name("base-port")
         //         .long("base-port")

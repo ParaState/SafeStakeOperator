@@ -396,6 +396,6 @@ impl DvfCore {
             }
         }
         info!("[Dvf {}/{}] destroying dvf store", self.operator_id, self.validator_id);
-        self.store.notify_destroy().await;
+        // self.store.notify_destroy().await;
     }
 }

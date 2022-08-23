@@ -79,8 +79,8 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 ).takes_value(true)
         )
         .arg(
-            Arg::with_name("contract_address")
-            .long("contract_address")
+            Arg::with_name("contract-address")
+            .long("contract-address")
             .value_name("CONTRACT_ADDRESS")
             .help("The contract address")
             .takes_value(true)

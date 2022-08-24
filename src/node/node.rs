@@ -5,7 +5,7 @@ use consensus::{ConsensusReceiverHandler};
 use mempool::{TxReceiverHandler, MempoolReceiverHandler};
 use network::{Receiver as NetworkReceiver};
 use std::sync::{Arc};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
 use parking_lot::RwLock as ParkingRwLock;
@@ -135,12 +135,11 @@ impl<T: EthSpec> Node<T> {
         Discovery::spawn(self_address, base_port + DISCOVERY_PORT_OFFSET, Arc::clone(&key_ip_map), node.secret.clone(), Some(node.config.boot_enr.to_string()));
 
         let contract_config = ContractConfig::default();
-        ListenContract::spawn(contract_config.clone(), node.secret.name.0.to_vec(), tx_validator_command.clone(), validators_map.clone(), validator_operators_map.clone());
-
-        ListenContract::pull_from_contract(contract_config, node.secret.name.0.to_vec(), tx_validator_command.clone(), validators_map.clone(), validator_operators_map.clone(), secret_dir.parent().unwrap().to_path_buf());
+        let ethlog_hashset = Arc::new(RwLock::new(HashSet::new()));
+        ListenContract::spawn(contract_config.clone(), node.secret.name.0.to_vec(), tx_validator_command.clone(), validators_map.clone(), validator_operators_map.clone(), ethlog_hashset.clone());
+        ListenContract::pull_from_contract(contract_config, node.secret.name.0.to_vec(), tx_validator_command.clone(), validators_map.clone(), validator_operators_map.clone(), secret_dir.parent().unwrap().to_path_buf(), ethlog_hashset);
 
         let node = Arc::new(ParkingRwLock::new(node));
-
         Node::process_validator_command(Arc::clone(&node), validator_operators_map, Arc::clone(&key_ip_map), rx_validator_command, tx_validator_command, base_port, validator_dir.clone(), secrets_dir);
 
         Ok(Some(node))

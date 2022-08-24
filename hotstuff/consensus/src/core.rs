@@ -42,7 +42,8 @@ pub struct Core {
     timer: Timer,
     aggregator: Aggregator,
     network: SimpleSender,
-    validator_id: u64
+    validator_id: u64,
+    exit: exit_future::Exit
 }
 
 impl Core {
@@ -60,7 +61,8 @@ impl Core {
         rx_loopback: Receiver<Block>,
         tx_proposer: Sender<ProposerMessage>,
         tx_commit: Sender<Block>,
-        validator_id : u64
+        validator_id : u64,
+        exit: exit_future::Exit
     ) {
         tokio::spawn(async move {
             Self {
@@ -82,7 +84,8 @@ impl Core {
                 timer: Timer::new(timeout_delay),
                 aggregator: Aggregator::new(committee),
                 network: SimpleSender::new(),
-                validator_id: validator_id
+                validator_id: validator_id,
+                exit
             }
             .run()
             .await
@@ -427,6 +430,7 @@ impl Core {
         // This is the main loop: it processes incoming blocks and votes,
         // and receive timeout notifications from our Timeout Manager.
         loop {
+            let exit = self.exit.clone();
             let result = tokio::select! {
                 Some(message) = self.rx_message.recv() => match message {
                     ConsensusMessage::Propose(block) => self.handle_proposal(&block).await,
@@ -437,6 +441,7 @@ impl Core {
                 },
                 Some(block) = self.rx_loopback.recv() => self.process_block(&block).await,
                 () = &mut self.timer => self.local_timeout_round().await,
+                () = exit => { break; }
             };
             match result {
                 Ok(()) => (),

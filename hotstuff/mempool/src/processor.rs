@@ -23,16 +23,24 @@ impl Processor {
         mut rx_batch: Receiver<SerializedBatchMessage>,
         // Output channel to send out batches' digests.
         tx_digest: Sender<Digest>,
+        exit: exit_future::Exit
     ) {
         tokio::spawn(async move {
-            while let Some(batch) = rx_batch.recv().await {
-                // Hash the batch.
-                let digest = Digest(Sha512::digest(&batch).as_slice()[..32].try_into().unwrap());
+            loop {
+                let exit = exit.clone();
+                tokio::select! {
+                    Some(batch) = rx_batch.recv() => {
+                        let digest = Digest(Sha512::digest(&batch).as_slice()[..32].try_into().unwrap());
 
-                // Store the batch.
-                store.write(digest.to_vec(), batch).await;
+                        // Store the batch.
+                        store.write(digest.to_vec(), batch).await;
 
-                tx_digest.send(digest).await.expect("Failed to send digest");
+                        tx_digest.send(digest).await.expect("Failed to send digest");
+                    },
+                    () = exit => {
+                        break;
+                    }
+                }
             }
         });
     }

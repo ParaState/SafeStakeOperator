@@ -56,6 +56,7 @@ impl Consensus {
         tx_commit: Sender<Block>,
         validator_id: u64, 
         consensus_handler_map: Arc<RwLock<HashMap<u64, ConsensusReceiverHandler>>>,
+        exit: exit_future::Exit
     ) {
         // NOTE: This log entry is used to compute performance.
         parameters.log();
@@ -93,7 +94,7 @@ impl Consensus {
         let leader_elector = LeaderElector::new(committee.clone());
 
         // Make the mempool driver.
-        let mempool_driver = MempoolDriver::new(store.clone(), tx_mempool, tx_loopback.clone());
+        let mempool_driver = MempoolDriver::new(store.clone(), tx_mempool, tx_loopback.clone(), exit.clone());
 
         // Make the synchronizer.
         let synchronizer = Synchronizer::new(
@@ -102,7 +103,8 @@ impl Consensus {
             store.clone(),
             tx_loopback.clone(),
             parameters.sync_retry_delay,
-            validator_id
+            validator_id,
+            exit.clone()
         );
 
         // Spawn the consensus core.
@@ -119,7 +121,8 @@ impl Consensus {
             rx_loopback,
             tx_proposer,
             tx_commit,
-            validator_id
+            validator_id,
+            exit.clone()
         );
 
         // Spawn the block proposer.
@@ -130,11 +133,12 @@ impl Consensus {
             rx_mempool,
             /* rx_message */ rx_proposer,
             tx_loopback,
-            validator_id
+            validator_id,
+            exit.clone()
         );
 
         // Spawn the helper module.
-        Helper::spawn(committee, store, /* rx_requests */ rx_helper, validator_id);
+        Helper::spawn(committee, store, /* rx_requests */ rx_helper, validator_id, exit.clone());
     }
 }
 

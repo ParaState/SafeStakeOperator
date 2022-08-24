@@ -23,11 +23,12 @@ impl MempoolDriver {
         store: Store,
         tx_mempool: Sender<ConsensusMempoolMessage>,
         tx_loopback: Sender<Block>,
+        exit: exit_future::Exit
     ) -> Self {
         let (tx_payload_waiter, rx_payload_waiter) = channel(CHANNEL_CAPACITY);
 
         // Spawn the payload waiter.
-        PayloadWaiter::spawn(store.clone(), rx_payload_waiter, tx_loopback);
+        PayloadWaiter::spawn(store.clone(), rx_payload_waiter, tx_loopback, exit.clone());
 
         // Returns the mempool driver.
         Self {
@@ -88,6 +89,7 @@ struct PayloadWaiter {
     store: Store,
     rx_message: Receiver<PayloadWaiterMessage>,
     tx_loopback: Sender<Block>,
+    exit: exit_future::Exit
 }
 
 impl PayloadWaiter {
@@ -95,12 +97,14 @@ impl PayloadWaiter {
         store: Store,
         rx_message: Receiver<PayloadWaiterMessage>,
         tx_loopback: Sender<Block>,
+        exit: exit_future::Exit
     ) {
         tokio::spawn(async move {
             Self {
                 store,
                 rx_message,
                 tx_loopback,
+                exit
             }
             .run()
             .await;
@@ -130,6 +134,7 @@ impl PayloadWaiter {
 
         let store_copy = self.store.clone();
         loop {
+            let exit = self.exit.clone();
             tokio::select! {
                 Some(message) = self.rx_message.recv() => match message {
                     PayloadWaiterMessage::Wait(missing, block) => {
@@ -163,6 +168,9 @@ impl PayloadWaiter {
                         Ok(None) => (),
                         Err(e) => error!("{}", e)
                     }
+                },
+                () = exit => {
+                    break;
                 }
             }
         }

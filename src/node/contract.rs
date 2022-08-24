@@ -344,10 +344,10 @@ impl ListenContract {
   }
 
   pub async fn process_validator_deleted(&self, eth_log: web3::ethabi::Log) {
-    // let address = match &eth_log.params[0].value {
-    //   token::Token::Address(address) => Some(address),
-    //   _ => None
-    // }.unwrap();
+    let address = match &eth_log.params[0].value {
+      token::Token::Address(address) => Some(address),
+      _ => None
+    }.unwrap();
 
     let public_key = match &eth_log.params[1].value {
       token::Token::Bytes(public_key) => Some(public_key),
@@ -362,7 +362,12 @@ impl ListenContract {
         let _ = self.channel.send(ValidatorCommand::Stop (validator)).await;
       }, 
       None => {
-        info!("self is not included in this validator, doing nothing");
+        let validator = Validator {
+          id: validator_id,
+          validator_address: address.clone(),
+          validator_public_key: public_key.clone()
+        };
+        let _ = self.channel.send(ValidatorCommand::Stop(validator)).await;
       }
     }
   }

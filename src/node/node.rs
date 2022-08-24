@@ -16,7 +16,7 @@ use crate::node::dvfcore::{ DvfSignatureReceiverHandler};
 use crate::node::config::{NodeConfig, DISCOVERY_PORT_OFFSET, DB_FILENAME};
 use std::path::PathBuf;
 use std::net::IpAddr;
-use std::fs::remove_file;
+use std::fs::{remove_file, remove_dir_all};
 use crate::node::contract::{ValidatorCommand, Validator, Operator};
 use crate::validation::operator_committee_definitions::OperatorCommitteeDefinition;
 use crate::node::discovery::Discovery;
@@ -312,8 +312,9 @@ impl<T: EthSpec> Node<T> {
                                         let base_dir = node.config.secrets_dir.parent().unwrap();
                                         let db_dir = base_dir.join(DB_FILENAME).join(validator_id.to_string());
                                         if db_dir.exists() {
-                                            remove_file(&db_dir).unwrap();
+                                            remove_dir_all(&db_dir).unwrap();
                                         }
+                                        // delete secret 
                                         let validator_operators = validator_operators_map.read().await;
                                         let operators_vec = validator_operators.get(&validator_id);
                                         match operators_vec {
@@ -334,8 +335,11 @@ impl<T: EthSpec> Node<T> {
                                             None => {
                                                 error!("can't find validator's releated operators");
                                             }
-
                                         }   
+                                        let _ = node.tx_handler_map.write().await.remove(&validator_id);
+                                        let _ = node.mempool_handler_map.write().await.remove(&validator_id);
+                                        let _ = node.consensus_handler_map.write().await.remove(&validator_id);
+                                        let _ = node.signature_handler_map.write().await.remove(&validator_id);
                                     }
                                     _ => {error!("unexpected error happen"); }
 

@@ -148,10 +148,6 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
                 if let Some(duration_to_next_slot) = self.slot_clock.duration_to_next_slot() {
                     sleep(duration_to_next_slot + slot_duration / 3).await;
                     let log = self.context.log();
-                    info!(
-                        log,
-                        "get task"
-                    );
                     if let Err(e) = self.spawn_attestation_tasks(slot_duration) {
                         crit!(
                             log,

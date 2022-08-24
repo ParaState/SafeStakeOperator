@@ -40,7 +40,9 @@ pub struct BatchMaker {
     current_batch_size: usize,
     /// A network sender to broadcast the batches to the other mempools.
     network: ReliableSender,
-    validator_id: u64
+    validator_id: u64,
+    /// Exit 
+    exit: exit_future::Exit
 }
 
 impl BatchMaker {
@@ -50,7 +52,8 @@ impl BatchMaker {
         rx_transaction: Receiver<Transaction>,
         tx_message: Sender<QuorumWaiterMessage>,
         mempool_addresses: Vec<(PublicKey, SocketAddr)>,
-        validator_id: u64
+        validator_id: u64,
+        exit: exit_future::Exit
     ) {
         tokio::spawn(async move {
             Self {
@@ -62,7 +65,8 @@ impl BatchMaker {
                 current_batch: Batch::with_capacity(batch_size * 2),
                 current_batch_size: 0,
                 network: ReliableSender::new(),
-                validator_id: validator_id
+                validator_id: validator_id,
+                exit: exit
             }
             .run()
             .await;
@@ -75,6 +79,7 @@ impl BatchMaker {
         tokio::pin!(timer);
 
         loop {
+            let exit = self.exit.clone();
             tokio::select! {
                 // Assemble client transactions into batches of preset size.
                 Some(transaction) = self.rx_transaction.recv() => {
@@ -92,6 +97,10 @@ impl BatchMaker {
                         self.seal().await;
                     }
                     timer.as_mut().reset(Instant::now() + Duration::from_millis(self.max_batch_delay));
+                },
+                () = exit => {
+                    log::info!("Shutting down BatchMaker");
+                    break;
                 }
             }
 

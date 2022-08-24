@@ -28,8 +28,9 @@ use parking_lot::{RwLock as ParkingRwLock};
 use crate::validation::operator_committee_definitions::OperatorCommitteeDefinition; 
 use crate::node::config::{TRANSACTION_PORT_OFFSET, MEMPOOL_PORT_OFFSET, CONSENSUS_PORT_OFFSET, SIGNATURE_PORT_OFFSET};
 use std::net::SocketAddr;
-
-
+use std::collections::HashMap;
+use mempool::{TxReceiverHandler, MempoolReceiverHandler};
+use consensus::{ConsensusReceiverHandler};
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DvfInfo {
   pub validator_id : u64,
@@ -293,6 +294,7 @@ impl DvfCore {
             info!("Insert signature handler for validator: {}", validator_id);
         }
 
+        let (signal, exit) = exit_future::signal();
         Mempool::spawn(
             node.secret.name,
             committee.mempool,
@@ -302,7 +304,8 @@ impl DvfCore {
             tx_mempool_to_consensus,
             validator_id,
             Arc::clone(&node.tx_handler_map),
-            Arc::clone(&node.mempool_handler_map)
+            Arc::clone(&node.mempool_handler_map),
+            exit.clone()
         );
 
         Consensus::spawn(
@@ -315,14 +318,15 @@ impl DvfCore {
             tx_consensus_to_mempool,
             tx_commit,
             validator_id,
-            Arc::clone(&node.consensus_handler_map)
+            Arc::clone(&node.consensus_handler_map),
+            exit.clone()
         );
 
         info!("[Dvf {}/{}] successfully booted", operator_id, validator_id);
 
         let operator = LocalOperator::new(validator_id, operator_id, Arc::new(keypair.clone()), node.config.transaction_address);
 
-        let (signal, exit) = exit_future::signal();
+        
         tokio::spawn(async move {
             Self {
                 store: store, 
@@ -332,7 +336,6 @@ impl DvfCore {
                 bls_keypair: keypair,
                 tx_consensus,
                 operator,
-
                 exit
             }
             .run()

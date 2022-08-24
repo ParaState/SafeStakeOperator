@@ -25,7 +25,8 @@ pub struct Proposer {
     tx_loopback: Sender<Block>,
     buffer: HashSet<Digest>,
     network: ReliableSender,
-    validator_id: u64
+    validator_id: u64, 
+    exit: exit_future::Exit
 }
 
 impl Proposer {
@@ -36,7 +37,8 @@ impl Proposer {
         rx_mempool: Receiver<Digest>,
         rx_message: Receiver<ProposerMessage>,
         tx_loopback: Sender<Block>,
-        validator_id: u64
+        validator_id: u64, 
+        exit: exit_future::Exit
     ) {
         tokio::spawn(async move {
             Self {
@@ -48,7 +50,8 @@ impl Proposer {
                 tx_loopback,
                 buffer: HashSet::new(),
                 network: ReliableSender::new(),
-                validator_id
+                validator_id,
+                exit
             }
             .run()
             .await;
@@ -128,6 +131,7 @@ impl Proposer {
 
     async fn run(&mut self) {
         loop {
+            let exit = self.exit.clone();
             tokio::select! {
                 Some(digest) = self.rx_mempool.recv() => {
                     //if self.buffer.len() < 155 {
@@ -141,6 +145,9 @@ impl Proposer {
                             self.buffer.remove(x);
                         }
                     }
+                },
+                () = exit => {
+                    break;
                 }
             }
         }

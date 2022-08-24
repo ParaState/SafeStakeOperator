@@ -28,6 +28,7 @@ pub struct QuorumWaiter {
     rx_message: Receiver<QuorumWaiterMessage>,
     /// Channel to deliver batches for which we have enough acknowledgements.
     tx_batch: Sender<SerializedBatchMessage>,
+    exit: exit_future::Exit
 }
 
 impl QuorumWaiter {
@@ -37,6 +38,7 @@ impl QuorumWaiter {
         stake: Stake,
         rx_message: Receiver<QuorumWaiterMessage>,
         tx_batch: Sender<Vec<u8>>,
+        exit: exit_future::Exit
     ) {
         tokio::spawn(async move {
             Self {
@@ -44,6 +46,7 @@ impl QuorumWaiter {
                 stake,
                 rx_message,
                 tx_batch,
+                exit
             }
             .run()
             .await;
@@ -58,26 +61,43 @@ impl QuorumWaiter {
 
     /// Main loop.
     async fn run(&mut self) {
-        while let Some(QuorumWaiterMessage { batch, handlers }) = self.rx_message.recv().await {
-            let mut wait_for_quorum: FuturesUnordered<_> = handlers
-                .into_iter()
-                .map(|(name, handler)| {
-                    let stake = self.committee.stake(&name);
-                    Self::waiter(handler, stake)
-                })
-                .collect();
-
-            // Wait for the first 2f nodes to send back an Ack. Then we consider the batch
-            // delivered and we send its digest to the consensus (that will include it into
-            // the dag). This should reduce the amount of synching.
-            let mut total_stake = self.stake;
-            while let Some(stake) = wait_for_quorum.next().await {
-                total_stake += stake;
-                if total_stake >= self.committee.quorum_threshold() {
-                    self.tx_batch
-                        .send(batch)
-                        .await
-                        .expect("Failed to deliver batch");
+        loop {
+            let exit = self.exit.clone();
+            tokio::select! {
+                Some(QuorumWaiterMessage { batch, handlers }) = self.rx_message.recv() => {
+                    let mut wait_for_quorum: FuturesUnordered<_> = handlers
+                        .into_iter()
+                        .map(|(name, handler)| {
+                            let stake = self.committee.stake(&name);
+                            Self::waiter(handler, stake)
+                        })
+                        .collect();
+        
+                    // Wait for the first 2f nodes to send back an Ack. Then we consider the batch
+                    // delivered and we send its digest to the consensus (that will include it into
+                    // the dag). This should reduce the amount of synching.
+                    let mut total_stake = self.stake;
+                    
+                    loop {
+                        let inner_exit = self.exit.clone();
+                        tokio::select! {
+                            Some(stake) = wait_for_quorum.next() => {
+                                total_stake += stake;
+                                if total_stake >= self.committee.quorum_threshold() {
+                                    self.tx_batch
+                                        .send(batch)
+                                        .await
+                                        .expect("Failed to deliver batch");
+                                    break;
+                                }
+                            },
+                            () = inner_exit => {
+                                break;
+                            }
+                        }
+                    }
+                },
+                () = exit => {
                     break;
                 }
             }

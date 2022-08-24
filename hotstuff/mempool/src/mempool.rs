@@ -56,7 +56,9 @@ pub struct Mempool {
     /// Send messages to consensus.
     tx_consensus: Sender<Digest>,
     /// Validator id.
-    validator_id: u64
+    validator_id: u64,
+    /// Exit 
+    exit: exit_future::Exit
 }
 
 impl Mempool {
@@ -69,7 +71,8 @@ impl Mempool {
         tx_consensus: Sender<Digest>,
         validator_id: u64,
         tx_handler_map : Arc<RwLock<HashMap<u64, TxReceiverHandler>>>,
-        mempool_handler_map: Arc<RwLock<HashMap<u64, MempoolReceiverHandler>>>
+        mempool_handler_map: Arc<RwLock<HashMap<u64, MempoolReceiverHandler>>>,
+        exit: exit_future::Exit
     ) {
         // NOTE: This log entry is used to compute performance.
         parameters.log();
@@ -81,7 +84,8 @@ impl Mempool {
             parameters,
             store,
             tx_consensus,
-            validator_id
+            validator_id, 
+            exit
         };
 
         // Spawn all mempool tasks.
@@ -112,7 +116,8 @@ impl Mempool {
             self.parameters.sync_retry_delay,
             self.parameters.sync_retry_nodes,
             /* rx_message */ rx_consensus,
-            self.validator_id
+            self.validator_id,
+            self.exit.clone()
         );
     }
 
@@ -152,7 +157,8 @@ impl Mempool {
             /* tx_message */ tx_quorum_waiter,
             /* mempool_addresses */
             self.committee.broadcast_addresses(&self.name),
-            self.validator_id
+            self.validator_id,
+            self.exit.clone()
         );
 
         // The `QuorumWaiter` waits for 2f authorities to acknowledge reception of the batch. It then forwards
@@ -162,6 +168,7 @@ impl Mempool {
             /* stake */ self.committee.stake(&self.name),
             /* rx_message */ rx_quorum_waiter,
             /* tx_batch */ tx_processor,
+            self.exit.clone()
         );
 
         // The `Processor` hashes and stores the batch. It then forwards the batch's digest to the consensus.
@@ -169,6 +176,7 @@ impl Mempool {
             self.store.clone(),
             /* rx_batch */ rx_processor,
             /* tx_digest */ self.tx_consensus.clone(),
+            self.exit.clone()
         );
 
         // info!("Mempool listening to client transactions on {}", address);
@@ -208,7 +216,8 @@ impl Mempool {
             self.committee.clone(),
             self.store.clone(),
             /* rx_request */ rx_helper,
-            self.validator_id
+            self.validator_id,
+            self.exit.clone()
         );
 
         // This `Processor` hashes and stores the batches we receive from the other mempools. It then forwards the
@@ -217,6 +226,7 @@ impl Mempool {
             self.store.clone(),
             /* rx_batch */ rx_processor,
             /* tx_digest */ self.tx_consensus.clone(),
+            self.exit.clone()
         );
 
         // info!("Mempool listening to mempool messages on {}", address);

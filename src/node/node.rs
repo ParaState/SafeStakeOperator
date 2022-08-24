@@ -314,6 +314,10 @@ impl<T: EthSpec> Node<T> {
                                         if db_dir.exists() {
                                             remove_dir_all(&db_dir).unwrap();
                                         }
+                                        let validator_dir = base_dir.join(format!("{}", validator_pk));
+                                        if validator_dir.exists() {
+                                            remove_dir_all(&validator_dir).unwrap();
+                                        }
                                         // delete secret 
                                         let validator_operators = validator_operators_map.read().await;
                                         let operators_vec = validator_operators.get(&validator_id);

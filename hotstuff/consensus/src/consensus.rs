@@ -133,11 +133,12 @@ impl Consensus {
             rx_mempool,
             /* rx_message */ rx_proposer,
             tx_loopback,
-            validator_id
+            validator_id,
+            exit.clone()
         );
 
         // Spawn the helper module.
-        Helper::spawn(committee, store, /* rx_requests */ rx_helper, validator_id);
+        Helper::spawn(committee, store, /* rx_requests */ rx_helper, validator_id, exit.clone());
     }
 }
 

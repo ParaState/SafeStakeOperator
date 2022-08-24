@@ -99,7 +99,7 @@ impl BatchMaker {
                     timer.as_mut().reset(Instant::now() + Duration::from_millis(self.max_batch_delay));
                 },
                 () = exit => {
-                    log::info!("shutting down BatchMaker");
+                    log::info!("Shutting down BatchMaker");
                     break;
                 }
             }

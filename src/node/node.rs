@@ -314,6 +314,7 @@ impl<T: EthSpec> Node<T> {
                                         if db_dir.exists() {
                                             remove_dir_all(&db_dir).unwrap();
                                         }
+                                        // delete secret 
                                         let validator_operators = validator_operators_map.read().await;
                                         let operators_vec = validator_operators.get(&validator_id);
                                         match operators_vec {
@@ -334,8 +335,11 @@ impl<T: EthSpec> Node<T> {
                                             None => {
                                                 error!("can't find validator's releated operators");
                                             }
-
                                         }   
+                                        let _ = node.tx_handler_map.write().await.remove(&validator_id);
+                                        let _ = node.mempool_handler_map.write().await.remove(&validator_id);
+                                        let _ = node.consensus_handler_map.write().await.remove(&validator_id);
+                                        let _ = node.signature_handler_map.write().await.remove(&validator_id);
                                     }
                                     _ => {error!("unexpected error happen"); }
 

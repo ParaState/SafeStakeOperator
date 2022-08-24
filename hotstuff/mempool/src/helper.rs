@@ -20,7 +20,8 @@ pub struct Helper {
     rx_request: Receiver<(Vec<Digest>, PublicKey)>,
     /// A network sender to send the batches to the other mempools.
     network: SimpleSender,
-    validator_id: u64
+    validator_id: u64,
+    exit: exit_future::Exit
 }
 
 impl Helper {
@@ -28,7 +29,8 @@ impl Helper {
         committee: Committee,
         store: Store,
         rx_request: Receiver<(Vec<Digest>, PublicKey)>,
-        validator_id: u64
+        validator_id: u64,
+        exit: exit_future::Exit
     ) {
         tokio::spawn(async move {
             Self {
@@ -36,7 +38,8 @@ impl Helper {
                 store,
                 rx_request,
                 network: SimpleSender::new(),
-                validator_id: validator_id
+                validator_id: validator_id,
+                exit: exit
             }
             .run()
             .await;
@@ -44,31 +47,40 @@ impl Helper {
     }
 
     async fn run(&mut self) {
-        while let Some((digests, origin)) = self.rx_request.recv().await {
-            // TODO [issue #7]: Do some accounting to prevent bad nodes from monopolizing our resources.
+        loop {
+            let exit = self.exit.clone();
+            tokio::select! {
+                Some((digests, origin)) = self.rx_request.recv() => {
+                    // TODO [issue #7]: Do some accounting to prevent bad nodes from monopolizing our resources.
 
-            // get the requestors address.
-            let address = match self.committee.mempool_address(&origin) {
-                Some(x) => x,
-                None => {
-                    warn!("Received batch request from unknown authority: {}", origin);
-                    continue;
-                }
-            };
+                    // get the requestors address.
+                    let address = match self.committee.mempool_address(&origin) {
+                        Some(x) => x,
+                        None => {
+                            warn!("Received batch request from unknown authority: {}", origin);
+                            continue;
+                        }
+                    };
 
-            // Reply to the request (the best we can).
-            for digest in digests {
-                match self.store.read(digest.to_vec()).await {
-                    Ok(Some(data)) => {
-                        let dvf_message = DvfMessage { validator_id: self.validator_id, message: data};
-                        let serialized_msg = bincode::serialize(&dvf_message).unwrap();
-                        info!("[MemHELPER] Sending to {:?}", address);
-                        self.network.send(address, Bytes::from(serialized_msg)).await
-                    },
-                    Ok(None) => (),
-                    Err(e) => error!("{}", e),
+                    // Reply to the request (the best we can).
+                    for digest in digests {
+                        match self.store.read(digest.to_vec()).await {
+                            Ok(Some(data)) => {
+                                let dvf_message = DvfMessage { validator_id: self.validator_id, message: data};
+                                let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+                                info!("[MemHELPER] Sending to {:?}", address);
+                                self.network.send(address, Bytes::from(serialized_msg)).await
+                            },
+                            Ok(None) => (),
+                            Err(e) => error!("{}", e),
+                        }
+                    }
+                },
+                () = exit => {
+                    break;
                 }
             }
+            
         }
     }
 }

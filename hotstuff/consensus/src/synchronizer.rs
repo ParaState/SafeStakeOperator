@@ -33,7 +33,8 @@ impl Synchronizer {
         store: Store,
         tx_loopback: Sender<Block>,
         sync_retry_delay: u64,
-        validator_id: u64
+        validator_id: u64,
+        exit: exit_future::Exit
     ) -> Self {
         let mut network = SimpleSender::new();
         let (tx_inner, mut rx_inner): (_, Receiver<Block>) = channel(CHANNEL_CAPACITY);
@@ -47,6 +48,7 @@ impl Synchronizer {
             let timer = sleep(Duration::from_millis(TIMER_ACCURACY));
             tokio::pin!(timer);
             loop {
+                let exit = exit.clone();
                 tokio::select! {
                     Some(block) = rx_inner.recv() => {
                         if pending.insert(block.digest()) {
@@ -109,6 +111,9 @@ impl Synchronizer {
                             }
                         }
                         timer.as_mut().reset(Instant::now() + Duration::from_millis(TIMER_ACCURACY));
+                    },
+                    () = exit => {
+                        break;
                     }
                 }
             }

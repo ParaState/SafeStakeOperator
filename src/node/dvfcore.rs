@@ -28,9 +28,6 @@ use parking_lot::{RwLock as ParkingRwLock};
 use crate::validation::operator_committee_definitions::OperatorCommitteeDefinition; 
 use crate::node::config::{TRANSACTION_PORT_OFFSET, MEMPOOL_PORT_OFFSET, CONSENSUS_PORT_OFFSET, SIGNATURE_PORT_OFFSET};
 use std::net::SocketAddr;
-use std::collections::HashMap;
-use mempool::{TxReceiverHandler, MempoolReceiverHandler};
-use consensus::{ConsensusReceiverHandler};
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DvfInfo {
   pub validator_id : u64,

@@ -35,6 +35,7 @@ use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
 use crate::validation::validator_dir::share_builder::{insecure_kdf, ShareBuilder};
 use crate::validation::account_utils::default_keystore_share_password_path;
 use crate::validation::account_utils::default_keystore_share_path;
+use directory::{DEFAULT_VALIDATOR_DIR};
 const THRESHOLD: u64 = 3;
 fn with_wildcard_ip(mut addr: SocketAddr) -> SocketAddr {
     addr.set_ip("0.0.0.0".parse().unwrap());
@@ -314,7 +315,7 @@ impl<T: EthSpec> Node<T> {
                                         if db_dir.exists() {
                                             remove_dir_all(&db_dir).unwrap();
                                         }
-                                        let validator_dir = base_dir.join(format!("{}", validator_pk));
+                                        let validator_dir = base_dir.join(DEFAULT_VALIDATOR_DIR).join(format!("{}", validator_pk));
                                         if validator_dir.exists() {
                                             remove_dir_all(&validator_dir).unwrap();
                                         }

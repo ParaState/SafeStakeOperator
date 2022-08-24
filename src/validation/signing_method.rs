@@ -21,6 +21,7 @@ use crate::node::dvfcore::{DvfSigner, DvfPerformanceRequest};
 use crate::node::config::{API_ADDRESS};
 pub use web3signer::Web3SignerObject;
 use chrono::prelude::*;
+use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
 
 mod web3signer;
 
@@ -95,9 +96,9 @@ pub enum SigningMethod {
     },
     /// A validator whose key is distributed among a set of operators.
     DistributedKeystore {
-        //voting_keystore_path: PathBuf,
-        voting_keystore_lockfile: Mutex<Option<Lockfile>>,
-        //voting_keystore: Keystore,
+        voting_keystore_share_path: PathBuf,
+        voting_keystore_share_lockfile: Mutex<Option<Lockfile>>,
+        voting_keystore_share: KeystoreShare,
         voting_public_key: PublicKey,
         dvf_signer: DvfSigner,
     },

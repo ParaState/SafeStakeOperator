@@ -40,6 +40,7 @@ use crate::validation::key_cache::KeyCache;
 use parking_lot::{RwLock};
 use crate::node::node::Node;
 use crate::node::dvfcore::DvfSigner;
+use crate::validation::validator_dir::share_builder::ShareBuilder;
 
 
 /// Default timeout for a request to a remote signer for a signature.
@@ -137,9 +138,9 @@ impl InitializedValidator {
             SigningMethod::Web3Signer { .. } => None,
             // [Zico]TODO: Should distributed validator have any lockfile?
             SigningMethod::DistributedKeystore { 
-                ref voting_keystore_lockfile,
+                ref voting_keystore_share_lockfile,
                 ..
-            } => MutexGuard::try_map(voting_keystore_lockfile.lock(), |option_lockfile| {
+            } => MutexGuard::try_map(voting_keystore_share_lockfile.lock(), |option_lockfile| {
                 option_lockfile.as_mut()
             })
             .ok(),
@@ -277,8 +278,9 @@ impl InitializedValidator {
             } => {
                 // [TODO] Zico: Start copying from LocalKeystore. Find a way to reuse.
                 use std::collections::hash_map::Entry::*;
+                let voting_keystore_share = open_keystore_share(&voting_keystore_share_path)?;
                 let voting_keystore = match key_stores.entry(voting_keystore_share_path.clone()) {
-                    Vacant(entry) => entry.insert(open_keystore_share(&voting_keystore_share_path)?.keystore),
+                    Vacant(entry) => entry.insert(voting_keystore_share.keystore.clone()),
                     Occupied(entry) => entry.into_mut(),
                 };
 
@@ -350,8 +352,9 @@ impl InitializedValidator {
                 ).await;
 
                 SigningMethod::DistributedKeystore {
-                    //voting_keystore_lockfile: <_>::default(),
-                    voting_keystore_lockfile: voting_keystore_share_lockfile,
+                    voting_keystore_share_path, 
+                    voting_keystore_share_lockfile,
+                    voting_keystore_share,
                     voting_public_key: validator_public_key,
                     dvf_signer: signer,
                 }
@@ -584,10 +587,14 @@ impl<T: EthSpec> InitializedValidators<T> {
 
             // [Zico]TODO: to be revised
             if let SigningMethod::DistributedKeystore {
+                ref voting_keystore_share_path,
+                ref voting_keystore_share_lockfile,
+                ref voting_keystore_share,
                 ..
             } = *initialized_validator.signing_method
             {
-                
+                drop(voting_keystore_share_lockfile.lock().take());
+                self.delete_keystore_share_or_validator_dir(voting_keystore_share_path, voting_keystore_share)?;
             }
         }
 
@@ -625,6 +632,33 @@ impl<T: EthSpec> InitializedValidators<T> {
         // Otherwise just delete the keystore file.
         fs::remove_file(voting_keystore_path)
             .map_err(|e| Error::UnableToDeleteKeystore(voting_keystore_path.into(), e))?;
+        Ok(())
+    }
+
+    /// Attempt to delete the voting keystore file, or its entire validator directory.
+    ///
+    /// Some parts of the VC assume the existence of a validator based on the existence of a
+    /// directory in the validators dir named like a public key.
+    fn delete_keystore_share_or_validator_dir(
+        &self,
+        voting_keystore_share_path: &Path,
+        voting_keystore_share: &KeystoreShare,
+    ) -> Result<(), Error> {
+        // If the parent directory is a `ValidatorDir` within `self.validators_dir`, then
+        // delete the entire directory so that it may be recreated if the keystore is
+        // re-imported.
+        if let Some(validator_dir) = voting_keystore_share_path.parent() {
+            if validator_dir
+                == ShareBuilder::get_dir_path(&self.validators_dir, voting_keystore_share)
+            {
+                fs::remove_dir_all(validator_dir)
+                    .map_err(|e| Error::UnableToDeleteValidatorDir(validator_dir.into(), e))?;
+                return Ok(());
+            }
+        }
+        // Otherwise just delete the keystore file.
+        fs::remove_file(voting_keystore_share_path)
+            .map_err(|e| Error::UnableToDeleteKeystore(voting_keystore_share_path.into(), e))?;
         Ok(())
     }
 

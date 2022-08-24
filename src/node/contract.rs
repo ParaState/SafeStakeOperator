@@ -11,7 +11,7 @@ use log::{info, error};
 use tokio::sync::{mpsc};
 use std::sync::{Arc};
 use tokio::sync::RwLock;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{File,remove_file};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -124,7 +124,8 @@ impl ListenContract {
     channel: mpsc::Sender<ValidatorCommand>,
     validators_map: Arc<RwLock<HashMap<u64, Validator>>>,
     validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>,
-    base_dir: PathBuf
+    base_dir: PathBuf,
+    ethlog_hashset: Arc<RwLock<HashSet<H256>>>
   ) {
     tokio::spawn(async move {
       let contract = Self {
@@ -167,6 +168,12 @@ impl ListenContract {
               contract_record.block_num = web3.eth().block_number().await.unwrap().as_u64();
             }
             for log in logs {
+              let hash = log.transaction_hash.unwrap();
+              let log_hashset = ethlog_hashset.read().await;
+              if log_hashset.contains(&hash) {
+                info!("this log has been listened, don't do anything");
+                continue;
+              }
               contract_record.block_num = log.block_number.unwrap().as_u64() + 1;
               if log.topics[0] == added_topic {
                 info!("added topic");
@@ -194,7 +201,8 @@ impl ListenContract {
     node_public_key: Vec<u8>,
     channel: mpsc::Sender<ValidatorCommand>,
     validators_map: Arc<RwLock<HashMap<u64, Validator>>>,
-    validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>
+    validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>,
+    ethlog_hashset: Arc<RwLock<HashSet<H256>>>
   ) {
 
     tokio::spawn(async move {
@@ -220,6 +228,9 @@ impl ListenContract {
           // let eth_log = sub.try_next().await.unwrap().unwrap();
           match sub.try_next().await.unwrap() {
             Some(eth_log) => {
+              let hash = eth_log.transaction_hash.unwrap();
+              let mut log_set = ethlog_hashset.write().await;
+              let _ = log_set.insert(hash);
               if eth_log.topics[0] == added_topic {
                 info!("added topic");
                 listen_contract.process_validator_add_or_update_event(eth_log, &added_topic, ValidatorEventType::ADDED).await;

@@ -34,10 +34,8 @@ jobs:
         with:
           images: parastate/dvf-operator
 
-      - name: Checkout repository
-        uses: actions/checkout@master
       - name: Checkout submodules
-        uses: textbook/git-checkout-submodule-action@master
+        run: git submodule update --init --recursive
         
       - name: Build and push Docker image
         uses: docker/build-push-action@ad44023a93711e3deb337508980b4b5e9bcdc5dc

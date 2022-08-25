@@ -1,0 +1,11 @@
+version: '3'
+services:
+  dvf_root_node:
+    network_mode: "host"
+    image: parastate/dvf-operator:dev
+    pull_policy: always
+    command: "boot"
+    expose:
+      - "9005"
+    ports:
+      - "9005:9005/udp"

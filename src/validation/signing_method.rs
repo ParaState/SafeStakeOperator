@@ -236,8 +236,7 @@ impl SigningMethod {
             SigningMethod::DistributedKeystore { dvf_signer, .. } => {
                 let _timer =
                     metrics::start_timer_vec(&metrics::SIGNING_TIMES, &[metrics::LOCAL_KEYSTORE]);
-
-                if dvf_signer.is_leader(signing_context.epoch.as_u64()).await {
+                if dvf_signer.is_leader(SigningMethod::convert_signingroot_to_u64(&signing_root)).await {
                     log::info!("[Dvf {}/{}] Signing for root: {:?}. Epoch: {}", 
                                dvf_signer.operator_id, 
                                dvf_signer.operator_committee.validator_id(), 
@@ -289,6 +288,17 @@ impl SigningMethod {
                 }
             }
         }
+    }
+
+    pub fn convert_signingroot_to_u64(signing_root: &types::Hash256) -> u64 {
+        let mut little_endian: [u8; 8] = [0; 8];
+        let mut i = 0;
+        for elem in little_endian.iter_mut() {
+            *elem = signing_root.0[i];
+            i = i + 1;
+        } 
+        let nonce = u64::from_le_bytes(little_endian);
+        nonce 
     }
 }
 

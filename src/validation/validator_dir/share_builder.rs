@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use validator_dir::insecure_keys::{INSECURE_PASSWORD,};
 use eth2_keystore::{
     json_keystore::{Kdf, Scrypt},
-    Keystore, KeystoreBuilder, PlainText, DKLEN,
+    KeystoreBuilder, PlainText, DKLEN,
 };
 use std::fs::{create_dir_all, File};
 use filesystem::create_with_600_perms;

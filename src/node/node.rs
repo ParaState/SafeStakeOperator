@@ -5,7 +5,7 @@ use consensus::{ConsensusReceiverHandler};
 use mempool::{TxReceiverHandler, MempoolReceiverHandler};
 use network::{Receiver as NetworkReceiver};
 use std::sync::{Arc};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
 use parking_lot::RwLock as ParkingRwLock;
@@ -35,6 +35,7 @@ use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
 use crate::validation::validator_dir::share_builder::{insecure_kdf, ShareBuilder};
 use crate::validation::account_utils::default_keystore_share_password_path;
 use crate::validation::account_utils::default_keystore_share_path;
+use directory::{DEFAULT_VALIDATOR_DIR};
 const THRESHOLD: u64 = 3;
 fn with_wildcard_ip(mut addr: SocketAddr) -> SocketAddr {
     addr.set_ip("0.0.0.0".parse().unwrap());
@@ -134,12 +135,11 @@ impl<T: EthSpec> Node<T> {
         Discovery::spawn(self_address, base_port + DISCOVERY_PORT_OFFSET, Arc::clone(&key_ip_map), node.secret.clone(), Some(node.config.boot_enr.to_string()));
 
         let contract_config = ContractConfig::default();
-        ListenContract::spawn(contract_config.clone(), node.secret.name.0.to_vec(), tx_validator_command.clone(), validators_map.clone(), validator_operators_map.clone());
-
-        ListenContract::pull_from_contract(contract_config, node.secret.name.0.to_vec(), tx_validator_command.clone(), validators_map.clone(), validator_operators_map.clone(), secret_dir.parent().unwrap().to_path_buf());
+        let ethlog_hashset = Arc::new(RwLock::new(HashSet::new()));
+        ListenContract::spawn(contract_config.clone(), node.secret.name.0.to_vec(), tx_validator_command.clone(), validators_map.clone(), validator_operators_map.clone(), ethlog_hashset.clone());
+        ListenContract::pull_from_contract(contract_config, node.secret.name.0.to_vec(), tx_validator_command.clone(), validators_map.clone(), validator_operators_map.clone(), secret_dir.parent().unwrap().to_path_buf(), ethlog_hashset);
 
         let node = Arc::new(ParkingRwLock::new(node));
-
         Node::process_validator_command(Arc::clone(&node), validator_operators_map, Arc::clone(&key_ip_map), rx_validator_command, tx_validator_command, base_port, validator_dir.clone(), secrets_dir);
 
         Ok(Some(node))
@@ -159,21 +159,26 @@ impl<T: EthSpec> Node<T> {
 
     pub fn process_validator_command(node: Arc<ParkingRwLock<Node<T>>>, validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>, operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,  mut rx_validator_command: Receiver<ValidatorCommand>, tx_validator_command: Sender<ValidatorCommand>, base_port: u16, validator_dir: PathBuf, secret_dir: PathBuf) {
         tokio::spawn(async move {
-            let node = node;
-            let secret = node.read().secret.clone();
+            let node = node.read();
+            let secret = node.secret.clone();
             let sk = &secret.secret;
             let self_pk = &secret.name;
             let secret_key = secp256k1::SecretKey::from_slice(&sk.0).expect("Unable to load secret key");
+            let base_dir = node.config.secrets_dir.parent().unwrap();
             loop {
                 match rx_validator_command.recv().await {
                     Some(validator_command) => {
                         match validator_command {
                             ValidatorCommand::Start(validator) => {
                                 let validator_id = validator.id;
-                                // let validator_address = std::str::from_utf8(validator.validator_address.as_bytes()).unwrap();
+                                // check validator exists
+                                let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
+                                let validator_dir = base_dir.join(DEFAULT_VALIDATOR_DIR).join(format!("{}", validator_pk));
+                                if validator_dir.exists() {
+                                    continue;
+                                }
                                 let validator_operators = validator_operators_map.read().await;
                                 let operators_vec = validator_operators.get(&validator_id);
-
                                 match operators_vec {
                                     Some(operators) => {
                                         let key_ip_map = operator_key_ip_map.read().await;
@@ -182,7 +187,7 @@ impl<T: EthSpec> Node<T> {
                                         let mut operator_ids: Vec<u64> = Vec::default();
                                         let mut operator_public_keys: Vec<PublicKey> = Vec::default();
                                         let mut node_public_keys: Vec<hscrypto::PublicKey> = Vec::default();
-                                        let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
+                                        
                                         let mut keystore_share: Option<KeystoreShare> = None;
                                         for operator in operators {
 
@@ -234,7 +239,6 @@ impl<T: EthSpec> Node<T> {
                                                             .build().unwrap();
                                                     }
 
-
                                                     node_public_keys.push(node_pk);
                                                 },
                                                 None => {
@@ -273,7 +277,6 @@ impl<T: EthSpec> Node<T> {
                                         let voting_keystore_share_path = default_keystore_share_path(&keystore_share, validator_dir.clone());
                                         let voting_keystore_share_password_path = default_keystore_share_password_path(&keystore_share, secret_dir.clone());
                                         
-                                        let node = node.read();
                                         match &node.validator_store {
                                             Some(validator_store) => {
                                                 let _ = validator_store.add_validator_keystore_share(
@@ -286,12 +289,9 @@ impl<T: EthSpec> Node<T> {
                                                     keystore_share.master_id,
                                                     keystore_share.share_id, 
                                                 ).await;
-                                                info!("after update validator");
                                             },
                                             _ => {error!("unexpected error happen"); }
                                         }
-
-
                                     }, 
                                     None => {
                                         error!("can't find validator's releated operators");
@@ -301,7 +301,6 @@ impl<T: EthSpec> Node<T> {
 
                             },
                             ValidatorCommand::Stop(validator) => {
-                                let node = node.read();
                                 match &node.validator_store {
                                     Some(validator_store) => {
                                         let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
@@ -309,10 +308,13 @@ impl<T: EthSpec> Node<T> {
                                         validator_store.stop_validator_keystore(&validator_pk).await;
                                         // delete db store
                                         let validator_id = validator.id;
-                                        let base_dir = node.config.secrets_dir.parent().unwrap();
                                         let db_dir = base_dir.join(DB_FILENAME).join(validator_id.to_string());
                                         if db_dir.exists() {
                                             remove_dir_all(&db_dir).unwrap();
+                                        }
+                                        let validator_dir = base_dir.join(DEFAULT_VALIDATOR_DIR).join(format!("{}", validator_pk));
+                                        if validator_dir.exists() {
+                                            remove_dir_all(&validator_dir).unwrap();
                                         }
                                         // delete secret 
                                         let validator_operators = validator_operators_map.read().await;

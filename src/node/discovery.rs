@@ -4,7 +4,7 @@ use discv5::{
     enr::{CombinedKey, Enr},
     Discv5, Discv5ConfigBuilder,
 };
-use log::{info, error};
+use log::{info, error, debug};
 use std::sync::{Arc};
 use tokio::sync::RwLock;
 use std::collections::HashMap;
@@ -14,7 +14,6 @@ use std::{
 };
 use std::option::Option;
 use hsconfig::Secret;
-
 pub struct Discovery {
   // enr: Enr<CombinedKey>,
   // enr_key: CombinedKey
@@ -80,7 +79,7 @@ impl Discovery {
             let target_random_node_id = discv5::enr::NodeId::random();
             let metrics = discv5.metrics();
             let connected_peers = discv5.connected_peers();
-            info!("Connected peers: {}, Active sessions: {}, Unsolicited requests/s: {:.2}", connected_peers, metrics.active_sessions, metrics.unsolicited_requests_per_second);
+            debug!("Connected peers: {}, Active sessions: {}, Unsolicited requests/s: {:.2}", connected_peers, metrics.active_sessions, metrics.unsolicited_requests_per_second);
             // execute a FINDNODE query
             match discv5.find_node(target_random_node_id).await {
               Err(e) => error!("Find Node result failed: {:?}", e),

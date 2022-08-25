@@ -35,7 +35,6 @@ use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
 use crate::validation::validator_dir::share_builder::{insecure_kdf, ShareBuilder};
 use crate::validation::account_utils::default_keystore_share_password_path;
 use crate::validation::account_utils::default_keystore_share_path;
-use directory::{DEFAULT_VALIDATOR_DIR};
 const THRESHOLD: u64 = 3;
 fn with_wildcard_ip(mut addr: SocketAddr) -> SocketAddr {
     addr.set_ip("0.0.0.0".parse().unwrap());
@@ -159,12 +158,11 @@ impl<T: EthSpec> Node<T> {
 
     pub fn process_validator_command(node: Arc<ParkingRwLock<Node<T>>>, validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>, operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,  mut rx_validator_command: Receiver<ValidatorCommand>, tx_validator_command: Sender<ValidatorCommand>, base_port: u16, validator_dir: PathBuf, secret_dir: PathBuf) {
         tokio::spawn(async move {
-            let node = node.read();
-            let secret = node.secret.clone();
+            let node = node;
+            let secret = node.read().secret.clone();
             let sk = &secret.secret;
             let self_pk = &secret.name;
             let secret_key = secp256k1::SecretKey::from_slice(&sk.0).expect("Unable to load secret key");
-            let base_dir = node.config.secrets_dir.parent().unwrap();
             loop {
                 match rx_validator_command.recv().await {
                     Some(validator_command) => {
@@ -173,8 +171,8 @@ impl<T: EthSpec> Node<T> {
                                 let validator_id = validator.id;
                                 // check validator exists
                                 let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
-                                let validator_dir = base_dir.join(DEFAULT_VALIDATOR_DIR).join(format!("{}", validator_pk));
-                                if validator_dir.exists() {
+                                let added_validator_dir = validator_dir.join(format!("{}", validator_pk));
+                                if added_validator_dir.exists() {
                                     continue;
                                 }
                                 let validator_operators = validator_operators_map.read().await;
@@ -256,8 +254,6 @@ impl<T: EthSpec> Node<T> {
                                         }
 
                                         // generate keypair
-                                        
-                                        
                                         let def = OperatorCommitteeDefinition {
                                             total: operators.len() as u64,
                                             threshold: THRESHOLD,
@@ -276,7 +272,7 @@ impl<T: EthSpec> Node<T> {
                                         let keystore_share = keystore_share.unwrap();
                                         let voting_keystore_share_path = default_keystore_share_path(&keystore_share, validator_dir.clone());
                                         let voting_keystore_share_password_path = default_keystore_share_password_path(&keystore_share, secret_dir.clone());
-                                        
+                                        let node = node.read();
                                         match &node.validator_store {
                                             Some(validator_store) => {
                                                 let _ = validator_store.add_validator_keystore_share(
@@ -290,7 +286,7 @@ impl<T: EthSpec> Node<T> {
                                                     keystore_share.share_id, 
                                                 ).await;
                                             },
-                                            _ => {error!("unexpected error happen"); }
+                                            _ => {error!("validator added, node keystore is empty"); }
                                         }
                                     }, 
                                     None => {
@@ -301,50 +297,50 @@ impl<T: EthSpec> Node<T> {
 
                             },
                             ValidatorCommand::Stop(validator) => {
+                                let node = node.read();
+                                let validator_id = validator.id;
+                                let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
+                                let base_dir = node.config.secrets_dir.parent().unwrap();
+                                let deleted_validator_dir = validator_dir.join(format!("{}", validator_pk));
+                                if deleted_validator_dir.exists() {
+                                    remove_dir_all(&deleted_validator_dir).unwrap();
+                                }
+                                let db_dir = base_dir.join(DB_FILENAME).join(validator_id.to_string());
+                                if db_dir.exists() {
+                                    remove_dir_all(&db_dir).unwrap();
+                                }
+                                // delete secret 
+                                let validator_operators = validator_operators_map.read().await;
+                                let operators_vec = validator_operators.get(&validator_id);
+                                match operators_vec {
+                                    Some(operators) => {
+                                        for operator in operators {
+                                            let node_pk = hscrypto::PublicKey(operator.node_public_key.clone().try_into().unwrap()); 
+                                            if *self_pk == node_pk {
+                                                let operator_id = operator.id;
+                                                let password_file_name = format!("{}_{}", validator_pk, operator_id);
+                                                let password_file_dir = secret_dir.join(password_file_name);
+                                                if password_file_dir.exists() {
+                                                    remove_file(&password_file_dir).unwrap();
+                                                }
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    None => {
+                                        error!("can't find validator's releated operators");
+                                    }
+                                }   
+                                let _ = node.tx_handler_map.write().await.remove(&validator_id);
+                                let _ = node.mempool_handler_map.write().await.remove(&validator_id);
+                                let _ = node.consensus_handler_map.write().await.remove(&validator_id);
+                                let _ = node.signature_handler_map.write().await.remove(&validator_id);
                                 match &node.validator_store {
                                     Some(validator_store) => {
-                                        let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
-
                                         validator_store.stop_validator_keystore(&validator_pk).await;
                                         // delete db store
-                                        let validator_id = validator.id;
-                                        let db_dir = base_dir.join(DB_FILENAME).join(validator_id.to_string());
-                                        if db_dir.exists() {
-                                            remove_dir_all(&db_dir).unwrap();
-                                        }
-                                        let validator_dir = base_dir.join(DEFAULT_VALIDATOR_DIR).join(format!("{}", validator_pk));
-                                        if validator_dir.exists() {
-                                            remove_dir_all(&validator_dir).unwrap();
-                                        }
-                                        // delete secret 
-                                        let validator_operators = validator_operators_map.read().await;
-                                        let operators_vec = validator_operators.get(&validator_id);
-                                        match operators_vec {
-                                            Some(operators) => {
-                                                for operator in operators {
-                                                    let node_pk = hscrypto::PublicKey(operator.node_public_key.clone().try_into().unwrap()); 
-                                                    if *self_pk == node_pk {
-                                                        let operator_id = operator.id;
-                                                        let password_file_name = format!("{}_{}", validator_pk, operator_id);
-                                                        let password_file_dir = secret_dir.join(password_file_name);
-                                                        if password_file_dir.exists() {
-                                                            remove_file(&password_file_dir).unwrap();
-                                                        }
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                            None => {
-                                                error!("can't find validator's releated operators");
-                                            }
-                                        }   
-                                        let _ = node.tx_handler_map.write().await.remove(&validator_id);
-                                        let _ = node.mempool_handler_map.write().await.remove(&validator_id);
-                                        let _ = node.consensus_handler_map.write().await.remove(&validator_id);
-                                        let _ = node.signature_handler_map.write().await.remove(&validator_id);
                                     }
-                                    _ => {error!("unexpected error happen"); }
-
+                                    _ => {error!("validator deleted, node keystore is empty"); }
                                 }
                             }
                         }

@@ -615,10 +615,15 @@ pub fn is_voting_keystore(file_name: &str) -> bool {
 
 /// Returns `true` if we should consider the `file_name` to represent a voting keystore share.
 pub fn is_voting_keystore_share(file_name: &str) -> bool {
-    if Regex::new(VOTING_KEYSTORE_SHARE_FILE)
-        .expect("regex is valid")
-        .is_match(file_name)
-    {
+    //if Regex::new(VOTING_KEYSTORE_SHARE_FILE)
+        //.expect("regex is valid")
+        //.is_match(file_name)
+    //{
+        //return true;
+    //}
+
+    // The format used by SafeStake.
+    if file_name == VOTING_KEYSTORE_SHARE_FILE {
         return true;
     }
 

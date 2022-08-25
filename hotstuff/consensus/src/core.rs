@@ -199,7 +199,7 @@ impl Core {
             .expect("Failed to serialize timeout message");
         let dvf_message = DvfMessage { validator_id: self.validator_id, message: message};
         let serialized_msg = bincode::serialize(&dvf_message).unwrap();
-        info!("[CORE] Broacasting to {:?}", addresses);
+        debug!("[CORE] Broacasting to {:?}", addresses);
         self.network
             .broadcast(addresses, Bytes::from(serialized_msg))
             .await;
@@ -264,7 +264,7 @@ impl Core {
                 .expect("Failed to serialize timeout certificate");
             let dvf_message = DvfMessage { validator_id: self.validator_id, message: message};
             let serialized_msg = bincode::serialize(&dvf_message).unwrap();
-            info!("[CORE] Broacasting to {:?}", addresses);
+            debug!("[CORE] Broacasting to {:?}", addresses);
             self.network
                 .broadcast(addresses, Bytes::from(serialized_msg))
                 .await;

@@ -286,12 +286,9 @@ impl<T: EthSpec> Node<T> {
                                                     keystore_share.master_id,
                                                     keystore_share.share_id, 
                                                 ).await;
-                                                info!("after update validator");
                                             },
                                             _ => {error!("unexpected error happen"); }
                                         }
-
-
                                     }, 
                                     None => {
                                         error!("can't find validator's releated operators");

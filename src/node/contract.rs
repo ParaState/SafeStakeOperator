@@ -167,9 +167,7 @@ impl ListenContract {
             match web3.eth().logs(filter).await {
               Ok(logs) => {
                 info!("get {} logs", &logs.len());
-                if logs.len() == 0 {
-                  contract_record.block_num = web3.eth().block_number().await.unwrap().as_u64();
-                }
+                contract_record.block_num = web3.eth().block_number().await.unwrap().as_u64();
                 for log in logs {
                   let hash = log.transaction_hash.unwrap();
                   let log_hashset = ethlog_hashset.read().await;
@@ -177,7 +175,6 @@ impl ListenContract {
                     info!("this log has been listened, don't do anything");
                     continue;
                   }
-                  contract_record.block_num = log.block_number.unwrap().as_u64() + 1;
                   if log.topics[0] == added_topic {
                     info!("added topic");
                     contract.process_validator_add_or_update_event(log, &added_topic, ValidatorEventType::ADDED).await;

@@ -97,7 +97,7 @@ impl<T: EthSpec> Node<T> {
             secret.name, signature_address
         );
 
-        let (tx_validator_command, rx_validator_command) = channel(3);
+        let (tx_validator_command, rx_validator_command) = channel(1_000);
         //// set dvfcore handler map
         //let dvfcore_handler_map : Arc<RwLock<HashMap<u64, DvfReceiverHandler>>>= Arc::new(RwLock::new(HashMap::new()));
         //let (tx_dvfinfo, rx_dvfinfo) = channel(1);

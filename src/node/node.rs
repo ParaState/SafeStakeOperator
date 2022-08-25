@@ -163,7 +163,6 @@ impl<T: EthSpec> Node<T> {
             let sk = &secret.secret;
             let self_pk = &secret.name;
             let secret_key = secp256k1::SecretKey::from_slice(&sk.0).expect("Unable to load secret key");
-            
             loop {
                 match rx_validator_command.recv().await {
                     Some(validator_command) => {
@@ -172,7 +171,8 @@ impl<T: EthSpec> Node<T> {
                                 let validator_id = validator.id;
                                 // check validator exists
                                 let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
-                                if validator_dir.exists() {
+                                let added_validator_dir = validator_dir.join(format!("{}", validator_pk));
+                                if added_validator_dir.exists() {
                                     continue;
                                 }
                                 let validator_operators = validator_operators_map.read().await;
@@ -298,12 +298,13 @@ impl<T: EthSpec> Node<T> {
                             },
                             ValidatorCommand::Stop(validator) => {
                                 let node = node.read();
-                                let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
-                                if validator_dir.exists() {
-                                    remove_dir_all(&validator_dir).unwrap();
-                                }
                                 let validator_id = validator.id;
+                                let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
                                 let base_dir = node.config.secrets_dir.parent().unwrap();
+                                let deleted_validator_dir = validator_dir.join(format!("{}", validator_pk));
+                                if deleted_validator_dir.exists() {
+                                    remove_dir_all(&deleted_validator_dir).unwrap();
+                                }
                                 let db_dir = base_dir.join(DB_FILENAME).join(validator_id.to_string());
                                 if db_dir.exists() {
                                     remove_dir_all(&db_dir).unwrap();

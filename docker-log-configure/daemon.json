@@ -1,0 +1,8 @@
+{
+  "position-comment": "put this file to /etc/docker/daemon.json, and reload all container",
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "100m",
+    "max-file": "5" 
+  }
+}

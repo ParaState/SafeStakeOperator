@@ -248,10 +248,10 @@ impl SigningMethod {
                     
                     let (slot, duty) = match signable_message {
                         SignableMessage::AttestationData(a) => {
-                            (a.slot, "PROPOSER")
+                            (a.slot, "ATTESTER")
                         },
                         SignableMessage::BeaconBlock(b) => {
-                            (b.slot(), "ATTESTER")
+                            (b.slot(), "PROPOSER")
                         },
                         _ => { (Slot::new(0 as u64), "ERROR") }
                     };

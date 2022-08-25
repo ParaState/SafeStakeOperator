@@ -341,7 +341,6 @@ impl<T: EthSpec> Node<T> {
                                         // delete db store
                                     }
                                     _ => {error!("validator deleted, node keystore is empty"); }
-
                                 }
                             }
                         }

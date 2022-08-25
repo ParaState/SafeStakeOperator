@@ -301,12 +301,26 @@ impl<T: EthSpec> Node<T> {
                                 let validator_id = validator.id;
                                 let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
                                 let base_dir = node.config.secrets_dir.parent().unwrap();
-                                
+                                // delete secret 
+                                let _ = node.tx_handler_map.write().await.remove(&validator_id);
+                                let _ = node.mempool_handler_map.write().await.remove(&validator_id);
+                                let _ = node.consensus_handler_map.write().await.remove(&validator_id);
+                                let _ = node.signature_handler_map.write().await.remove(&validator_id);
+                                match &node.validator_store {
+                                    Some(validator_store) => {
+                                        validator_store.stop_validator_keystore(&validator_pk).await;
+                                        // delete db store
+                                    }
+                                    _ => {error!("validator deleted, node keystore is empty"); }
+                                }
                                 let db_dir = base_dir.join(DB_FILENAME).join(validator_id.to_string());
                                 if db_dir.exists() {
                                     remove_dir_all(&db_dir).unwrap();
                                 }
-                                // delete secret 
+                                let deleted_validator_dir = validator_dir.join(format!("{}", validator_pk));
+                                if deleted_validator_dir.exists() {
+                                    remove_dir_all(&deleted_validator_dir).unwrap();
+                                }
                                 let validator_operators = validator_operators_map.read().await;
                                 let operators_vec = validator_operators.get(&validator_id);
                                 match operators_vec {
@@ -327,22 +341,7 @@ impl<T: EthSpec> Node<T> {
                                     None => {
                                         error!("can't find validator's releated operators");
                                     }
-                                }   
-                                let _ = node.tx_handler_map.write().await.remove(&validator_id);
-                                let _ = node.mempool_handler_map.write().await.remove(&validator_id);
-                                let _ = node.consensus_handler_map.write().await.remove(&validator_id);
-                                let _ = node.signature_handler_map.write().await.remove(&validator_id);
-                                match &node.validator_store {
-                                    Some(validator_store) => {
-                                        validator_store.stop_validator_keystore(&validator_pk).await;
-                                        // delete db store
-                                    }
-                                    _ => {error!("validator deleted, node keystore is empty"); }
-                                }
-                                let deleted_validator_dir = validator_dir.join(format!("{}", validator_pk));
-                                if deleted_validator_dir.exists() {
-                                    remove_dir_all(&deleted_validator_dir).unwrap();
-                                }
+                                } 
                             }
                         }
                     }

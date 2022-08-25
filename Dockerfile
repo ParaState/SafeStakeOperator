@@ -31,6 +31,7 @@ RUN apt-get update && apt-get -y upgrade && apt-get install -y --no-install-reco
 WORKDIR /app
 COPY --from=builder /app/target/release/dvf_root_node /usr/local/bin/dvf_root_node
 COPY --from=builder /app/target/release/dvf /usr/local/bin/dvf
+COPY ./src ./src
 COPY ./docker-entrypoint ./docker-entrypoint
 RUN chmod +x /app/docker-entrypoint
 EXPOSE 9005

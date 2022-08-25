@@ -173,7 +173,6 @@ impl<T: EthSpec> Node<T> {
                                 let validator_id = validator.id;
                                 // check validator exists
                                 let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
-                                let validator_dir = base_dir.join(DEFAULT_VALIDATOR_DIR).join(format!("{}", validator_pk));
                                 if validator_dir.exists() {
                                     continue;
                                 }
@@ -256,8 +255,6 @@ impl<T: EthSpec> Node<T> {
                                         }
 
                                         // generate keypair
-                                        
-                                        
                                         let def = OperatorCommitteeDefinition {
                                             total: operators.len() as u64,
                                             threshold: THRESHOLD,
@@ -301,47 +298,45 @@ impl<T: EthSpec> Node<T> {
 
                             },
                             ValidatorCommand::Stop(validator) => {
+                                let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
+                                if validator_dir.exists() {
+                                    remove_dir_all(&validator_dir).unwrap();
+                                }
+                                let validator_id = validator.id;
+                                let db_dir = base_dir.join(DB_FILENAME).join(validator_id.to_string());
+                                if db_dir.exists() {
+                                    remove_dir_all(&db_dir).unwrap();
+                                }
+                                // delete secret 
+                                let validator_operators = validator_operators_map.read().await;
+                                let operators_vec = validator_operators.get(&validator_id);
+                                match operators_vec {
+                                    Some(operators) => {
+                                        for operator in operators {
+                                            let node_pk = hscrypto::PublicKey(operator.node_public_key.clone().try_into().unwrap()); 
+                                            if *self_pk == node_pk {
+                                                let operator_id = operator.id;
+                                                let password_file_name = format!("{}_{}", validator_pk, operator_id);
+                                                let password_file_dir = secret_dir.join(password_file_name);
+                                                if password_file_dir.exists() {
+                                                    remove_file(&password_file_dir).unwrap();
+                                                }
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    None => {
+                                        error!("can't find validator's releated operators");
+                                    }
+                                }   
+                                let _ = node.tx_handler_map.write().await.remove(&validator_id);
+                                let _ = node.mempool_handler_map.write().await.remove(&validator_id);
+                                let _ = node.consensus_handler_map.write().await.remove(&validator_id);
+                                let _ = node.signature_handler_map.write().await.remove(&validator_id);
                                 match &node.validator_store {
                                     Some(validator_store) => {
-                                        let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
-
                                         validator_store.stop_validator_keystore(&validator_pk).await;
                                         // delete db store
-                                        let validator_id = validator.id;
-                                        let db_dir = base_dir.join(DB_FILENAME).join(validator_id.to_string());
-                                        if db_dir.exists() {
-                                            remove_dir_all(&db_dir).unwrap();
-                                        }
-                                        let validator_dir = base_dir.join(DEFAULT_VALIDATOR_DIR).join(format!("{}", validator_pk));
-                                        if validator_dir.exists() {
-                                            remove_dir_all(&validator_dir).unwrap();
-                                        }
-                                        // delete secret 
-                                        let validator_operators = validator_operators_map.read().await;
-                                        let operators_vec = validator_operators.get(&validator_id);
-                                        match operators_vec {
-                                            Some(operators) => {
-                                                for operator in operators {
-                                                    let node_pk = hscrypto::PublicKey(operator.node_public_key.clone().try_into().unwrap()); 
-                                                    if *self_pk == node_pk {
-                                                        let operator_id = operator.id;
-                                                        let password_file_name = format!("{}_{}", validator_pk, operator_id);
-                                                        let password_file_dir = secret_dir.join(password_file_name);
-                                                        if password_file_dir.exists() {
-                                                            remove_file(&password_file_dir).unwrap();
-                                                        }
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                            None => {
-                                                error!("can't find validator's releated operators");
-                                            }
-                                        }   
-                                        let _ = node.tx_handler_map.write().await.remove(&validator_id);
-                                        let _ = node.mempool_handler_map.write().await.remove(&validator_id);
-                                        let _ = node.consensus_handler_map.write().await.remove(&validator_id);
-                                        let _ = node.signature_handler_map.write().await.remove(&validator_id);
                                     }
                                     _ => {error!("validator deleted, node keystore is empty"); }
 

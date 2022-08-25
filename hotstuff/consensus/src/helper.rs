@@ -2,7 +2,7 @@ use crate::config::Committee;
 use crate::consensus::ConsensusMessage;
 use bytes::Bytes;
 use crypto::{Digest, PublicKey};
-use log::{warn, info};
+use log::{warn, debug};
 use network::{SimpleSender, DvfMessage};
 use store::Store;
 use tokio::sync::mpsc::Receiver;
@@ -70,7 +70,7 @@ impl Helper {
                             .expect("Failed to serialize block");
                         let dvf_message = DvfMessage { validator_id: self.validator_id, message: message};
                         let serialized_msg = bincode::serialize(&dvf_message).unwrap();
-                        info!("[HELPER] Sending to {:?}", address);
+                        debug!("[HELPER] Sending to {:?}", address);
                         self.network.send(address, Bytes::from(serialized_msg)).await;
                     }
                 },

@@ -150,7 +150,7 @@ impl Synchronizer {
                         
                         let dvf_message = DvfMessage { validator_id: self.validator_id, message: serialized};
                         let serialized_msg = bincode::serialize(&dvf_message).unwrap();
-                        info!("[MemSYNC] Sending to {:?}", address);
+                        debug!("[MemSYNC] Sending to {:?}", address);
                         self.network.send(address, Bytes::from(serialized_msg)).await;
                     },
                     ConsensusMempoolMessage::Cleanup(round) => {

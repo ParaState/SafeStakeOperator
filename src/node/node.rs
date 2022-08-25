@@ -290,7 +290,7 @@ impl<T: EthSpec> Node<T> {
                                                     keystore_share.share_id, 
                                                 ).await;
                                             },
-                                            _ => {error!("unexpected error happen"); }
+                                            _ => {error!("validator added, node keystore is empty"); }
                                         }
                                     }, 
                                     None => {
@@ -343,7 +343,7 @@ impl<T: EthSpec> Node<T> {
                                         let _ = node.consensus_handler_map.write().await.remove(&validator_id);
                                         let _ = node.signature_handler_map.write().await.remove(&validator_id);
                                     }
-                                    _ => {error!("unexpected error happen"); }
+                                    _ => {error!("validator deleted, node keystore is empty"); }
 
                                 }
                             }

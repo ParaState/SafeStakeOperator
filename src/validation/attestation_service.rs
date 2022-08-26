@@ -413,6 +413,11 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
             .into_iter()
             .flatten()
             .collect::<Vec<Attestation<E>>>();
+        
+        // No need to further process. This can happen quite often for non-leader operators.
+        if attestations.is_empty() {
+            return Ok(None);
+        }
 
         // Post the attestations to the BN.
         match self

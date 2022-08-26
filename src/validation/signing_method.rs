@@ -236,26 +236,48 @@ impl SigningMethod {
             SigningMethod::DistributedKeystore { dvf_signer, .. } => {
                 let _timer =
                     metrics::start_timer_vec(&metrics::SIGNING_TIMES, &[metrics::LOCAL_KEYSTORE]);
-                if dvf_signer.is_leader(SigningMethod::convert_signingroot_to_u64(&signing_root)).await {
-                    log::info!("[Dvf {}/{}] Signing for root: {:?}. Epoch: {}", 
-                               dvf_signer.operator_id, 
-                               dvf_signer.operator_committee.validator_id(), 
-                               signing_root,
-                               signing_context.epoch.as_u64());
-
-                    let validator_pk = dvf_signer.validator_public_key();
-                    let operator_id = dvf_signer.operator_id();
-                    
+                // if dvf_signer.is_leader(SigningMethod::convert_signingroot_to_u64(&signing_root)).await {
+                if dvf_signer.is_leader(signing_context.epoch).await {
                     let (slot, duty) = match signable_message {
+                        SignableMessage::RandaoReveal(_) => {
+                            (Slot::new(0 as u64), "RANDAO")
+                        }
                         SignableMessage::AttestationData(a) => {
                             (a.slot, "ATTESTER")
                         },
                         SignableMessage::BeaconBlock(b) => {
                             (b.slot(), "PROPOSER")
                         },
+                        SignableMessage::SignedAggregateAndProof(_) => {
+                            (Slot::new(0 as u64), "AGGREGATE")
+                        }
+                        SignableMessage::SelectionProof(s) => {
+                            (s, "SELECT")
+                        }
+                        SignableMessage::SyncSelectionProof(_) => {
+                            (Slot::new(0 as u64), "SYNC_SELECT")
+                        }
+                        SignableMessage::SyncCommitteeSignature{..} => {
+                            (Slot::new(0 as u64), "SYNC_COMMITTEE")
+                        }
+                        SignableMessage::SignedContributionAndProof(_) => {
+                            (Slot::new(0 as u64), "CONTRIB")
+                        }
                         _ => { (Slot::new(0 as u64), "ERROR") }
                     };
 
+                    log::info!("[Dvf {}/{}] Signing\t-\tSlot: {}.\tEpoch: {}.\tType: {}.\tRoot: {:?}.", 
+                               dvf_signer.operator_id, 
+                               dvf_signer.operator_committee.validator_id(), 
+                               slot,
+                               signing_context.epoch.as_u64(),
+                               duty,
+                               signing_root
+                            );
+
+                    let validator_pk = dvf_signer.validator_public_key();
+                    let operator_id = dvf_signer.operator_id();
+                    
                     let dt : DateTime<Utc> = Utc::now();
                     match dvf_signer.sign(signing_root).await {
                         Ok((signature, ids)) => {

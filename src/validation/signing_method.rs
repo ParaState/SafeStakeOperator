@@ -297,8 +297,6 @@ impl SigningMethod {
                             Ok(signature)
                         },
                         Err(e) => {
-                            
-
                             Err(Error::CommitteeSignFailed(format!("{:?}", e)))
                         }
                     }

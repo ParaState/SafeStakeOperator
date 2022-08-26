@@ -237,7 +237,7 @@ impl SigningMethod {
                 let _timer =
                     metrics::start_timer_vec(&metrics::SIGNING_TIMES, &[metrics::LOCAL_KEYSTORE]);
                 // if dvf_signer.is_leader(SigningMethod::convert_signingroot_to_u64(&signing_root)).await {
-                if dvf_signer.is_leader(signing_context.epoch).await {
+                if dvf_signer.is_leader(signing_context.epoch.as_u64()).await {
                     let (slot, duty) = match signable_message {
                         SignableMessage::RandaoReveal(_) => {
                             (Slot::new(0 as u64), "RANDAO")

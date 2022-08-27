@@ -86,7 +86,8 @@ impl Core {
                 aggregator: Aggregator::new(committee),
                 network: SimpleSender::new(),
                 validator_id: validator_id,
-                exit
+                exit,
+                recover_count: 0,
             }
             .run()
             .await

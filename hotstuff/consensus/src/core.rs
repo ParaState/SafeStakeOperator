@@ -342,12 +342,12 @@ impl Core {
 
         // Check if we can commit the head of the 2-chain.
         // Note that we commit blocks only if we have all its ancestors.
-        info!("{} before committing {:?}", self.name, b0);
+        info!("{} before committing {:?}", self.name, b0.clone().digest());
         if b0.round + 1 == b1.round {
             self.mempool_driver.cleanup(b0.round).await;
-            self.commit(b0).await?;
+            self.commit(b0.clone()).await?;
         }
-        info!("{} after committing {:?}", self.name, b0);
+        info!("{} after committing {:?}", self.name, b0.digest());
 
         // Ensure the block's round is as expected.
         // This check is important: it prevents bad leaders from producing blocks

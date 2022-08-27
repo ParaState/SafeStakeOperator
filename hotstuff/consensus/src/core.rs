@@ -320,7 +320,7 @@ impl Core {
 
     #[async_recursion]
     async fn process_block(&mut self, block: &Block) -> ConsensusResult<()> {
-        debug!("{} Processing {:?}", self.name, block);
+        info!("{} Processing {:?}", self.name, block);
 
         // Let's see if we have the last three ancestors of the block, that is:
         //      b0 <- |qc0; b1| <- |qc1; block|
@@ -342,10 +342,12 @@ impl Core {
 
         // Check if we can commit the head of the 2-chain.
         // Note that we commit blocks only if we have all its ancestors.
+        info!("{} before committing {:?}", self.name, block);
         if b0.round + 1 == b1.round {
             self.mempool_driver.cleanup(b0.round).await;
             self.commit(b0).await?;
         }
+        info!("{} after committing {:?}", self.name, block);
 
         // Ensure the block's round is as expected.
         // This check is important: it prevents bad leaders from producing blocks
@@ -377,6 +379,7 @@ impl Core {
     }
 
     async fn handle_proposal(&mut self, block: &Block) -> ConsensusResult<()> {
+        info!("{} handling proposal {:?}", self.name, block);
         let digest = block.digest();
 
         // Ensure the block proposer is the right leader for the round.

@@ -4,6 +4,7 @@ use ed25519_dalek::Sha512;
 use std::convert::TryInto;
 use store::Store;
 use tokio::sync::mpsc::{Receiver, Sender};
+use log::{info};
 
 #[cfg(test)]
 #[path = "tests/processor_tests.rs"]
@@ -35,7 +36,8 @@ impl Processor {
                         // Store the batch.
                         store.write(digest.to_vec(), batch).await;
 
-                        tx_digest.send(digest).await.expect("Failed to send digest");
+                        tx_digest.send(digest.clone()).await.expect("Failed to send digest");
+                        info!("============= Mempool processor sends a digest: {:?}", digest);
                     },
                     () = exit => {
                         break;

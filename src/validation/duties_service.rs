@@ -688,6 +688,7 @@ async fn poll_beacon_attesters_for_epoch<T: SlotClock + 'static, E: EthSpec>(
         "dependent_root" => %dependent_root,
         "num_new_duties" => new_duties.len(),
     );
+    let duties_len = new_duties.len();
 
     // Produce the `DutyAndProof` messages in parallel.
     let duty_and_proof_results = join_all(new_duties.into_iter().map(|duty| {
@@ -739,7 +740,7 @@ async fn poll_beacon_attesters_for_epoch<T: SlotClock + 'static, E: EthSpec>(
         log,
         "Polled attester duties";
         "epoch" => epoch.as_u64(),
-        "duty" => new_duties.len(),
+        "duty" => duties_len,
         "duty_proof" => count
     );
     drop(attesters);

@@ -281,19 +281,20 @@ impl SigningMethod {
                     let dt : DateTime<Utc> = Utc::now();
                     match dvf_signer.sign(signing_root).await {
                         Ok((signature, ids)) => {
-                            let request_body = DvfPerformanceRequest {
-                                validator_pk,
-                                operator_id,
-                                operators: ids, 
-                                slot: slot.as_u64(),
-                                epoch: signing_context.epoch.as_u64(),
-                                duty: duty.to_string(),
-                                time: Utc::now().signed_duration_since(dt).num_milliseconds()
-                            };
-                            let client = reqwest::Client::new();
-                            let url = Url::parse(API_ADDRESS.get().unwrap()).map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
-                            let _ = client.post(url).json(&request_body).send().await.map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
-
+                            if duty ==  "ATTESTER" || duty == "PROPOSER" {
+                                let request_body = DvfPerformanceRequest {
+                                    validator_pk,
+                                    operator_id,
+                                    operators: ids, 
+                                    slot: slot.as_u64(),
+                                    epoch: signing_context.epoch.as_u64(),
+                                    duty: duty.to_string(),
+                                    time: Utc::now().signed_duration_since(dt).num_milliseconds()
+                                };
+                                let client = reqwest::Client::new();
+                                let url = Url::parse(API_ADDRESS.get().unwrap()).map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
+                                let _ = client.post(url).json(&request_body).send().await.map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
+                            }
                             Ok(signature)
                         },
                         Err(e) => {

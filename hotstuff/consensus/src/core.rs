@@ -321,7 +321,7 @@ impl Core {
 
     #[async_recursion]
     async fn process_block(&mut self, block: &Block) -> ConsensusResult<()> {
-        info!("{} Processing {}, with parent {}", self.name, block.digest(), block.parent());
+        debug!("{} Processing {}, with parent {}", self.name, block.digest(), block.parent());
 
         // Let's see if we have the last three ancestors of the block, that is:
         //      b0 <- |qc0; b1| <- |qc1; block|

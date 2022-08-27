@@ -354,6 +354,14 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
             .await
             .map_err(|e| e.to_string())?;
 
+        info!(
+            log,
+            "Raw attestation duty";
+            "slot" => slot.as_u64(),
+            "slot's epoch" => slot.epoch(E::slots_per_epoch()).as_u64(),
+            "current epoch" => current_epoch.as_u64(),
+            "duties" => validator_duties.len(),
+        );
         // Create futures to produce signed `Attestation` objects.
         let attestation_data_ref = &attestation_data;
         let signing_futures = validator_duties.iter().map(|duty_and_proof| async move {
@@ -413,6 +421,15 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
             .into_iter()
             .flatten()
             .collect::<Vec<Attestation<E>>>();
+        
+        info!(
+            log,
+            "Signed attestation duty";
+            "slot" => slot.as_u64(),
+            "slot's epoch" => slot.epoch(E::slots_per_epoch()).as_u64(),
+            "current epoch" => current_epoch.as_u64(),
+            "duties" => attestations.len(),
+        );
         
         // No need to further process. This can happen quite often for non-leader operators.
         if attestations.is_empty() {

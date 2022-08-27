@@ -501,6 +501,14 @@ async fn poll_beacon_attesters<T: SlotClock + 'static, E: EthSpec>(
             "err" => ?e,
         )
     }
+    else {
+        info!(
+            log,
+            "Finish downloading attester duties";
+            "current_epoch" => current_epoch,
+            "request_epoch" => current_epoch,
+        );
+    }
 
     drop(current_epoch_timer);
     let next_epoch_timer = metrics::start_timer_vec(
@@ -520,6 +528,14 @@ async fn poll_beacon_attesters<T: SlotClock + 'static, E: EthSpec>(
             "request_epoch" => next_epoch,
             "err" => ?e,
         )
+    }
+    else {
+        info!(
+            log,
+            "Finish downloading attester duties";
+            "current_epoch" => current_epoch,
+            "request_epoch" => next_epoch,
+        );
     }
 
     drop(next_epoch_timer);
@@ -723,7 +739,8 @@ async fn poll_beacon_attesters_for_epoch<T: SlotClock + 'static, E: EthSpec>(
         log,
         "Polled attester duties";
         "epoch" => epoch.as_u64(),
-        "duties" => count
+        "duty" => new_duties.len(),
+        "duty_proof" => count
     );
     drop(attesters);
 

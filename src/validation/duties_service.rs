@@ -682,6 +682,7 @@ async fn poll_beacon_attesters_for_epoch<T: SlotClock + 'static, E: EthSpec>(
     // Update the duties service with the new `DutyAndProof` messages.
     let mut attesters = duties_service.attesters.write();
     let mut already_warned = Some(());
+    let mut count: u64 = 0;
     for result in duty_and_proof_results {
         let duty_and_proof = match result {
             Ok(duty_and_proof) => duty_and_proof,
@@ -716,7 +717,14 @@ async fn poll_beacon_attesters_for_epoch<T: SlotClock + 'static, E: EthSpec>(
                 )
             }
         }
+        count = count + 1;
     }
+    info!(
+        log,
+        "Polled attester duties";
+        "epoch" => epoch.as_u64(),
+        "duties" => count
+    );
     drop(attesters);
 
     Ok(())

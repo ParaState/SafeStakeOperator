@@ -286,7 +286,6 @@ impl MessageHandler for MempoolReceiverHandler {
             Ok(MempoolMessage::BatchRequest(missing, requestor)) => "Batch Request",
             Err(e) => "Error",
         };
-        info!("============= Mempool Receiver Handler receives a message: {}", t);
         Ok(())
     }
 }

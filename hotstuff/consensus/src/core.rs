@@ -43,7 +43,8 @@ pub struct Core {
     aggregator: Aggregator,
     network: SimpleSender,
     validator_id: u64,
-    exit: exit_future::Exit
+    exit: exit_future::Exit,
+    recover_count: u64,
 }
 
 impl Core {
@@ -320,7 +321,7 @@ impl Core {
 
     #[async_recursion]
     async fn process_block(&mut self, block: &Block) -> ConsensusResult<()> {
-        info!("{} Processing {:?}, with parent {:?}", self.name, block.digest(), block.parent());
+        info!("{} Processing {}, with parent {}", self.name, block.digest(), block.parent());
 
         // Let's see if we have the last three ancestors of the block, that is:
         //      b0 <- |qc0; b1| <- |qc1; block|
@@ -330,7 +331,8 @@ impl Core {
         let (b0, b1) = match self.synchronizer.get_ancestors(block).await? {
             Some(ancestors) => ancestors,
             None => {
-                warn!("Processing of {} suspended: missing parent", block.digest());
+                self.recover_count = self.recover_count + 1;
+                warn!("Processing of {} suspended: missing parent. Count: {}", block.digest(), self.recover_count);
                 return Ok(());
             }
         };
@@ -342,12 +344,10 @@ impl Core {
 
         // Check if we can commit the head of the 2-chain.
         // Note that we commit blocks only if we have all its ancestors.
-        info!("{} before committing {:?}", self.name, b0.clone().digest());
         if b0.round + 1 == b1.round {
             self.mempool_driver.cleanup(b0.round).await;
             self.commit(b0.clone()).await?;
         }
-        info!("{} after committing {:?}", self.name, b0.digest());
 
         // Ensure the block's round is as expected.
         // This check is important: it prevents bad leaders from producing blocks
@@ -425,9 +425,9 @@ impl Core {
         // Upon booting, generate the very first block (if we are the leader).
         // Also, schedule a timer in case we don't hear from the leader.
         self.timer.reset();
-        //if self.name == self.leader_elector.get_leader(self.round) {
-            //self.generate_proposal(None).await;
-        //}
+        if self.name == self.leader_elector.get_leader(self.round) {
+            self.generate_proposal(None).await;
+        }
 
         // This is the main loop: it processes incoming blocks and votes,
         // and receive timeout notifications from our Timeout Manager.

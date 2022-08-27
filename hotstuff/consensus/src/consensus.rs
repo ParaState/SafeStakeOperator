@@ -152,7 +152,6 @@ pub struct ConsensusReceiverHandler {
 #[async_trait]
 impl MessageHandler for ConsensusReceiverHandler {
     async fn dispatch(&self, writer: &mut Writer, serialized: Bytes) -> Result<(), Box<dyn Error>> {
-        info!("============== Consensus receiver handling a message");
         // Deserialize and parse the message.
         match bincode::deserialize(&serialized).map_err(ConsensusError::SerializationError)? {
             ConsensusMessage::SyncRequest(missing, origin) => self
@@ -164,7 +163,6 @@ impl MessageHandler for ConsensusReceiverHandler {
                 // Reply with an ACK.
                 let _ = writer.send(Bytes::from("Ack")).await;
 
-                info!("============== Consensus receiver passing a message to the consensus core");
                 // Pass the message to the consensus core.
                 self.tx_consensus
                     .send(message)
@@ -172,7 +170,6 @@ impl MessageHandler for ConsensusReceiverHandler {
                     .expect("Failed to consensus message")
             }
             message => {
-                info!("============== Consensus receiver passing a message to the consensus core");
                 self
                 .tx_consensus
                 .send(message)

@@ -229,6 +229,7 @@ impl Core {
 
             // Make a new block if we are the next leader.
             if self.name == self.leader_elector.get_leader(self.round) {
+                info!("handle_vote generate proposal");
                 self.generate_proposal(None).await;
             }
         }
@@ -273,6 +274,7 @@ impl Core {
 
             // Make a new block if we are the next leader.
             if self.name == self.leader_elector.get_leader(self.round) {
+                info!("handle_timeout generate proposal");
                 self.generate_proposal(Some(tc)).await;
             }
         }
@@ -417,6 +419,7 @@ impl Core {
     async fn handle_tc(&mut self, tc: TC) -> ConsensusResult<()> {
         self.advance_round(tc.round).await;
         if self.name == self.leader_elector.get_leader(self.round) {
+            info!("handle_tc generate proposal");
             self.generate_proposal(Some(tc)).await;
         }
         Ok(())
@@ -436,15 +439,15 @@ impl Core {
             let exit = self.exit.clone();
             let result = tokio::select! {
                 Some(message) = self.rx_message.recv() => match message {
-                    ConsensusMessage::Propose(block) => self.handle_proposal(&block).await,
-                    ConsensusMessage::Vote(vote) => self.handle_vote(&vote).await,
-                    ConsensusMessage::Timeout(timeout) => self.handle_timeout(&timeout).await,
-                    ConsensusMessage::TC(tc) => self.handle_tc(tc).await,
+                    ConsensusMessage::Propose(block) => {info!("core propose"); self.handle_proposal(&block).await},
+                    ConsensusMessage::Vote(vote) => {info!("core vote"); self.handle_vote(&vote).await},
+                    ConsensusMessage::Timeout(timeout) => {info!("core timeout"); self.handle_timeout(&timeout).await},
+                    ConsensusMessage::TC(tc) => {info!("core tc"); self.handle_tc(tc).await},
                     _ => panic!("Unexpected protocol message")
                 },
-                Some(block) = self.rx_loopback.recv() => self.process_block(&block).await,
-                () = &mut self.timer => self.local_timeout_round().await,
-                () = exit => { break; }
+                Some(block) = self.rx_loopback.recv() => {info!("core loopback"); self.process_block(&block).await},
+                () = &mut self.timer => {info!("core local timer"); self.local_timeout_round().await},
+                () = exit => { info!("core exit"); break; }
             };
             match result {
                 Ok(()) => (),

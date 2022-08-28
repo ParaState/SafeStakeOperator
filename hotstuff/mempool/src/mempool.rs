@@ -281,11 +281,6 @@ impl MessageHandler for MempoolReceiverHandler {
                 .expect("Failed to send batch request"),
             Err(e) => warn!("Serialization error: {}", e),
         }
-        let t = match bincode::deserialize(&serialized) {
-            Ok(MempoolMessage::Batch(..)) => "Batch",
-            Ok(MempoolMessage::BatchRequest(missing, requestor)) => "Batch Request",
-            Err(e) => "Error",
-        };
         Ok(())
     }
 }

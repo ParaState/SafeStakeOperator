@@ -36,8 +36,7 @@ impl Processor {
                         // Store the batch.
                         store.write(digest.to_vec(), batch).await;
 
-                        tx_digest.send(digest.clone()).await.expect("Failed to send digest");
-                        info!("============= Mempool processor sends a digest: {:?}", digest);
+                        tx_digest.send(digest).await.expect("Failed to send digest");
                     },
                     () = exit => {
                         break;

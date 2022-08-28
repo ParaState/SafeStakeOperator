@@ -333,7 +333,7 @@ impl Core {
             Some(ancestors) => ancestors,
             None => {
                 self.recover_count = self.recover_count + 1;
-                warn!("Processing of {} suspended: missing parent. Count: {}", block.digest(), self.recover_count);
+                debug!("Processing of {} suspended: missing parent. Count: {}", block.digest(), self.recover_count);
                 return Ok(());
             }
         };
@@ -347,7 +347,7 @@ impl Core {
         // Note that we commit blocks only if we have all its ancestors.
         if b0.round + 1 == b1.round {
             self.mempool_driver.cleanup(b0.round).await;
-            self.commit(b0.clone()).await?;
+            self.commit(b0).await?;
         }
 
         // Ensure the block's round is as expected.

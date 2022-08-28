@@ -135,7 +135,7 @@ impl Proposer {
             tokio::select! {
                 Some(digest) = self.rx_mempool.recv() => {
                     //if self.buffer.len() < 155 {
-                        self.buffer.insert(digest.clone());
+                        self.buffer.insert(digest);
                     //}
                 },
                 Some(message) = self.rx_message.recv() => match message {

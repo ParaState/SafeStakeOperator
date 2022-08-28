@@ -88,6 +88,7 @@ impl Synchronizer {
                         Err(e) => error!("{}", e)
                     },
                     () = &mut timer => {
+                        info!("sync timeout with {} requests", requests.len());
                         // This implements the 'perfect point to point link' abstraction.
                         for (digest, timestamp) in &requests {
                             let now = SystemTime::now()

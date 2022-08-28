@@ -7,7 +7,7 @@ use crypto::Hash as _;
 use crypto::{Digest, PublicKey};
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
-use log::{debug, error};
+use log::{debug, error, info};
 use network::{SimpleSender, DvfMessage};
 use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -108,6 +108,7 @@ impl Synchronizer {
                                 let serialized_msg = bincode::serialize(&dvf_message).unwrap();
                                 debug!("[SYNC] Broacasting to {:?}", addresses);
                                 network.broadcast(addresses, Bytes::from(serialized_msg)).await;
+                                info!("sync broadcast {}", digest);
                             }
                         }
                         timer.as_mut().reset(Instant::now() + Duration::from_millis(TIMER_ACCURACY));

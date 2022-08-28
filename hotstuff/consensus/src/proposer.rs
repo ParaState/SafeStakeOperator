@@ -85,7 +85,9 @@ impl Proposer {
                 info!("Created {} -> {:?}", block, x);
             }
         }
-        debug!("Created {:?}", block);
+        else {
+            info!("Created empty {}", block);
+        }
 
         // Broadcast our new block.
         debug!("Broadcasting {:?}", block);

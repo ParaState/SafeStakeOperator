@@ -90,8 +90,8 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                 }
                             },
                             None => {
-                                error!("Unhandled message: {:?}", dvf_message);
-                                error!("No handler found for validator id {:?}! [{:?}]", validator_id, name);
+                                // error!("Unhandled message: {:?}", dvf_message);
+                                error!("Receive a message for validator {}, but no handler found! [{:?}]", validator_id, name);
                             } 
                         }
                     }

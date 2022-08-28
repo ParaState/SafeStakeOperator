@@ -88,6 +88,7 @@ impl Synchronizer {
                         Err(e) => error!("{}", e)
                     },
                     () = &mut timer => {
+                        let mut i: u64 = 0;
                         info!("sync timeout with {} requests", requests.len());
                         // This implements the 'perfect point to point link' abstraction.
                         for (digest, timestamp) in &requests {
@@ -109,8 +110,9 @@ impl Synchronizer {
                                 let serialized_msg = bincode::serialize(&dvf_message).unwrap();
                                 debug!("[SYNC] Broacasting to {:?}", addresses);
                                 network.broadcast(addresses, Bytes::from(serialized_msg)).await;
-                                info!("sync broadcast {}", digest);
+                                info!("sync broadcast {} : {}.", i, digest);
                             }
+                            i = i+1;
                         }
                         timer.as_mut().reset(Instant::now() + Duration::from_millis(TIMER_ACCURACY));
                     },

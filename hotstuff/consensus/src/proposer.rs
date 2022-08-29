@@ -86,7 +86,7 @@ impl Proposer {
             }
         }
         else {
-            info!("Created empty {}", block);
+            debug!("Created empty {}", block);
         }
 
         // Broadcast our new block.

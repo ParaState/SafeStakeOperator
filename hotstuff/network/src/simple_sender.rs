@@ -14,16 +14,24 @@ use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::sync::RwLock;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use std::sync::Arc;
+use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 #[path = "tests/simple_sender_tests.rs"]
 pub mod simple_sender_tests;
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum Command {
+    Send(Bytes),
+    Feed(Bytes),
+    Flush
+}
+
 /// We keep alive one TCP connection per peer, each connection is handled by a separate task (called `Connection`).
 /// We communicate with our 'connections' through a dedicated channel kept by the HashMap called `connections`.
 pub struct SimpleSender {
     /// A map holding the channels to our connections.
-    connections: Arc<RwLock<HashMap<SocketAddr, Sender<Bytes>>>>,
+    connections: Arc<RwLock<HashMap<SocketAddr, Sender<Command>>>>,
     /// Small RNG just used to shuffle nodes and randomize connections (not crypto related).
     rng: SmallRng,
 }
@@ -43,18 +51,16 @@ impl SimpleSender {
     }
 
     /// Helper function to spawn a new connection.
-    fn spawn_connection(address: SocketAddr) -> Sender<Bytes> {
+    fn spawn_connection(address: SocketAddr) -> Sender<Command> {
         let (tx, rx) = channel(1_000);
         Connection::spawn(address, rx);
         tx
     }
 
-    /// Try (best-effort) to send a message to a specific address.
-    /// This is useful to answer sync requests.
-    pub async fn send(&self, address: SocketAddr, data: Bytes) {
+    pub async fn execute(&self, address: SocketAddr, cmd: Command) {
         // Try to re-use an existing connection if possible.
         if let Some(tx) = self.connections.read().await.get(&address) {
-            if tx.send(data.clone()).await.is_ok() {
+            if tx.send(cmd.clone()).await.is_ok() {
                 return;
             }
         }
@@ -62,15 +68,56 @@ impl SimpleSender {
         info!("[Simple] Openning a new connection to {}", address);
         // Otherwise make a new connection.
         let tx = Self::spawn_connection(address);
-        if tx.send(data).await.is_ok() {
+        if tx.send(cmd).await.is_ok() {
             self.connections.write().await.insert(address, tx);
         }
+    }
+
+    /// Try (best-effort) to send a message to a specific address.
+    /// This is useful to answer sync requests.
+    pub async fn send(&self, address: SocketAddr, data: Bytes) {
+        // // Try to re-use an existing connection if possible.
+        // if let Some(tx) = self.connections.read().await.get(&address) {
+        //     if tx.send(Command::Send(data.clone())).await.is_ok() {
+        //         return;
+        //     }
+        // }
+
+        // info!("[Simple] Openning a new connection to {}", address);
+        // // Otherwise make a new connection.
+        // let tx = Self::spawn_connection(address);
+        // if tx.send(Command::Send(data)).await.is_ok() {
+        //     self.connections.write().await.insert(address, tx);
+        // }
+        self.execute(address, Command::Send(data)).await
+    }
+
+    pub async fn feed(&self, address: SocketAddr, data: Bytes) {
+        self.execute(address, Command::Feed(data)).await
+    }
+
+    pub async fn flush(&self, address: SocketAddr) {
+        self.execute(address, Command::Flush).await
     }
 
     /// Try (best-effort) to broadcast the message to all specified addresses.
     pub async fn broadcast(&mut self, addresses: Vec<SocketAddr>, data: Bytes) {
         for address in addresses {
             self.send(address, data.clone()).await;
+        }
+    }
+
+    /// Try (best-effort) to broadcast the message to all specified addresses.
+    pub async fn broadcast_feed(&mut self, addresses: Vec<SocketAddr>, data: Bytes) {
+        for address in addresses {
+            self.feed(address, data.clone()).await;
+        }
+    }
+
+    /// Try (best-effort) to broadcast the message to all specified addresses.
+    pub async fn broadcast_flush(&mut self, addresses: Vec<SocketAddr>) {
+        for address in addresses {
+            self.flush(address).await;
         }
     }
 
@@ -86,6 +133,19 @@ impl SimpleSender {
         addresses.truncate(nodes);
         self.broadcast(addresses, data).await
     }
+
+    /// Pick a few addresses at random (specified by `nodes`) and try (best-effort) to send the
+    /// message only to them. This is useful to pick nodes with whom to sync.
+    pub async fn lucky_broadcast_feed(
+        &mut self,
+        mut addresses: Vec<SocketAddr>,
+        data: Bytes,
+        nodes: usize,
+    ) {
+        addresses.shuffle(&mut self.rng);
+        addresses.truncate(nodes);
+        self.broadcast_feed(addresses, data).await
+    }
 }
 
 /// A connection is responsible to establish and keep alive (if possible) a connection with a single peer.
@@ -93,11 +153,11 @@ struct Connection {
     /// The destination address.
     address: SocketAddr,
     /// Channel from which the connection receives its commands.
-    receiver: Receiver<Bytes>,
+    receiver: Receiver<Command>,
 }
 
 impl Connection {
-    fn spawn(address: SocketAddr, receiver: Receiver<Bytes>) {
+    fn spawn(address: SocketAddr, receiver: Receiver<Command>) {
         tokio::spawn(async move {
             Self { address, receiver }.run().await;
         });
@@ -123,10 +183,27 @@ impl Connection {
             // Check if there are any new messages to send or if we get an ACK for messages we already sent.
             tokio::select! {
                 Some(data) = self.receiver.recv() => {
-                    if let Err(e) = writer.send(data).await {
-                        warn!("{}", NetworkError::FailedToSendMessage(self.address, e));
-                        return;
+                    match data {
+                        Command::Send(x) => {
+                            if let Err(e) = writer.send(x).await {
+                                warn!("{}", NetworkError::FailedToSendMessage(self.address, e));
+                                return;
+                            }
+                        }
+                        Command::Feed(x) => {
+                            if let Err(e) = writer.feed(x).await {
+                                warn!("{}", NetworkError::FailedToSendMessage(self.address, e));
+                                return;
+                            }
+                        }
+                        Command::Flush => {
+                            if let Err(e) = writer.flush().await {
+                                warn!("{}", NetworkError::FailedToSendMessage(self.address, e));
+                                return;
+                            }
+                        }
                     }
+                    
                 },
                 response = reader.next() => {
                     match response {

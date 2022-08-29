@@ -7,13 +7,15 @@ use crypto::Hash as _;
 use crypto::{Digest, PublicKey};
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use network::{SimpleSender, DvfMessage};
 use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
+use std::net::SocketAddr;
+use tokio::time::timeout;
 
 #[cfg(test)]
 #[path = "tests/synchronizer_tests.rs"]
@@ -57,7 +59,7 @@ impl Synchronizer {
                             let fut = Self::waiter(store_copy.clone(), parent.clone(), block);
                             waiting.push(fut);
 
-                            if !requests.contains_key(&parent){
+                            if !requests.contains_key(&parent) {
                                 debug!("Requesting sync for block {}", parent);
                                 let now = SystemTime::now()
                                     .duration_since(UNIX_EPOCH)
@@ -73,7 +75,7 @@ impl Synchronizer {
                                 let dvf_message = DvfMessage { validator_id: validator_id, message: message};
                                 let serialized_msg = bincode::serialize(&dvf_message).unwrap();
                                 debug!("[SYNC] Sending to {:?}", address);
-                                network.send(address, Bytes::from(serialized_msg)).await;
+                                network.feed(address, Bytes::from(serialized_msg)).await;
                             }
                         }
                     },
@@ -90,29 +92,38 @@ impl Synchronizer {
                     () = &mut timer => {
                         let mut i: u64 = 0;
                         info!("sync timeout with {} requests", requests.len());
-                        // This implements the 'perfect point to point link' abstraction.
-                        for (digest, timestamp) in &requests {
-                            let now = SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .expect("Failed to measure time")
-                                .as_millis();
-                            if timestamp + (sync_retry_delay as u128) < now {
-                                debug!("Requesting sync for block {} (retry)", digest);
-                                let addresses = committee
-                                    .broadcast_addresses(&name)
-                                    .into_iter()
-                                    .map(|(_, x)| x)
-                                    .collect();
-                                let message = ConsensusMessage::SyncRequest(digest.clone(), name);
-                                let message = bincode::serialize(&message)
-                                    .expect("Failed to serialize sync request");
-                                let dvf_message = DvfMessage { validator_id: validator_id, message: message};
-                                let serialized_msg = bincode::serialize(&dvf_message).unwrap();
-                                debug!("[SYNC] Broacasting to {:?}", addresses);
-                                network.broadcast(addresses, Bytes::from(serialized_msg)).await;
-                                info!("sync broadcast {} : {}.", i, digest);
+                        let addresses: Vec<SocketAddr> = committee
+                            .broadcast_addresses(&name)
+                            .into_iter()
+                            .map(|(_, x)| x)
+                            .collect();
+
+                        match timeout(Duration::from_millis(TIMER_ACCURACY), network.broadcast_flush(addresses.clone())).await {
+                            Ok(_) => {
+                                // This implements the 'perfect point to point link' abstraction.
+                                for (digest, timestamp) in &requests {
+                                    let now = SystemTime::now()
+                                        .duration_since(UNIX_EPOCH)
+                                        .expect("Failed to measure time")
+                                        .as_millis();
+                                    if timestamp + (sync_retry_delay as u128) < now && !pending.contains(&digest) {
+                                        debug!("Requesting sync for block {} (retry)", digest);
+                                        let message = ConsensusMessage::SyncRequest(digest.clone(), name);
+                                        let message = bincode::serialize(&message)
+                                            .expect("Failed to serialize sync request");
+                                        let dvf_message = DvfMessage { validator_id: validator_id, message: message};
+                                        let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+                                        debug!("[SYNC] Broacasting to {:?}", addresses);
+                                        // network.broadcast(addresses, Bytes::from(serialized_msg)).await;
+                                        network.lucky_broadcast_feed(addresses.clone(), Bytes::from(serialized_msg), 1).await;
+                                        info!("sync broadcast {} : {}.", i, digest);
+                                    }
+                                    i = i+1;
+                                }
+                            },
+                            Err(_) => {
+                                warn!("Network is busy. Delay syncing requests...")
                             }
-                            i = i+1;
                         }
                         timer.as_mut().reset(Instant::now() + Duration::from_millis(TIMER_ACCURACY));
                     },

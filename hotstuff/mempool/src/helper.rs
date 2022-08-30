@@ -69,12 +69,13 @@ impl Helper {
                                 let dvf_message = DvfMessage { validator_id: self.validator_id, message: data};
                                 let serialized_msg = bincode::serialize(&dvf_message).unwrap();
                                 debug!("[MemHELPER] Sending to {:?}", address);
-                                self.network.send(address, Bytes::from(serialized_msg)).await
+                                self.network.feed(address, Bytes::from(serialized_msg)).await
                             },
                             Ok(None) => (),
                             Err(e) => error!("{}", e),
                         }
                     }
+                    self.network.flush(address).await;
                 },
                 () = exit => {
                     break;

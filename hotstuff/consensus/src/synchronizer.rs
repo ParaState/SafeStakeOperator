@@ -91,7 +91,7 @@ impl Synchronizer {
                     },
                     () = &mut timer => {
                         let mut i: u64 = 0;
-                        info!("Sync timer with {} requests", requests.len());
+                        info!("[VA {}] Sync timer with {} requests", validator_id, requests.len());
                         let addresses: Vec<SocketAddr> = committee
                             .broadcast_addresses(&name)
                             .into_iter()
@@ -116,7 +116,7 @@ impl Synchronizer {
                                         debug!("[SYNC] Broacasting to {:?}", addresses);
                                         // network.broadcast(addresses, Bytes::from(serialized_msg)).await;
                                         network.lucky_broadcast_feed(addresses.clone(), Bytes::from(serialized_msg), 1).await;
-                                        info!("{} Sync broadcast {} : {}.", validator_id, i, digest);
+                                        info!("[VA {}] Sync broadcast {} : {}.", validator_id, i, digest);
                                         *timestamp = now;
                                     }
                                     i = i+1;

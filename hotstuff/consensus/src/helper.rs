@@ -2,7 +2,7 @@ use crate::config::Committee;
 use crate::consensus::ConsensusMessage;
 use bytes::Bytes;
 use crypto::{Digest, PublicKey};
-use log::{warn, debug};
+use log::{warn, debug, info};
 use network::{SimpleSender, DvfMessage};
 use store::Store;
 use tokio::sync::mpsc::Receiver;
@@ -56,7 +56,7 @@ impl Helper {
                             continue;
                         }
                     };
-
+                    info!("[VA {}] Received sync request {}", self.validator_id, digest);
                     // Reply to the request (if we can).
                     if let Some(bytes) = self
                         .store
@@ -64,6 +64,7 @@ impl Helper {
                         .await
                         .expect("Failed to read from storage")
                     {
+                        info!("[VA {}] Found {}", self.validator_id, digest);
                         let block =
                             bincode::deserialize(&bytes).expect("Failed to deserialize our own block");
                         let message = bincode::serialize(&ConsensusMessage::Propose(block))

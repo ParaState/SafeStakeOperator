@@ -91,7 +91,7 @@ impl Synchronizer {
                     },
                     () = &mut timer => {
                         let mut i: u64 = 0;
-                        info!("sync timeout with {} requests", requests.len());
+                        info!("Sync timer with {} requests", requests.len());
                         let addresses: Vec<SocketAddr> = committee
                             .broadcast_addresses(&name)
                             .into_iter()
@@ -101,12 +101,12 @@ impl Synchronizer {
                         match timeout(Duration::from_millis(TIMER_ACCURACY), network.broadcast_flush(addresses.clone())).await {
                             Ok(_) => {
                                 // This implements the 'perfect point to point link' abstraction.
-                                for (digest, timestamp) in &requests {
+                                for (digest, timestamp) in requests.iter_mut() {
                                     let now = SystemTime::now()
                                         .duration_since(UNIX_EPOCH)
                                         .expect("Failed to measure time")
                                         .as_millis();
-                                    if timestamp + (sync_retry_delay as u128) < now && !pending.contains(&digest) {
+                                    if *timestamp + (sync_retry_delay as u128) < now && !pending.contains(&digest) {
                                         debug!("Requesting sync for block {} (retry)", digest);
                                         let message = ConsensusMessage::SyncRequest(digest.clone(), name);
                                         let message = bincode::serialize(&message)
@@ -116,7 +116,8 @@ impl Synchronizer {
                                         debug!("[SYNC] Broacasting to {:?}", addresses);
                                         // network.broadcast(addresses, Bytes::from(serialized_msg)).await;
                                         network.lucky_broadcast_feed(addresses.clone(), Bytes::from(serialized_msg), 1).await;
-                                        info!("sync broadcast {} : {}.", i, digest);
+                                        info!("{} Sync broadcast {} : {}.", validator_id, i, digest);
+                                        *timestamp = now;
                                     }
                                     i = i+1;
                                 }

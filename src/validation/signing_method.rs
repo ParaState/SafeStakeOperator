@@ -313,7 +313,7 @@ impl SigningMethod {
                     };
 
                     let work = dvf_signer.sign(signing_root);
-                    let timeout = sleep(Duration::from_secs(spec.seconds_per_slot));
+                    let timeout = sleep(task_timeout);
                     tokio::select!{
                         result = work => {
                             match result {

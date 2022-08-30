@@ -305,12 +305,12 @@ impl SigningMethod {
                     // }
                     let task_timeout = match signable_message {
                         SignableMessage::SelectionProof(s) => {
-                            Duration::from_secs(spec.seconds_per_slot * (signing_context.epoch.end_slot(E::slots_per_epoch)-s+1))
+                            Duration::from_secs(spec.seconds_per_slot * (signing_context.epoch.end_slot(T::slots_per_epoch())-s+1).as_u64())
                         }
                         _ => {
                             Duration::from_secs(spec.seconds_per_slot)
                         }
-                    }
+                    };
 
                     let work = dvf_signer.sign(signing_root);
                     let timeout = sleep(Duration::from_secs(spec.seconds_per_slot));

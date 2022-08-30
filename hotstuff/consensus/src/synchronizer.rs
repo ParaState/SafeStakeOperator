@@ -114,13 +114,14 @@ impl Synchronizer {
                                         let dvf_message = DvfMessage { validator_id: validator_id, message: message};
                                         let serialized_msg = bincode::serialize(&dvf_message).unwrap();
                                         debug!("[SYNC] Broacasting to {:?}", addresses);
-                                        network.broadcast(addresses, Bytes::from(serialized_msg)).await;
+                                        network.broadcast_feed(addresses.clone(), Bytes::from(serialized_msg)).await;
                                         // network.lucky_broadcast_feed(addresses.clone(), Bytes::from(serialized_msg), 1).await;
                                         info!("[VA {}] Sync broadcast {} : {}.", validator_id, i, digest);
                                         *timestamp = now;
                                     }
                                     i = i+1;
                                 }
+                                network.broadcast_flush(addresses).await;
                             },
                             Err(_) => {
                                 warn!("Network is busy. Delay syncing requests...")

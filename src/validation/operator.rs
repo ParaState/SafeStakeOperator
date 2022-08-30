@@ -101,7 +101,7 @@ impl TOperator for RemoteOperator {
                     warn!("Retry from operator {}/{}", self.operator_id, self.validator_id);
                 }
             }
-            sleep_util(next_try_instant).await;
+            sleep_until(next_try_instant).await;
         }
         warn!("Failed to receive a signature from operator {}/{} ({:?})", self.operator_id, self.validator_id, self.signature_address);
         Err(DvfError::Unknown)

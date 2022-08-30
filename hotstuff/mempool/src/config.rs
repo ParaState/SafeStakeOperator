@@ -28,8 +28,8 @@ impl Default for Parameters {
             sync_retry_delay: 5_000,
             sync_retry_nodes: 3,
             batch_size: 500_000,
-            // max_batch_delay: 100,
-            max_batch_delay: 300,
+            max_batch_delay: 100,
+            // max_batch_delay: 300,
         }
     }
 }

@@ -17,6 +17,7 @@ use tokio::sync::{oneshot, RwLock};
 use tokio::time::{sleep, Duration};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use std::sync::Arc;
+use crate::CHANNEL_CAPACITY;
 
 #[cfg(test)]
 #[path = "tests/reliable_sender_tests.rs"]
@@ -53,7 +54,7 @@ impl ReliableSender {
     /// Helper function to spawn a new connection.
     fn spawn_connection(address: SocketAddr) -> Sender<InnerMessage> {
         info!("[Reliable] Openning a new connection to {}", address);
-        let (tx, rx) = channel(1_000);
+        let (tx, rx) = channel(CHANNEL_CAPACITY);
         Connection::spawn(address, rx);
         tx
     }

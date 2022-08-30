@@ -8,6 +8,8 @@ mod dvf_message;
 #[path = "tests/common.rs"]
 pub mod common;
 
+pub const CHANNEL_CAPACITY: usize = 20_000;
+
 pub use crate::receiver::{MessageHandler, Receiver, Writer};
 pub use crate::reliable_sender::{CancelHandler, ReliableSender};
 pub use crate::simple_sender::SimpleSender;

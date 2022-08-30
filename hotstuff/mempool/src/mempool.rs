@@ -23,7 +23,7 @@ use futures::executor::block_on;
 pub mod mempool_tests;
 
 /// The default channel capacity for each channel of the mempool.
-pub const CHANNEL_CAPACITY: usize = 1_000;
+pub const CHANNEL_CAPACITY: usize = 20_000;
 
 /// The consensus round number.
 pub type Round = u64;

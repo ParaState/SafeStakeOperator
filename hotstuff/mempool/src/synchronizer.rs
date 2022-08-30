@@ -4,20 +4,22 @@ use bytes::Bytes;
 use crypto::{Digest, PublicKey};
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use network::{SimpleSender, DvfMessage};
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use store::{Store, StoreError};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
+use tokio::time::timeout;
+use std::net::SocketAddr;
 
 #[cfg(test)]
 #[path = "tests/synchronizer_tests.rs"]
 pub mod synchronizer_tests;
 
 /// Resolution of the timer managing retrials of sync requests (in ms).
-const TIMER_RESOLUTION: u64 = 1_000;
+const TIMER_RESOLUTION: u64 = 2_000;
 
 // The `Synchronizer` is responsible to keep the mempool in sync with the others.
 pub struct Synchronizer {
@@ -151,7 +153,7 @@ impl Synchronizer {
                         let dvf_message = DvfMessage { validator_id: self.validator_id, message: serialized};
                         let serialized_msg = bincode::serialize(&dvf_message).unwrap();
                         debug!("[MemSYNC] Sending to {:?}", address);
-                        self.network.send(address, Bytes::from(serialized_msg)).await;
+                        self.network.feed(address, Bytes::from(serialized_msg)).await;
                     },
                     ConsensusMempoolMessage::Cleanup(round) => {
                         // Keep track of the consensus' round number.
@@ -193,28 +195,37 @@ impl Synchronizer {
                         .duration_since(UNIX_EPOCH)
                         .expect("Failed to measure time")
                         .as_millis();
+                    
+                    let addresses: Vec<SocketAddr> = self.committee
+                        .broadcast_addresses(&self.name)
+                        .iter()
+                        .map(|(_, address)| *address)
+                        .collect();
 
-                    let mut retry = Vec::new();
-                    for (digest, (_, _, timestamp)) in &self.pending {
-                        if timestamp + (self.sync_retry_delay as u128) < now {
-                            debug!("Requesting sync for batch {} (retry)", digest);
-                            retry.push(digest.clone());
+                    match timeout(Duration::from_millis(TIMER_RESOLUTION), self.network.broadcast_flush(addresses.clone())).await {
+                        Ok(_) => {
+                            let mut retry = Vec::new();
+                            for (digest, (_, _, timestamp)) in self.pending.iter_mut() {
+                                if *timestamp + (self.sync_retry_delay as u128) < now {
+                                    debug!("Requesting sync for batch {} (retry)", digest);
+                                    retry.push(digest.clone());
+                                    *timestamp = now;
+                                }
+                            }
+                            if !retry.is_empty() {
+                                let message = MempoolMessage::BatchRequest(retry, self.name);
+                                let serialized = bincode::serialize(&message).expect("Failed to serialize our own message");
+                                let dvf_message = DvfMessage { validator_id: self.validator_id, message: serialized};
+                                let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+                                info!("[MemSYNC] Lucky broacasting to {:?}", addresses);
+                                self.network
+                                    .lucky_broadcast_feed(addresses, Bytes::from(serialized_msg), self.sync_retry_nodes)
+                                    .await;
+                            }
+                        },
+                        Err(_) => {
+                            warn!("Network is busy. Delay batch syncing requests...")
                         }
-                    }
-                    if !retry.is_empty() {
-                        let addresses = self.committee
-                            .broadcast_addresses(&self.name)
-                            .iter()
-                            .map(|(_, address)| *address)
-                            .collect();
-                        let message = MempoolMessage::BatchRequest(retry, self.name);
-                        let serialized = bincode::serialize(&message).expect("Failed to serialize our own message");
-                        let dvf_message = DvfMessage { validator_id: self.validator_id, message: serialized};
-                        let serialized_msg = bincode::serialize(&dvf_message).unwrap();
-                        info!("[MemSYNC] Lucky broacasting to {:?}", addresses);
-                        self.network
-                            .lucky_broadcast(addresses, Bytes::from(serialized_msg), self.sync_retry_nodes)
-                            .await;
                     }
 
                     // Reschedule the timer.

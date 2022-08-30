@@ -15,6 +15,7 @@ use tokio::sync::RwLock;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
+use crate::CHANNEL_CAPACITY;
 
 #[cfg(test)]
 #[path = "tests/simple_sender_tests.rs"]
@@ -52,7 +53,7 @@ impl SimpleSender {
 
     /// Helper function to spawn a new connection.
     fn spawn_connection(address: SocketAddr) -> Sender<Command> {
-        let (tx, rx) = channel(1_000);
+        let (tx, rx) = channel(CHANNEL_CAPACITY);
         Connection::spawn(address, rx);
         tx
     }

@@ -56,7 +56,7 @@ impl Helper {
                             continue;
                         }
                     };
-                    info!("[VA {}] Received sync request {}", self.validator_id, digest);
+                    debug!("[VA {}] Received sync request {}", self.validator_id, digest);
                     // Reply to the request (if we can).
                     if let Some(bytes) = self
                         .store
@@ -64,7 +64,7 @@ impl Helper {
                         .await
                         .expect("Failed to read from storage")
                     {
-                        info!("[VA {}] Found {}", self.validator_id, digest);
+                        debug!("[VA {}] Found {}", self.validator_id, digest);
                         let block =
                             bincode::deserialize(&bytes).expect("Failed to deserialize our own block");
                         let message = bincode::serialize(&ConsensusMessage::Propose(block))

@@ -6,7 +6,7 @@ use std::net::SocketAddr;
 use bytes::Bytes;
 use downcast_rs::DowncastSync;
 use std::time::Duration;
-use tokio::time::timeout;
+use tokio::time::{timeout, sleep_until, Instant};
 use log::{info, warn};
 use async_trait::async_trait;
 
@@ -74,7 +74,8 @@ impl TOperator for RemoteOperator {
         // Err(DvfError::Unknown)
         let dvf_message = DvfMessage { validator_id: self.validator_id, message: msg.to_fixed_bytes().to_vec()};
         let serialize_msg = bincode::serialize(&dvf_message).unwrap();
-        for _ in 0..3 {
+        for _ in 0..5 {
+            let next_try_instant = Instant::now() + Duration::from_millis(timeout_mill);
             let receiver = self.network.send(self.signature_address, Bytes::from(serialize_msg.clone())).await;
             let result = timeout(Duration::from_millis(timeout_mill), receiver).await; 
             match result {
@@ -100,6 +101,7 @@ impl TOperator for RemoteOperator {
                     warn!("Retry from operator {}/{}", self.operator_id, self.validator_id);
                 }
             }
+            sleep_util(next_try_instant).await;
         }
         warn!("Failed to receive a signature from operator {}/{} ({:?})", self.operator_id, self.validator_id, self.signature_address);
         Err(DvfError::Unknown)

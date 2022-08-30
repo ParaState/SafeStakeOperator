@@ -70,7 +70,7 @@ pub struct RemoteOperator {
 #[async_trait]
 impl TOperator for RemoteOperator {
     async fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> { 
-        let timeout_mill :u64 = 200;
+        let timeout_mill :u64 = 400;
         // Err(DvfError::Unknown)
         let dvf_message = DvfMessage { validator_id: self.validator_id, message: msg.to_fixed_bytes().to_vec()};
         let serialize_msg = bincode::serialize(&dvf_message).unwrap();

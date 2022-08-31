@@ -14,7 +14,7 @@ use bytes::Bytes;
 use std::error::Error;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-pub const CHANNEL_CAPACITY: usize = 20_000;
+pub const CHANNEL_CAPACITY: usize = 10_000;
 use bls::{Hash256, Signature};
 use types::{Keypair, EthSpec};
 use crate::validation::operator::{LocalOperator, TOperator};

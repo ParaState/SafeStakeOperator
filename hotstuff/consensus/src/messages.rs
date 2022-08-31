@@ -182,7 +182,12 @@ impl QC {
         let mut weight = 0;
         let mut used = HashSet::new();
         for (name, _) in self.votes.iter() {
-            ensure!(!used.contains(name), ConsensusError::AuthorityReuse(*name));
+            ensure!(!used.contains(name), ConsensusError::AuthorityReuse {
+                digest: self.hash.clone(),
+                author: *name,
+                round: self.round,
+                t: "QC-verify".to_string()
+            });
             let voting_rights = committee.stake(name);
             ensure!(voting_rights > 0, ConsensusError::UnknownAuthority(*name));
             used.insert(*name);
@@ -292,7 +297,12 @@ impl TC {
         let mut weight = 0;
         let mut used = HashSet::new();
         for (name, _, _) in self.votes.iter() {
-            ensure!(!used.contains(name), ConsensusError::AuthorityReuse(*name));
+            ensure!(!used.contains(name), ConsensusError::AuthorityReuse {
+                digest: <_>::default(),
+                author: *name,
+                round: self.round,
+                t: "TC-verify".to_string()
+            });
             let voting_rights = committee.stake(name);
             ensure!(voting_rights > 0, ConsensusError::UnknownAuthority(*name));
             used.insert(*name);

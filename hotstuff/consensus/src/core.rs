@@ -171,7 +171,7 @@ impl Core {
     }
 
     async fn local_timeout_round(&mut self) -> ConsensusResult<()> {
-        warn!("Timeout reached for round {}", self.round);
+        warn!("[VA {}] Timeout reached for round {}", self.validator_id, self.round);
 
         // Increase the last voted round.
         self.increase_last_voted_round(self.round);

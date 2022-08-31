@@ -38,8 +38,13 @@ pub enum ConsensusError {
     #[error("Invalid signature")]
     InvalidSignature(#[from] CryptoError),
 
-    #[error("Received more than one vote from {0}")]
-    AuthorityReuse(PublicKey),
+    #[error("[{digest}, {t}] Received more than one vote from {author} at round {round}")]
+    AuthorityReuse{
+        digest: Digest,
+        author: PublicKey,
+        round: Round,
+        t: String,
+    },
 
     #[error("Received vote from unknown authority {0}")]
     UnknownAuthority(PublicKey),

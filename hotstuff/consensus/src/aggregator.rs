@@ -77,7 +77,12 @@ impl QCMaker {
         // Ensure it is the first time this authority votes.
         ensure!(
             self.used.insert(author),
-            ConsensusError::AuthorityReuse(author)
+            ConsensusError::AuthorityReuse {
+                digest: vote.hash.clone(),
+                author,
+                round: vote.round,
+                t: "QC".to_string()
+            }
         );
 
         self.votes.push((author, vote.signature));
@@ -120,7 +125,12 @@ impl TCMaker {
         // Ensure it is the first time this authority votes.
         ensure!(
             self.used.insert(author),
-            ConsensusError::AuthorityReuse(author)
+            ConsensusError::AuthorityReuse {
+                digest: timeout.high_qc.hash.clone(),
+                author,
+                round: timeout.round,
+                t: "TC".to_string()
+            }
         );
 
         // Add the timeout to the accumulator.

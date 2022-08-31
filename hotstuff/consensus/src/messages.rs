@@ -227,6 +227,7 @@ impl PartialEq for QC {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Timeout {
     pub high_qc: QC,
+    pub high_tc: TC,
     pub round: Round,
     pub author: PublicKey,
     pub signature: Signature,
@@ -235,12 +236,14 @@ pub struct Timeout {
 impl Timeout {
     pub async fn new(
         high_qc: QC,
+        high_tc: TC,
         round: Round,
         author: PublicKey,
         mut signature_service: SignatureService,
     ) -> Self {
         let timeout = Self {
             high_qc,
+            high_tc,
             round,
             author,
             signature: Signature::default(),
@@ -266,6 +269,10 @@ impl Timeout {
         if self.high_qc != QC::genesis() {
             self.high_qc.verify(committee)?;
         }
+
+        if self.high_tc != TC::default() {
+            self.high_tc.verify(committee)?;
+        }
         Ok(())
     }
 }
@@ -275,6 +282,7 @@ impl Hash for Timeout {
         let mut hasher = Sha512::new();
         hasher.update(self.round.to_le_bytes());
         hasher.update(self.high_qc.round.to_le_bytes());
+        hasher.update(self.high_tc.round.to_le_bytes());
         Digest(hasher.finalize().as_slice()[..32].try_into().unwrap())
     }
 }
@@ -285,10 +293,10 @@ impl fmt::Debug for Timeout {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct TC {
     pub round: Round,
-    pub votes: Vec<(PublicKey, Signature, Round)>,
+    pub votes: Vec<(PublicKey, Signature, Round, Round)>,
 }
 
 impl TC {
@@ -296,7 +304,7 @@ impl TC {
         // Ensure the QC has a quorum.
         let mut weight = 0;
         let mut used = HashSet::new();
-        for (name, _, _) in self.votes.iter() {
+        for (name, _, _,_) in self.votes.iter() {
             ensure!(!used.contains(name), ConsensusError::AuthorityReuse {
                 digest: <_>::default(),
                 author: *name,
@@ -314,10 +322,11 @@ impl TC {
         );
 
         // Check the signatures.
-        for (author, signature, high_qc_round) in &self.votes {
+        for (author, signature, high_qc_round, high_tc_round) in &self.votes {
             let mut hasher = Sha512::new();
             hasher.update(self.round.to_le_bytes());
             hasher.update(high_qc_round.to_le_bytes());
+            hasher.update(high_tc_round.to_le_bytes());
             let digest = Digest(hasher.finalize().as_slice()[..32].try_into().unwrap());
             signature.verify(&digest, author)?;
         }
@@ -325,7 +334,7 @@ impl TC {
     }
 
     pub fn high_qc_rounds(&self) -> Vec<Round> {
-        self.votes.iter().map(|(_, _, r)| r).cloned().collect()
+        self.votes.iter().map(|(_, _, r, _)| r).cloned().collect()
     }
 }
 
@@ -334,3 +343,10 @@ impl fmt::Debug for TC {
         write!(f, "TC({}, {:?})", self.round, self.high_qc_rounds())
     }
 }
+
+impl PartialEq for TC {
+    fn eq(&self, other: &Self) -> bool {
+        self.round == other.round
+    }
+}
+

@@ -101,7 +101,7 @@ impl QCMaker {
 
 struct TCMaker {
     weight: Stake,
-    votes: Vec<(PublicKey, Signature, Round)>,
+    votes: Vec<(PublicKey, Signature, Round, Round)>,
     used: HashSet<PublicKey>,
 }
 
@@ -135,7 +135,7 @@ impl TCMaker {
 
         // Add the timeout to the accumulator.
         self.votes
-            .push((author, timeout.signature, timeout.high_qc.round));
+            .push((author, timeout.signature, timeout.high_qc.round, timeout.high_tc.round));
         self.weight += committee.stake(&author);
         if self.weight >= committee.quorum_threshold() {
             self.weight = 0; // Ensures TC is only created once.

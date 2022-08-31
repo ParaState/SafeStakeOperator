@@ -45,6 +45,7 @@ pub struct Core {
     validator_id: u64,
     exit: exit_future::Exit,
     recover_count: u64,
+    high_tc: TC,
 }
 
 impl Core {
@@ -88,6 +89,7 @@ impl Core {
                 validator_id: validator_id,
                 exit,
                 recover_count: 0,
+                high_tc: TC::default(),
             }
             .run()
             .await
@@ -170,6 +172,12 @@ impl Core {
         }
     }
 
+    fn update_high_tc(&mut self, tc: &TC) {
+        if tc.round > self.high_tc.round {
+            self.high_tc = tc.clone();
+        }
+    }
+
     async fn local_timeout_round(&mut self) -> ConsensusResult<()> {
         warn!("[VA {}] Timeout reached for round {}", self.validator_id, self.round);
 
@@ -179,6 +187,7 @@ impl Core {
         // Make a timeout message.
         let timeout = Timeout::new(
             self.high_qc.clone(),
+            self.high_tc.clone(),
             self.round,
             self.name,
             self.signature_service.clone(),
@@ -247,12 +256,16 @@ impl Core {
         // Process the QC embedded in the timeout.
         self.process_qc(&timeout.high_qc).await;
 
+        self.process_tc(&timeout.high_tc).await;
+
         // Add the new vote to our aggregator and see if we have a quorum.
         if let Some(tc) = self.aggregator.add_timeout(timeout.clone())? {
             debug!("Assembled {:?}", tc);
 
             // Try to advance the round.
-            self.advance_round(tc.round).await;
+            // self.advance_round(tc.round).await;
+
+            self.process_tc(&tc).await;
 
             // Broadcast the TC.
             debug!("Broadcasting {:?}", tc);
@@ -318,6 +331,11 @@ impl Core {
     async fn process_qc(&mut self, qc: &QC) {
         self.advance_round(qc.round).await;
         self.update_high_qc(qc);
+    }
+
+    async fn process_tc(&mut self, tc: &TC) {
+        self.advance_round(tc.round).await;
+        self.update_high_tc(tc);
     }
 
     #[async_recursion]
@@ -400,7 +418,8 @@ impl Core {
 
         // Process the TC (if any). This may also allow us to advance round.
         if let Some(ref tc) = block.tc {
-            self.advance_round(tc.round).await;
+            // self.advance_round(tc.round).await;
+            self.process_tc(tc).await;
         }
 
         // Let's see if we have the block's data. If we don't, the mempool
@@ -415,7 +434,9 @@ impl Core {
     }
 
     async fn handle_tc(&mut self, tc: TC) -> ConsensusResult<()> {
-        self.advance_round(tc.round).await;
+        // [TODO] zico: should verify TC, otherwise bad nodes could arbitrarily advance our round
+        // self.advance_round(tc.round).await;
+        self.process_tc(&tc).await;
         if self.name == self.leader_elector.get_leader(self.round) {
             self.generate_proposal(Some(tc)).await;
         }

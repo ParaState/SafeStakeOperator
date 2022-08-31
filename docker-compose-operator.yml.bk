@@ -64,6 +64,10 @@ services:
       - "25002"
       - "25003"
       - "25004"
+    deploy:
+      resources:
+        limits:
+          memory: 5G
     depends_on:
       lighthouse:
         condition: service_started

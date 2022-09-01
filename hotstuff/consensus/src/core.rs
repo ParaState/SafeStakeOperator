@@ -457,14 +457,14 @@ impl Core {
             let exit = self.exit.clone();
             let result = tokio::select! {
                 Some(message) = self.rx_message.recv() => match message {
-                    ConsensusMessage::Propose(block) => {self.handle_proposal(&block).await},
-                    ConsensusMessage::Vote(vote) => {self.handle_vote(&vote).await},
-                    ConsensusMessage::Timeout(timeout) => {self.handle_timeout(&timeout).await},
-                    ConsensusMessage::TC(tc) => {self.handle_tc(tc).await},
+                    ConsensusMessage::Propose(block) => {info!("propose");self.handle_proposal(&block).await},
+                    ConsensusMessage::Vote(vote) => {info!("vote");self.handle_vote(&vote).await},
+                    ConsensusMessage::Timeout(timeout) => {info!("timeout");self.handle_timeout(&timeout).await},
+                    ConsensusMessage::TC(tc) => {info!("tc");self.handle_tc(tc).await},
                     _ => panic!("Unexpected protocol message")
                 },
-                Some(block) = self.rx_loopback.recv() => {self.process_block(&block).await},
-                () = &mut self.timer => {self.local_timeout_round().await},
+                Some(block) = self.rx_loopback.recv() => {info!("loopback");self.process_block(&block).await},
+                () = &mut self.timer => {info!("timer");self.local_timeout_round().await},
                 () = exit => {break; }
             };
             match result {

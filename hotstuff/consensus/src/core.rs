@@ -355,11 +355,13 @@ impl Core {
                 return Ok(());
             }
         };
+        info!("after ancestors");
 
         // Store the block only if we have already processed all its ancestors.
         self.store_block(block).await;
 
         self.cleanup_proposer(&b0, &b1, block).await;
+        info!("after cleanup");
 
         // Check if we can commit the head of the 2-chain.
         // Note that we commit blocks only if we have all its ancestors.
@@ -367,6 +369,7 @@ impl Core {
             self.mempool_driver.cleanup(b0.round).await;
             self.commit(b0).await?;
         }
+        info!("after commit");
 
         // Ensure the block's round is as expected.
         // This check is important: it prevents bad leaders from producing blocks
@@ -381,6 +384,7 @@ impl Core {
             let next_leader = self.leader_elector.get_leader(self.round + 1);
             if next_leader == self.name {
                 self.handle_vote(&vote).await?;
+                info!("after handle vote");
             } else {
                 debug!("[CORE] {} Sending {:?} to {}", self.name, vote, next_leader);
                 let address = self
@@ -391,9 +395,12 @@ impl Core {
                     .expect("Failed to serialize vote");
                 let dvf_message = DvfMessage { validator_id: self.validator_id, message: message};
                 let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+                info!("before send vote");
                 self.network.send(address, Bytes::from(serialized_msg)).await;
+                info!("after send vote");
             }
         }
+        info!("before return");
         Ok(())
     }
 

@@ -141,8 +141,6 @@ impl Core {
         let mut to_commit = VecDeque::new();
         let mut parent = block.clone();
         let mut heuristic_history_rounds = 5; // This is more than enough for us
-        info!("[VA {}] before to_commit", self.validator_id);
-        let mut count = 0;
         while self.last_committed_round + 1 < parent.round && heuristic_history_rounds > 0 {
             let ancestor = self
                 .synchronizer
@@ -151,14 +149,9 @@ impl Core {
                 .expect("We should have all the ancestors by now");
             to_commit.push_front(ancestor.clone());
             parent = ancestor;
-            count = count+1;
-            if count % 10000 == 0 {
-                info!("[VA {}] add {}-th block to commit", self.validator_id, count);
-            }
             heuristic_history_rounds = heuristic_history_rounds - 1;
         }
         to_commit.push_front(block.clone());
-        info!("[VA {}] after to_commit: {}", self.validator_id, to_commit.len());
 
         // Save the last committed block.
         self.last_committed_round = block.round;
@@ -375,22 +368,18 @@ impl Core {
                 return Ok(());
             }
         };
-        info!("[VA {}] after ancestors", self.validator_id);
 
         // Store the block only if we have already processed all its ancestors.
         self.store_block(block).await;
 
         self.cleanup_proposer(&b0, &b1, block).await;
-        info!("[VA {}] after cleanup", self.validator_id);
 
         // Check if we can commit the head of the 2-chain.
         // Note that we commit blocks only if we have all its ancestors.
         if b0.round + 1 == b1.round {
             self.mempool_driver.cleanup(b0.round).await;
-            info!("[VA {}] after driver cleanup", self.validator_id);
             self.commit(b0).await?;
         }
-        info!("[VA {}] after commit", self.validator_id);
 
         // Ensure the block's round is as expected.
         // This check is important: it prevents bad leaders from producing blocks
@@ -405,7 +394,6 @@ impl Core {
             let next_leader = self.leader_elector.get_leader(self.round + 1);
             if next_leader == self.name {
                 self.handle_vote(&vote).await?;
-                info!("after handle vote");
             } else {
                 debug!("[CORE] {} Sending {:?} to {}", self.name, vote, next_leader);
                 let address = self
@@ -416,12 +404,9 @@ impl Core {
                     .expect("Failed to serialize vote");
                 let dvf_message = DvfMessage { validator_id: self.validator_id, message: message};
                 let serialized_msg = bincode::serialize(&dvf_message).unwrap();
-                info!("before send vote");
                 self.network.send(address, Bytes::from(serialized_msg)).await;
-                info!("after send vote");
             }
         }
-        info!("before return");
         Ok(())
     }
 
@@ -485,14 +470,14 @@ impl Core {
             let exit = self.exit.clone();
             let result = tokio::select! {
                 Some(message) = self.rx_message.recv() => match message {
-                    ConsensusMessage::Propose(block) => {info!("propose");self.handle_proposal(&block).await},
-                    ConsensusMessage::Vote(vote) => {info!("vote");self.handle_vote(&vote).await},
-                    ConsensusMessage::Timeout(timeout) => {info!("timeout");self.handle_timeout(&timeout).await},
-                    ConsensusMessage::TC(tc) => {info!("tc");self.handle_tc(tc).await},
+                    ConsensusMessage::Propose(block) => {debug!("propose");self.handle_proposal(&block).await},
+                    ConsensusMessage::Vote(vote) => {debug!("vote");self.handle_vote(&vote).await},
+                    ConsensusMessage::Timeout(timeout) => {debug!("timeout");self.handle_timeout(&timeout).await},
+                    ConsensusMessage::TC(tc) => {debug!("tc");self.handle_tc(tc).await},
                     _ => panic!("Unexpected protocol message")
                 },
-                Some(block) = self.rx_loopback.recv() => {info!("loopback");self.process_block(&block).await},
-                () = &mut self.timer => {info!("timer");self.local_timeout_round().await},
+                Some(block) = self.rx_loopback.recv() => {debug!("loopback");self.process_block(&block).await},
+                () = &mut self.timer => {debug!("timer");self.local_timeout_round().await},
                 () = exit => {break; }
             };
             match result {

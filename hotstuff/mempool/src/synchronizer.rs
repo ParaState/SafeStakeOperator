@@ -163,14 +163,12 @@ impl Synchronizer {
                         if self.round < self.gc_depth {
                             continue;
                         }
-                        info!("before mempool cleanup loop. pending: {}", self.pending.len());
                         let mut gc_round = self.round - self.gc_depth;
                         for (r, handler, _) in self.pending.values() {
                             if r <= &gc_round {
                                 let _ = handler.send(()).await;
                             }
                         }
-                        info!("after mempool cleanup loop. pending: {}", self.pending.len());
                         self.pending.retain(|_, (r, _, _)| r > &mut gc_round);
                     }
                 },

@@ -66,19 +66,16 @@ impl MempoolDriver {
 
     pub async fn cleanup(&mut self, round: Round) {
         // Cleanup the mempool.
-        info!("before mempool cleanup");
         self.tx_mempool
             .send(ConsensusMempoolMessage::Cleanup(round))
             .await
             .expect("Failed to send cleanup message");
-        info!("after mempool cleanup");
 
         // Cleanup the payload waiter.
         self.tx_payload_waiter
             .send(PayloadWaiterMessage::Cleanup(round))
             .await
             .expect("Failed to send cleanup message");
-        info!("after payloadwaiter cleanup");
     }
 }
 

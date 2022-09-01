@@ -143,6 +143,7 @@ impl Core {
             parent = ancestor;
         }
         to_commit.push_front(block.clone());
+        info!("after to_commit: {}", to_commit.len());
 
         // Save the last committed block.
         self.last_committed_round = block.round;
@@ -367,6 +368,7 @@ impl Core {
         // Note that we commit blocks only if we have all its ancestors.
         if b0.round + 1 == b1.round {
             self.mempool_driver.cleanup(b0.round).await;
+            info!("after driver cleanup");
             self.commit(b0).await?;
         }
         info!("after commit");

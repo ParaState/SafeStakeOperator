@@ -133,6 +133,8 @@ impl Core {
         // Ensure we commit the entire chain. This is needed after view-change.
         let mut to_commit = VecDeque::new();
         let mut parent = block.clone();
+        info!("[VA {}] before to_commit", self.validator_id);
+        let mut count = 0;
         while self.last_committed_round + 1 < parent.round {
             let ancestor = self
                 .synchronizer
@@ -141,9 +143,13 @@ impl Core {
                 .expect("We should have all the ancestors by now");
             to_commit.push_front(ancestor.clone());
             parent = ancestor;
+            count = count+1;
+            if count % 10000 == 0 {
+                info!("add {}-th block to commit", count);
+            }
         }
         to_commit.push_front(block.clone());
-        info!("after to_commit: {}", to_commit.len());
+        info!("[VA {}] after to_commit: {}", self.validator_id, to_commit.len());
 
         // Save the last committed block.
         self.last_committed_round = block.round;
@@ -356,22 +362,22 @@ impl Core {
                 return Ok(());
             }
         };
-        info!("after ancestors");
+        info!("[VA {}] after ancestors", self.validator_id);
 
         // Store the block only if we have already processed all its ancestors.
         self.store_block(block).await;
 
         self.cleanup_proposer(&b0, &b1, block).await;
-        info!("after cleanup");
+        info!("[VA {}] after cleanup", self.validator_id);
 
         // Check if we can commit the head of the 2-chain.
         // Note that we commit blocks only if we have all its ancestors.
         if b0.round + 1 == b1.round {
             self.mempool_driver.cleanup(b0.round).await;
-            info!("after driver cleanup");
+            info!("[VA {}] after driver cleanup", self.validator_id);
             self.commit(b0).await?;
         }
-        info!("after commit");
+        info!("[VA {}] after commit", self.validator_id);
 
         // Ensure the block's round is as expected.
         // This check is important: it prevents bad leaders from producing blocks

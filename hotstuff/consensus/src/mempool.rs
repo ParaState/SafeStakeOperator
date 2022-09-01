@@ -66,6 +66,7 @@ impl MempoolDriver {
 
     pub async fn cleanup(&mut self, round: Round) {
         // Cleanup the mempool.
+        info!("before mempool cleanup");
         self.tx_mempool
             .send(ConsensusMempoolMessage::Cleanup(round))
             .await

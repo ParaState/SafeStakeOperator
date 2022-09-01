@@ -131,11 +131,19 @@ impl Core {
         }
 
         // Ensure we commit the entire chain. This is needed after view-change.
+        // zico: Should consider the case after a recovery. Reading the entire chain 
+        // is not an option because it might be too large to put into memory
+        // Actually, in our application case:
+        // 1. we don't produce transactions very often, roughly 12 seconds a transaction;
+        // 2. if a block is not committed in time (12 seconds), it is useless in the future;
+        // 3. no need to send back commit for empty blocks
+
         let mut to_commit = VecDeque::new();
         let mut parent = block.clone();
+        let mut heuristic_history_rounds = 5; // This is more than enough for us
         info!("[VA {}] before to_commit", self.validator_id);
         let mut count = 0;
-        while self.last_committed_round + 1 < parent.round {
+        while self.last_committed_round + 1 < parent.round && heuristic_history_rounds > 0 {
             let ancestor = self
                 .synchronizer
                 .get_parent_block(&parent)
@@ -145,8 +153,9 @@ impl Core {
             parent = ancestor;
             count = count+1;
             if count % 10000 == 0 {
-                info!("add {}-th block to commit", count);
+                info!("[VA {}] add {}-th block to commit", self.validator_id, count);
             }
+            heuristic_history_rounds = heuristic_history_rounds - 1;
         }
         to_commit.push_front(block.clone());
         info!("[VA {}] after to_commit: {}", self.validator_id, to_commit.len());
@@ -164,11 +173,15 @@ impl Core {
                     // NOTE: This log entry is used to compute performance.
                     info!("Committed {} -> {:?}", block, x);
                 }
+
+                if let Err(e) = self.tx_commit.send(block).await {
+                    warn!("Failed to send block through the commit channel: {}", e);
+                }
             }
-            debug!("Committed {:?}", block);
-            if let Err(e) = self.tx_commit.send(block).await {
-                warn!("Failed to send block through the commit channel: {}", e);
-            }
+            // debug!("Committed {:?}", block);
+            // if let Err(e) = self.tx_commit.send(block).await {
+            //     warn!("Failed to send block through the commit channel: {}", e);
+            // }
         }
         Ok(())
     }

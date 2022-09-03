@@ -9,6 +9,7 @@ use log::{debug, info};
 use network::{CancelHandler, ReliableSender, DvfMessage};
 use std::collections::HashSet;
 use tokio::sync::mpsc::{Receiver, Sender};
+use crypto::Hash;
 
 #[derive(Debug)]
 pub enum ProposerMessage {
@@ -77,7 +78,7 @@ impl Proposer {
         .await;
 
         if !block.payload.is_empty() {
-            info!("[VA {}] Created {}", self.validator_id, block);
+            info!("[VA {}] Created {} ({})", self.validator_id, block, block.digest());
 
             #[cfg(feature = "benchmark")]
             for x in &block.payload {

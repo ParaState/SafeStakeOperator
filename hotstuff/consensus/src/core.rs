@@ -49,6 +49,7 @@ pub struct Core {
     recover_count: u64,
     high_tc: TC,
     // block_map: HashMap<Digest, Block>,
+    prune_depth: u64,
 }
 
 impl Core {
@@ -94,6 +95,8 @@ impl Core {
                 recover_count: 0,
                 high_tc: TC::default(),
                 // block_map: HashMap::new(),
+                prune_depth: 10,
+
             }
             .run()
             .await
@@ -220,6 +223,26 @@ impl Core {
     //     Ok(())
     // }
 
+    async fn prune(&mut self, block: &Block) {
+        let mut i: u64 = 0;
+        let mut parent = block.clone();
+        loop {
+            let ancestor = self
+                .get_parent_block(&parent)
+                .await;
+            if let Some(ancestor) = ancestor {
+                parent = ancestor;
+            }
+            else {
+                return;
+            }
+            i = i + 1;
+            if i >= self.prune_depth {
+                self.remove_block(&parent).await;
+            }
+        }
+    }
+
     async fn commit(&mut self, block: Block) -> ConsensusResult<()> {
         if self.last_committed_round >= block.round {
             return Ok(());
@@ -254,9 +277,10 @@ impl Core {
         // Save the last committed block.
         self.last_committed_round = block.round;
 
+        self.prune(&block).await;
+
         // Send all the newly committed blocks to the node's application layer.
         while let Some(block) = to_commit.pop_back() {
-            self.remove_block(&block).await;
 
             if !block.payload.is_empty() {
                 info!("Committed {}", block);
@@ -526,7 +550,7 @@ impl Core {
 
     #[async_recursion]
     async fn process_block(&mut self, block: &Block) -> ConsensusResult<()> {
-        info!("[VA {}, round {}] Processing {}, with parent {}", self.validator_id, self.round, block, block.parent());
+        info!("[VA {}, round {}] Processing {} ({}), with parent {}", self.validator_id, self.round, block, block.digest(), block.parent());
         // Just store it
         self.store_block(block).await;
 
@@ -538,7 +562,8 @@ impl Core {
                 return Ok(());
             }
         };
-        info!("[VA {}, round {}] Successfully get {}'s parent {} and grandparent {}", self.validator_id, self.round, block, b1, b0);
+        info!("[VA {}, round {}] Successfully get {}'s parent {} ({}) and grandparent {} ({})", 
+            self.validator_id, self.round, block, b1, b1.digest(), b0, b0.digest());
 
         // Don't propose a block that contains any payload that have been included in previous blocks
         self.cleanup_proposer(&b0, &b1, block).await;
@@ -548,7 +573,7 @@ impl Core {
         if b0.round + 1 == b1.round {
             self.mempool_driver.cleanup(b0.round).await;
             self.commit(b0.clone()).await?;
-            info!("[VA {}, round {}] after commit {}", self.validator_id, self.round, b0);
+            info!("[VA {}, round {}] after commit {} ({})", self.validator_id, self.round, b0, b0.digest());
         }
 
         // Ensure the block's round is as expected.
@@ -566,15 +591,17 @@ impl Core {
                 self.handle_vote(&vote).await?;
             } else {
                 debug!("[CORE] {} Sending {:?} to {}", self.name, vote, next_leader);
-                let address = self
+                let addresses = self
                     .committee
-                    .address(&next_leader)
-                    .expect("The next leader is not in the committee");
+                    .broadcast_addresses(&self.name)
+                    .into_iter()
+                    .map(|(_, x)| x)
+                    .collect();
                 let message = bincode::serialize(&ConsensusMessage::Vote(vote))
                     .expect("Failed to serialize vote");
                 let dvf_message = DvfMessage { validator_id: self.validator_id, message: message};
                 let serialized_msg = bincode::serialize(&dvf_message).unwrap();
-                self.network.send(address, Bytes::from(serialized_msg)).await;
+                self.network.broadcast(addresses, Bytes::from(serialized_msg)).await;
             }
         }
         Ok(())

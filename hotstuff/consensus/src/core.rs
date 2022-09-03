@@ -553,7 +553,7 @@ impl Core {
 
     #[async_recursion]
     async fn process_block(&mut self, block: &Block) -> ConsensusResult<()> {
-        info!("[VA {}, round {}] Processing {} ({}), with parent {}", self.validator_id, self.round, block, block.digest(), block.parent());
+        debug!("[VA {}, round {}] Processing {} ({}), with parent {}", self.validator_id, self.round, block, block.digest(), block.parent());
         // Just store it
         self.store_block(block).await;
 
@@ -565,7 +565,7 @@ impl Core {
                 return Ok(());
             }
         };
-        info!("[VA {}, round {}] Successfully get {}'s parent {} ({}) and grandparent {} ({})", 
+        debug!("[VA {}, round {}] Successfully get {}'s parent {} ({}) and grandparent {} ({})", 
             self.validator_id, self.round, block, b1, b1.digest(), b0, b0.digest());
 
         // Don't propose a block that contains any payload that have been included in previous blocks
@@ -576,7 +576,7 @@ impl Core {
         if b0.round + 1 == b1.round {
             self.mempool_driver.cleanup(b0.round).await;
             self.commit(b0.clone()).await?;
-            info!("[VA {}, round {}] after commit {} ({})", self.validator_id, self.round, b0, b0.digest());
+            debug!("[VA {}, round {}] after commit {} ({})", self.validator_id, self.round, b0, b0.digest());
         }
 
         // Ensure the block's round is as expected.
@@ -588,7 +588,7 @@ impl Core {
 
         // See if we can vote for this block.
         if let Some(vote) = self.make_vote(block).await {
-            info!("[VA {}, round {}] Created vote {:?} for block {}", self.validator_id, self.round, vote, block);
+            debug!("[VA {}, round {}] Created vote {:?} for block {}", self.validator_id, self.round, vote, block);
             let next_leader = self.leader_elector.get_leader(self.round + 1);
             if next_leader == self.name {
                 self.handle_vote(&vote).await?;

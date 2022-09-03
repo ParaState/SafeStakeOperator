@@ -3,7 +3,7 @@ use crate::error::NetworkError;
 use bytes::Bytes;
 use futures::sink::SinkExt as _;
 use futures::stream::StreamExt as _;
-use log::{info, warn};
+use log::{info, warn, debug};
 use rand::prelude::SliceRandom as _;
 use rand::rngs::SmallRng;
 use rand::SeedableRng as _;
@@ -66,7 +66,7 @@ impl SimpleSender {
             }
         }
 
-        info!("[Simple] Openning a new connection to {}", address);
+        debug!("[Simple] Openning a new connection to {}", address);
         // Otherwise make a new connection.
         let tx = Self::spawn_connection(address);
         if tx.send(cmd).await.is_ok() {
@@ -177,7 +177,7 @@ impl Connection {
                 return;
             }
         };
-        info!("Outgoing connection established with {}", self.address);
+        debug!("Outgoing connection established with {}", self.address);
 
         // Transmit messages once we have established a connection.
         loop {

@@ -3,7 +3,7 @@ use crate::error::NetworkError;
 use bytes::Bytes;
 use futures::sink::SinkExt as _;
 use futures::stream::StreamExt as _;
-use log::{info, warn};
+use log::{info, warn, debug};
 use rand::prelude::SliceRandom as _;
 use rand::rngs::SmallRng;
 use rand::SeedableRng as _;
@@ -53,7 +53,7 @@ impl ReliableSender {
 
     /// Helper function to spawn a new connection.
     fn spawn_connection(address: SocketAddr) -> Sender<InnerMessage> {
-        info!("[Reliable] Openning a new connection to {}", address);
+        debug!("[Reliable] Openning a new connection to {}", address);
         let (tx, rx) = channel(CHANNEL_CAPACITY);
         Connection::spawn(address, rx);
         tx
@@ -148,7 +148,7 @@ impl Connection {
         loop {
             match TcpStream::connect(self.address).await {
                 Ok(stream) => {
-                    info!("Outgoing connection established with {}", self.address);
+                    debug!("Outgoing connection established with {}", self.address);
 
                     // Reset the delay.
                     delay = self.retry_delay;

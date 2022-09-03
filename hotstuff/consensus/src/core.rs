@@ -18,6 +18,8 @@ use std::cmp::max;
 use std::collections::VecDeque;
 use store::Store;
 use tokio::sync::mpsc::{Receiver, Sender};
+use std::collections::HashMap;
+use crypto::Digest;
 
 #[cfg(test)]
 #[path = "tests/core_tests.rs"]
@@ -46,6 +48,7 @@ pub struct Core {
     exit: exit_future::Exit,
     recover_count: u64,
     high_tc: TC,
+    // block_map: HashMap<Digest, Block>,
 }
 
 impl Core {
@@ -90,6 +93,7 @@ impl Core {
                 exit,
                 recover_count: 0,
                 high_tc: TC::default(),
+                // block_map: HashMap::new(),
             }
             .run()
             .await
@@ -100,6 +104,25 @@ impl Core {
         let key = block.digest().to_vec();
         let value = bincode::serialize(block).expect("Failed to serialize block");
         self.store.write(key, value).await;
+        
+        // block_map.insert(key, value);
+    }
+
+    async fn remove_block(&mut self, block: &Block) {
+        let key = block.digest().to_vec();
+        self.store.delete(key).await;
+        
+        // block_map.remove(key);
+    }
+
+    async fn get_parent_block(&self, block: &Block) -> Option<Block> {
+        let parent = block.parent();
+        match self.store.read(parent.to_vec()).await {
+            Ok(Some(bytes)) => Some(bincode::deserialize(&bytes).expect("Failed to deserialize block")),
+            _ => {
+                None
+            }
+        }
     }
 
     fn increase_last_voted_round(&mut self, target: Round) {
@@ -125,6 +148,60 @@ impl Core {
         Some(Vote::new(block, self.name, self.signature_service.clone()).await)
     }
 
+    // async fn commit(&mut self, block: Block) -> ConsensusResult<()> {
+    //     if self.last_committed_round >= block.round {
+    //         return Ok(());
+    //     }
+
+    //     // Ensure we commit the entire chain. This is needed after view-change.
+    //     // zico: Should consider the case after a recovery. Reading the entire chain 
+    //     // is not an option because it might be too large to put into memory
+    //     // Actually, in our application case:
+    //     // 1. we don't produce transactions very often, roughly 12 seconds a transaction;
+    //     // 2. if a block is not committed in time (12 seconds), it is useless in the future;
+    //     // 3. no need to send back commit for empty blocks
+
+    //     let mut to_commit = VecDeque::new();
+    //     let mut parent = block.clone();
+    //     let mut heuristic_history_rounds = 5; // This is more than enough for us
+    //     while self.last_committed_round + 1 < parent.round && heuristic_history_rounds > 0 {
+    //         let ancestor = self
+    //             .synchronizer
+    //             .get_parent_block(&parent)
+    //             .await?
+    //             .expect("We should have all the ancestors by now");
+    //         to_commit.push_front(ancestor.clone());
+    //         parent = ancestor;
+    //         heuristic_history_rounds = heuristic_history_rounds - 1;
+    //     }
+    //     to_commit.push_front(block.clone());
+
+    //     // Save the last committed block.
+    //     self.last_committed_round = block.round;
+
+    //     // Send all the newly committed blocks to the node's application layer.
+    //     while let Some(block) = to_commit.pop_back() {
+    //         if !block.payload.is_empty() {
+    //             info!("Committed {}", block);
+
+    //             #[cfg(feature = "benchmark")]
+    //             for x in &block.payload {
+    //                 // NOTE: This log entry is used to compute performance.
+    //                 info!("Committed {} -> {:?}", block, x);
+    //             }
+
+    //             if let Err(e) = self.tx_commit.send(block).await {
+    //                 warn!("Failed to send block through the commit channel: {}", e);
+    //             }
+    //         }
+    //         // debug!("Committed {:?}", block);
+    //         // if let Err(e) = self.tx_commit.send(block).await {
+    //         //     warn!("Failed to send block through the commit channel: {}", e);
+    //         // }
+    //     }
+    //     Ok(())
+    // }
+
     async fn commit(&mut self, block: Block) -> ConsensusResult<()> {
         if self.last_committed_round >= block.round {
             return Ok(());
@@ -143,12 +220,15 @@ impl Core {
         let mut heuristic_history_rounds = 5; // This is more than enough for us
         while self.last_committed_round + 1 < parent.round && heuristic_history_rounds > 0 {
             let ancestor = self
-                .synchronizer
                 .get_parent_block(&parent)
-                .await?
-                .expect("We should have all the ancestors by now");
-            to_commit.push_front(ancestor.clone());
-            parent = ancestor;
+                .await;
+            if let Some(ancestor) = ancestor {
+                to_commit.push_front(ancestor.clone());
+                parent = ancestor;
+            }
+            else{
+                break;
+            }
             heuristic_history_rounds = heuristic_history_rounds - 1;
         }
         to_commit.push_front(block.clone());
@@ -158,6 +238,7 @@ impl Core {
 
         // Send all the newly committed blocks to the node's application layer.
         while let Some(block) = to_commit.pop_back() {
+
             if !block.payload.is_empty() {
                 info!("Committed {}", block);
 
@@ -178,6 +259,7 @@ impl Core {
         }
         Ok(())
     }
+
 
     fn update_high_qc(&mut self, qc: &QC) {
         if qc.round > self.high_qc.round {
@@ -327,12 +409,11 @@ impl Core {
             .expect("Failed to send message to proposer");
     }
 
-    async fn cleanup_proposer(&mut self, b0: &Block, b1: &Block, block: &Block) {
+    async fn cleanup_proposer(&mut self, b0: &Block, block: &Block) {
         let digests = b0
             .payload
             .iter()
             .cloned()
-            .chain(b1.payload.iter().cloned())
             .chain(block.payload.iter().cloned())
             .collect();
         self.tx_proposer
@@ -354,12 +435,30 @@ impl Core {
     #[async_recursion]
     async fn process_block(&mut self, block: &Block) -> ConsensusResult<()> {
         debug!("{} Processing {}, with parent {}", self.name, block.digest(), block.parent());
+        // Just store it
+        self.store_block(block).await;
+
+        // If we haven't seen the block, we don't need the block. There is no need to synchronize the history.
+        let b0 = match self.get_parent_block(block).await {
+            Some(parent) => parent,
+            None => {
+                return Ok(());
+            }
+        };
+
+        // Don't propose a block that contains any payload that have been included in previous blocks
+        self.cleanup_proposer(&b0, block).await;
+
+        // Just commit the parent because it has been voted by a quorum.
+        self.mempool_driver.cleanup(b0.round).await;
+        self.commit(b0).await?;
 
         // Let's see if we have the last three ancestors of the block, that is:
         //      b0 <- |qc0; b1| <- |qc1; block|
         // If we don't, the synchronizer asks for them to other nodes. It will
         // then ensure we process both ancestors in the correct order, and
         // finally make us resume processing this block.
+        /*
         let (b0, b1) = match self.synchronizer.get_ancestors(block).await? {
             Some(ancestors) => ancestors,
             None => {
@@ -368,18 +467,19 @@ impl Core {
                 return Ok(());
             }
         };
+        */
 
         // Store the block only if we have already processed all its ancestors.
-        self.store_block(block).await;
+        // self.store_block(block).await;
 
-        self.cleanup_proposer(&b0, &b1, block).await;
+        // self.cleanup_proposer(&b0, &b1, block).await;
 
         // Check if we can commit the head of the 2-chain.
         // Note that we commit blocks only if we have all its ancestors.
-        if b0.round + 1 == b1.round {
-            self.mempool_driver.cleanup(b0.round).await;
-            self.commit(b0).await?;
-        }
+        // if b0.round + 1 == b1.round {
+        //     self.mempool_driver.cleanup(b0.round).await;
+        //     self.commit(b0).await?;
+        // }
 
         // Ensure the block's round is as expected.
         // This check is important: it prevents bad leaders from producing blocks

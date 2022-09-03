@@ -116,6 +116,9 @@ impl Core {
     }
 
     async fn get_parent_block(&self, block: &Block) -> Option<Block> {
+        if block.qc == QC::genesis() {
+            return Some(Block::genesis());
+        }
         let parent = block.parent();
         match self.store.read(parent.to_vec()).await {
             Ok(Some(bytes)) => Some(bincode::deserialize(&bytes).expect("Failed to deserialize block")),

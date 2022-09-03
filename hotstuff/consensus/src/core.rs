@@ -434,7 +434,7 @@ impl Core {
 
     #[async_recursion]
     async fn process_block(&mut self, block: &Block) -> ConsensusResult<()> {
-        debug!("{} Processing {}, with parent {}", self.name, block.digest(), block.parent());
+        info!("[VA {}] Processing {}, with parent {}", self.validator_id, block, block.parent());
         // Just store it
         self.store_block(block).await;
 
@@ -445,13 +445,15 @@ impl Core {
                 return Ok(());
             }
         };
+        info!("[VA {}] Successfully get {}'s parent {}", self.validator_id, block, b0);
 
         // Don't propose a block that contains any payload that have been included in previous blocks
         self.cleanup_proposer(&b0, block).await;
 
         // Just commit the parent because it has been voted by a quorum.
         self.mempool_driver.cleanup(b0.round).await;
-        self.commit(b0).await?;
+        self.commit(b0.clone()).await?;
+        info!("[VA {}] after commit {}", self.validator_id, b0);
 
         // Let's see if we have the last three ancestors of the block, that is:
         //      b0 <- |qc0; b1| <- |qc1; block|
@@ -490,7 +492,7 @@ impl Core {
 
         // See if we can vote for this block.
         if let Some(vote) = self.make_vote(block).await {
-            debug!("Created {:?}", vote);
+            info!("[VA {}] Created vote {:?} for block {}", self.validator_id, vote, block);
             let next_leader = self.leader_elector.get_leader(self.round + 1);
             if next_leader == self.name {
                 self.handle_vote(&vote).await?;

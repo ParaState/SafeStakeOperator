@@ -231,6 +231,9 @@ impl Core {
                 .get_parent_block(&parent)
                 .await;
             if let Some(ancestor) = ancestor {
+                if parent == Block::genesis() {
+                    return;
+                }
                 parent = ancestor;
             }
             else {

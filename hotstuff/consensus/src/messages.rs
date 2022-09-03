@@ -76,6 +76,12 @@ impl Block {
     }
 }
 
+impl PartialEq for Block {
+    fn eq(&self, other: &Self) -> bool {
+        self.qc == other.qc && self.author == other.author && self.round == other.round && self.payload == other.payload
+    }
+}
+
 impl Hash for Block {
     fn digest(&self) -> Digest {
         let mut hasher = Sha512::new();

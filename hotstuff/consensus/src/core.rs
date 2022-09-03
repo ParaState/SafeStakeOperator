@@ -128,6 +128,21 @@ impl Core {
         }
     }
 
+    pub async fn get_ancestors(
+        &mut self,
+        block: &Block,
+    ) -> Option<(Block, Block)> {
+        let b1 = match self.get_parent_block(block).await {
+            Some(b) => b,
+            None => return None,
+        };
+        let b0 = match self.get_parent_block(&b1).await {
+            Some(b) => b,
+            None => return None,
+        };
+        Some((b0, b1))
+    }
+
     fn increase_last_voted_round(&mut self, target: Round) {
         self.last_voted_round = max(self.last_voted_round, target);
     }
@@ -241,6 +256,7 @@ impl Core {
 
         // Send all the newly committed blocks to the node's application layer.
         while let Some(block) = to_commit.pop_back() {
+            self.remove_block(&block).await;
 
             if !block.payload.is_empty() {
                 info!("Committed {}", block);
@@ -412,11 +428,12 @@ impl Core {
             .expect("Failed to send message to proposer");
     }
 
-    async fn cleanup_proposer(&mut self, b0: &Block, block: &Block) {
+    async fn cleanup_proposer(&mut self, b0: &Block, b1: &Block, block: &Block) {
         let digests = b0
             .payload
             .iter()
             .cloned()
+            .chain(b1.payload.iter().cloned())
             .chain(block.payload.iter().cloned())
             .collect();
         self.tx_proposer
@@ -424,6 +441,19 @@ impl Core {
             .await
             .expect("Failed to send message to proposer");
     }
+
+    // async fn cleanup_proposer(&mut self, b0: &Block, block: &Block) {
+    //     let digests = b0
+    //         .payload
+    //         .iter()
+    //         .cloned()
+    //         .chain(block.payload.iter().cloned())
+    //         .collect();
+    //     self.tx_proposer
+    //         .send(ProposerMessage::Cleanup(digests))
+    //         .await
+    //         .expect("Failed to send message to proposer");
+    // }
 
     async fn process_qc(&mut self, qc: &QC) {
         self.advance_round(qc.round).await;
@@ -435,6 +465,65 @@ impl Core {
         self.update_high_tc(tc);
     }
 
+    // #[async_recursion]
+    // async fn process_block(&mut self, block: &Block) -> ConsensusResult<()> {
+    //     debug!("{} Processing {}, with parent {}", self.name, block.digest(), block.parent());
+
+    //     // Let's see if we have the last three ancestors of the block, that is:
+    //     //      b0 <- |qc0; b1| <- |qc1; block|
+    //     // If we don't, the synchronizer asks for them to other nodes. It will
+    //     // then ensure we process both ancestors in the correct order, and
+    //     // finally make us resume processing this block.
+    //     let (b0, b1) = match self.synchronizer.get_ancestors(block).await? {
+    //         Some(ancestors) => ancestors,
+    //         None => {
+    //             self.recover_count = self.recover_count + 1;
+    //             debug!("Processing of {} suspended: missing parent. Count: {}", block.digest(), self.recover_count);
+    //             return Ok(());
+    //         }
+    //     };
+
+    //     // Store the block only if we have already processed all its ancestors.
+    //     self.store_block(block).await;
+
+    //     self.cleanup_proposer(&b0, &b1, block).await;
+
+    //     // Check if we can commit the head of the 2-chain.
+    //     // Note that we commit blocks only if we have all its ancestors.
+    //     if b0.round + 1 == b1.round {
+    //         self.mempool_driver.cleanup(b0.round).await;
+    //         self.commit(b0).await?;
+    //     }
+
+    //     // Ensure the block's round is as expected.
+    //     // This check is important: it prevents bad leaders from producing blocks
+    //     // far in the future that may cause overflow on the round number.
+    //     if block.round != self.round {
+    //         return Ok(());
+    //     }
+
+    //     // See if we can vote for this block.
+    //     if let Some(vote) = self.make_vote(block).await {
+    //         debug!("Created {:?}", vote);
+    //         let next_leader = self.leader_elector.get_leader(self.round + 1);
+    //         if next_leader == self.name {
+    //             self.handle_vote(&vote).await?;
+    //         } else {
+    //             debug!("[CORE] {} Sending {:?} to {}", self.name, vote, next_leader);
+    //             let address = self
+    //                 .committee
+    //                 .address(&next_leader)
+    //                 .expect("The next leader is not in the committee");
+    //             let message = bincode::serialize(&ConsensusMessage::Vote(vote))
+    //                 .expect("Failed to serialize vote");
+    //             let dvf_message = DvfMessage { validator_id: self.validator_id, message: message};
+    //             let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+    //             self.network.send(address, Bytes::from(serialized_msg)).await;
+    //         }
+    //     }
+    //     Ok(())
+    // }
+
     #[async_recursion]
     async fn process_block(&mut self, block: &Block) -> ConsensusResult<()> {
         info!("[VA {}, round {}] Processing {}, with parent {}", self.validator_id, self.round, block, block.parent());
@@ -442,49 +531,25 @@ impl Core {
         self.store_block(block).await;
 
         // If we haven't seen the block, we don't need the block. There is no need to synchronize the history.
-        let b0 = match self.get_parent_block(block).await {
-            Some(parent) => parent,
-            None => {
-                return Ok(());
-            }
-        };
-        info!("[VA {}, round {}] Successfully get {}'s parent {}", self.validator_id, self.round, block, b0);
-
-        // Don't propose a block that contains any payload that have been included in previous blocks
-        self.cleanup_proposer(&b0, block).await;
-
-        // Just commit the parent because it has been voted by a quorum.
-        self.mempool_driver.cleanup(b0.round).await;
-        self.commit(b0.clone()).await?;
-        info!("[VA {}, round {}] after commit {}", self.validator_id, self.round, b0);
-
-        // Let's see if we have the last three ancestors of the block, that is:
-        //      b0 <- |qc0; b1| <- |qc1; block|
-        // If we don't, the synchronizer asks for them to other nodes. It will
-        // then ensure we process both ancestors in the correct order, and
-        // finally make us resume processing this block.
-        /*
-        let (b0, b1) = match self.synchronizer.get_ancestors(block).await? {
+        let (b0, b1) = match self.get_ancestors(block).await {
             Some(ancestors) => ancestors,
             None => {
-                self.recover_count = self.recover_count + 1;
                 debug!("Processing of {} suspended: missing parent. Count: {}", block.digest(), self.recover_count);
                 return Ok(());
             }
         };
-        */
+        info!("[VA {}, round {}] Successfully get {}'s parent {} and grandparent {}", self.validator_id, self.round, block, b1, b0);
 
-        // Store the block only if we have already processed all its ancestors.
-        // self.store_block(block).await;
-
-        // self.cleanup_proposer(&b0, &b1, block).await;
+        // Don't propose a block that contains any payload that have been included in previous blocks
+        self.cleanup_proposer(&b0, &b1, block).await;
 
         // Check if we can commit the head of the 2-chain.
         // Note that we commit blocks only if we have all its ancestors.
-        // if b0.round + 1 == b1.round {
-        //     self.mempool_driver.cleanup(b0.round).await;
-        //     self.commit(b0).await?;
-        // }
+        if b0.round + 1 == b1.round {
+            self.mempool_driver.cleanup(b0.round).await;
+            self.commit(b0.clone()).await?;
+            info!("[VA {}, round {}] after commit {}", self.validator_id, self.round, b0);
+        }
 
         // Ensure the block's round is as expected.
         // This check is important: it prevents bad leaders from producing blocks

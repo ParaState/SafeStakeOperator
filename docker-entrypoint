@@ -7,10 +7,10 @@ if [[ "$START_PRO" == "boot" ]]; then
 elif [[ -n "$START_PRO" && "$START_PRO" != "boot" ]]; then
   /usr/local/bin/dvf validator_client \
     --debug-level info \
-    --network ropsten \
+    --network goerli \
     --beacon-nodes http://127.0.0.1:5052 \
-    --api https://api-dev.safestake.xyz/v1/collect_performance \
-    --contract-address f9774B9Ad795bfc77142B4577C6e62F220a8Fbf2 \
+    --api https://api-goerli-dev.safestake.xyz/v1/collect_performance \
+    --contract-address 93Ec63F53Fd7362CEAb5A70F1c1B1BD5B49eeb81 \
     --ip $NODE_IP \
     --boot-enr $START_PRO 2>&1
 else

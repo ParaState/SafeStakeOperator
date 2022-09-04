@@ -27,7 +27,7 @@ services:
       [
         "lighthouse",
         "bn",
-        "--network=ropsten",
+        "--network=goerli",
         "--datadir=/data/lighthouse",
         "--jwt-secrets=/data/jwt/jwtsecret",
         "--http",
@@ -55,7 +55,7 @@ services:
     network_mode: "host"
     volumes:
       - operator-data:/root/.lighthouse
-    image: parastate/dvf-operator:dev
+    image: parastate/dvf-operator:goerli-dev
     pull_policy: always
     command: "${ENR}"
     expose:

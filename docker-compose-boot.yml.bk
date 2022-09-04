@@ -2,7 +2,7 @@ version: '3'
 services:
   dvf_root_node:
     network_mode: "host"
-    image: parastate/dvf-operator:dev
+    image: parastate/dvf-operator:goerli-dev
     pull_policy: always
     command: "boot"
     expose:

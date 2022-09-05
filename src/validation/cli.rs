@@ -85,6 +85,13 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
             .help("The contract address")
             .takes_value(true)
         )
+        .arg(
+            Arg::with_name("ws-url")
+            .long("ws-url")
+            .value_name("WS_URL")
+            .help("web socket url of infura to listen contract event")
+            .takes_value(true)
+        )
         // .arg(
         //     Arg::with_name("base-port")
         //         .long("base-port")

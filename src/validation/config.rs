@@ -17,7 +17,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use types::{Address, GRAFFITI_BYTES_LEN};
 use crate::node::config::{NodeConfig,API_ADDRESS};
-use crate::node::contract::DEFAULT_CONTRACT_ADDRESS;
+use crate::node::contract::{DEFAULT_CONTRACT_ADDRESS, DEFAULT_TRANSPORT_URL};
 
 pub const DEFAULT_BEACON_NODE: &str = "http://localhost:5052/";
 
@@ -130,7 +130,7 @@ impl Config {
 
         if cli_args.value_of("boot-enr").is_some() {
             let boot_enr = parse_required(cli_args, "boot-enr")?;
-            info!(log, "Successfully read boot enr"; "boot-enr" => &boot_enr);
+            info!(log, "read boot enr"; "boot-enr" => &boot_enr);
             config.dvf_node_config.boot_enr = boot_enr;
         }
 
@@ -141,7 +141,7 @@ impl Config {
 
         match self_ip {
             Some(ip) => {
-                info!(log, "Successfully read node ip"; "ip" => &ip);
+                info!(log, "read node ip"; "ip" => &ip);
                 config.dvf_node_config.base_address.set_ip(IpAddr::V4(ip.parse::<Ipv4Addr>().unwrap()));
             },
             _ => {}
@@ -151,20 +151,26 @@ impl Config {
         if cli_args.value_of("base-port").is_some() {
             let base_port_str: String = parse_required(cli_args, "base-port")?;
             base_port = Some(base_port_str.parse::<u16>().unwrap());
-            info!(log, "Successfully read base port"; "base-port" => base_port.unwrap());
+            info!(log, "read base port"; "base-port" => base_port.unwrap());
         }
 
         if cli_args.value_of("api").is_some() {
             let api_str: String = parse_required(cli_args, "api")?;
-            info!(log, "Successfully read api address"; "api" => &api_str);
+            info!(log, "read api address"; "api" => &api_str);
             API_ADDRESS.set(api_str).unwrap();
             
         }
 
         if cli_args.value_of("contract-address").is_some() {
             let contract_address_str: String = parse_required(cli_args, "contract-address")?;
-            info!(log, "Successfully read contract-address"; "contract-address" => &contract_address_str);
+            info!(log, "read contract-address"; "contract-address" => &contract_address_str);
             DEFAULT_CONTRACT_ADDRESS.set(contract_address_str).unwrap();
+        }
+
+        if cli_args.value_of("ws-url").is_some() {
+            let ws_transport_url_str: String = parse_required(cli_args, "ws-url")?;
+            info!(log, "read ws-url"; "ws-url" => &ws_transport_url_str);
+            DEFAULT_TRANSPORT_URL.set(ws_transport_url_str).unwrap();
         }
 
         match base_port {

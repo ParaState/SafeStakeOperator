@@ -565,7 +565,7 @@ impl Core {
                 return Ok(());
             }
         };
-        debug!("[VA {}, round {}] Successfully get {}'s parent {} ({}) and grandparent {} ({})", 
+        info!("[VA {}, round {}] Successfully get {}'s parent {} ({}) and grandparent {} ({})", 
             self.validator_id, self.round, block, b1, b1.digest(), b0, b0.digest());
 
         // Don't propose a block that contains any payload that have been included in previous blocks

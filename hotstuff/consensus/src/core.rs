@@ -50,6 +50,9 @@ pub struct Core {
     high_tc: TC,
     // block_map: HashMap<Digest, Block>,
     prune_depth: u64,
+    last_timeout_round: Round,
+    continuous_timeout_round: u64,
+    deadlock: bool,
 }
 
 impl Core {
@@ -96,11 +99,42 @@ impl Core {
                 high_tc: TC::default(),
                 // block_map: HashMap::new(),
                 prune_depth: 10,
-
+                last_timeout_round: 0,
+                continuous_timeout_round: 0,
+                deadlock: false,
             }
             .run()
             .await
         });
+    }
+
+    fn reset(&mut self) {
+        self.round =  1;
+        self.last_voted_round = 0;
+        self.last_committed_round = 0;
+        self.last_timeout_round = 0;
+        self.continuous_timeout_round = 0;
+        self.high_qc = QC::genesis();
+        self.high_tc = TC::default();
+        self.timer.reset();
+    }
+
+    fn detect_dead_lock(&mut self) {
+        if self.round = self.last_timeout_round + 1 {
+            self.continuous_timeout_round += 1;
+        }
+        else {
+            self.continuous_timeout_round = 0;
+        }
+        if self.continuous_timeout_round >= 3 {
+            warn!("[VA {}] Deadlock detected. Restarting...", self.validator_id);
+            self.deadlock = true;
+            self.reset();
+            true
+        }
+        else {
+            false
+        }
     }
 
     async fn store_block(&mut self, block: &Block) {
@@ -322,6 +356,10 @@ impl Core {
     async fn local_timeout_round(&mut self) -> ConsensusResult<()> {
         warn!("[VA {}] Timeout reached for round {}", self.validator_id, self.round);
 
+        if self.detect_dead_lock() {
+            return Ok(());
+        }
+
         // Increase the last voted round.
         self.increase_last_voted_round(self.round);
 
@@ -373,6 +411,9 @@ impl Core {
         // Add the new vote to our aggregator and see if we have a quorum.
         if let Some(qc) = self.aggregator.add_vote(vote.clone())? {
             debug!("Assembled {:?}", qc);
+
+            // If receive a quorum vote for a block, we can safely remove the deadlock guard
+            self.deadlock = false;
 
             // Process the QC.
             self.process_qc(&qc).await;
@@ -483,11 +524,17 @@ impl Core {
     // }
 
     async fn process_qc(&mut self, qc: &QC) {
+        if self.deadlock {
+            return;
+        }
         self.advance_round(qc.round).await;
         self.update_high_qc(qc);
     }
 
     async fn process_tc(&mut self, tc: &TC) {
+        if self.deadlock {
+            return;
+        }
         self.advance_round(tc.round).await;
         self.update_high_tc(tc);
     }
@@ -565,7 +612,7 @@ impl Core {
                 return Ok(());
             }
         };
-        info!("[VA {}, round {}] Successfully get {}'s parent {} ({}) and grandparent {} ({})", 
+        debug!("[VA {}, round {}] Successfully get {}'s parent {} ({}) and grandparent {} ({})", 
             self.validator_id, self.round, block, b1, b1.digest(), b0, b0.digest());
 
         // Don't propose a block that contains any payload that have been included in previous blocks
@@ -588,24 +635,19 @@ impl Core {
 
         // See if we can vote for this block.
         if let Some(vote) = self.make_vote(block).await {
-            info!("[VA {}, round {}] Created vote {:?} for block {}", self.validator_id, self.round, vote, block);
-            let next_leader = self.leader_elector.get_leader(self.round + 1);
-            if next_leader == self.name {
-                self.handle_vote(&vote).await?;
-            } else {
-                debug!("[CORE] {} Sending {:?} to {}", self.name, vote, next_leader);
-                let addresses = self
-                    .committee
-                    .broadcast_addresses(&self.name)
-                    .into_iter()
-                    .map(|(_, x)| x)
-                    .collect();
-                let message = bincode::serialize(&ConsensusMessage::Vote(vote))
-                    .expect("Failed to serialize vote");
-                let dvf_message = DvfMessage { validator_id: self.validator_id, message: message};
-                let serialized_msg = bincode::serialize(&dvf_message).unwrap();
-                self.network.broadcast(addresses, Bytes::from(serialized_msg)).await;
-            }
+            debug!("[VA {}, round {}] Created vote {:?} for block {}", self.validator_id, self.round, vote, block);
+            self.handle_vote(&vote).await?;
+            let addresses = self
+                .committee
+                .broadcast_addresses(&self.name)
+                .into_iter()
+                .map(|(_, x)| x)
+                .collect();
+            let message = bincode::serialize(&ConsensusMessage::Vote(vote))
+                .expect("Failed to serialize vote");
+            let dvf_message = DvfMessage { validator_id: self.validator_id, message: message};
+            let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+            self.network.broadcast(addresses, Bytes::from(serialized_msg)).await;
         }
         Ok(())
     }

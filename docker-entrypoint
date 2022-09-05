@@ -7,7 +7,7 @@ if [[ "$START_PRO" == "boot" ]]; then
 elif [[ -n "$START_PRO" && "$START_PRO" != "boot" ]]; then
   /usr/local/bin/dvf validator_client \
     --debug-level info \
-    --network goerli \
+    --network prater \
     --beacon-nodes http://127.0.0.1:5052 \
     --api https://api-goerli-dev.safestake.xyz/v1/collect_performance \
     --contract-address 93Ec63F53Fd7362CEAb5A70F1c1B1BD5B49eeb81 \

@@ -27,7 +27,7 @@ services:
       [
         "lighthouse",
         "bn",
-        "--network=goerli",
+        "--network=prater",
         "--datadir=/data/lighthouse",
         "--jwt-secrets=/data/jwt/jwtsecret",
         "--http",

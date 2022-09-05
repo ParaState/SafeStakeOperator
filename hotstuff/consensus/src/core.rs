@@ -588,7 +588,7 @@ impl Core {
 
         // See if we can vote for this block.
         if let Some(vote) = self.make_vote(block).await {
-            debug!("[VA {}, round {}] Created vote {:?} for block {}", self.validator_id, self.round, vote, block);
+            info!("[VA {}, round {}] Created vote {:?} for block {}", self.validator_id, self.round, vote, block);
             let next_leader = self.leader_elector.get_leader(self.round + 1);
             if next_leader == self.name {
                 self.handle_vote(&vote).await?;

@@ -50,9 +50,9 @@ pub struct Core {
     high_tc: TC,
     // block_map: HashMap<Digest, Block>,
     prune_depth: u64,
-    last_timeout_round: Round,
-    continuous_timeout_round: u64,
-    deadlock: bool,
+    // last_timeout_round: Round,
+    // continuous_timeout_round: u64,
+    // deadlock: bool,
 }
 
 impl Core {
@@ -99,43 +99,43 @@ impl Core {
                 high_tc: TC::default(),
                 // block_map: HashMap::new(),
                 prune_depth: 10,
-                last_timeout_round: 0,
-                continuous_timeout_round: 0,
-                deadlock: false,
+                // last_timeout_round: 0,
+                // continuous_timeout_round: 0,
+                // deadlock: false,
             }
             .run()
             .await
         });
     }
 
-    fn reset(&mut self) {
-        self.round =  1;
-        self.last_voted_round = 0;
-        self.last_committed_round = 0;
-        self.last_timeout_round = 0;
-        self.continuous_timeout_round = 0;
-        self.high_qc = QC::genesis();
-        self.high_tc = TC::default();
-        self.timer.reset();
-    }
+    // fn reset(&mut self) {
+    //     self.round =  1;
+    //     self.last_voted_round = 0;
+    //     self.last_committed_round = 0;
+    //     self.last_timeout_round = 0;
+    //     self.continuous_timeout_round = 0;
+    //     self.high_qc = QC::genesis();
+    //     self.high_tc = TC::default();
+    //     self.timer.reset();
+    // }
 
-    fn detect_dead_lock(&mut self) -> bool {
-        if self.round == self.last_timeout_round + 1 {
-            self.continuous_timeout_round += 1;
-        }
-        else {
-            self.continuous_timeout_round = 0;
-        }
-        if self.continuous_timeout_round >= 3 {
-            warn!("[VA {}] Deadlock detected. Restarting...", self.validator_id);
-            self.deadlock = true;
-            self.reset();
-            true
-        }
-        else {
-            false
-        }
-    }
+    // fn detect_dead_lock(&mut self) -> bool {
+    //     if self.round == self.last_timeout_round + 1 {
+    //         self.continuous_timeout_round += 1;
+    //     }
+    //     else {
+    //         self.continuous_timeout_round = 0;
+    //     }
+    //     if self.continuous_timeout_round >= 3 {
+    //         warn!("[VA {}] Deadlock detected. Restarting...", self.validator_id);
+    //         self.deadlock = true;
+    //         self.reset();
+    //         true
+    //     }
+    //     else {
+    //         false
+    //     }
+    // }
 
     async fn store_block(&mut self, block: &Block) {
         let key = block.digest().to_vec();
@@ -356,9 +356,9 @@ impl Core {
     async fn local_timeout_round(&mut self) -> ConsensusResult<()> {
         warn!("[VA {}] Timeout reached for round {}", self.validator_id, self.round);
 
-        if self.detect_dead_lock() {
-            return Ok(());
-        }
+        // if self.detect_dead_lock() {
+        //     return Ok(());
+        // }
 
         // Increase the last voted round.
         self.increase_last_voted_round(self.round);
@@ -412,8 +412,8 @@ impl Core {
         if let Some(qc) = self.aggregator.add_vote(vote.clone())? {
             debug!("Assembled {:?}", qc);
 
-            // If receive a quorum vote for a block, we can safely remove the deadlock guard
-            self.deadlock = false;
+            // // If receive a quorum vote for a block, we can safely remove the deadlock guard
+            // self.deadlock = false;
 
             // Process the QC.
             self.process_qc(&qc).await;
@@ -524,17 +524,17 @@ impl Core {
     // }
 
     async fn process_qc(&mut self, qc: &QC) {
-        if self.deadlock {
-            return;
-        }
+        // if self.deadlock {
+        //     return;
+        // }
         self.advance_round(qc.round).await;
         self.update_high_qc(qc);
     }
 
     async fn process_tc(&mut self, tc: &TC) {
-        if self.deadlock {
-            return;
-        }
+        // if self.deadlock {
+        //     return;
+        // }
         self.advance_round(tc.round).await;
         self.update_high_tc(tc);
     }
@@ -605,7 +605,7 @@ impl Core {
         self.store_block(block).await;
 
         // If we haven't seen the block, we don't need the block. There is no need to synchronize the history.
-        let (b0, b1) = match self.get_ancestors(block).await {
+        let (b0, b1) = match self.synchronizer.get_ancestors(block).await? {
             Some(ancestors) => ancestors,
             None => {
                 debug!("Processing of {} suspended: missing parent. Count: {}", block.digest(), self.recover_count);

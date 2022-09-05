@@ -2,6 +2,7 @@ use crate::consensus::Round;
 use crypto::{CryptoError, Digest, PublicKey};
 use store::StoreError;
 use thiserror::Error;
+use crate::messages::{Block};
 
 #[macro_export]
 macro_rules! bail {
@@ -67,4 +68,10 @@ pub enum ConsensusError {
 
     #[error("Invalid payload")]
     InvalidPayload,
+
+    #[error("Failed to retrieve parent {wait_on} for block {deliver}")]
+    StoreReadTimeout {
+        wait_on: Digest,
+        deliver: Block,
+    },
 }

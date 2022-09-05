@@ -16,6 +16,7 @@ use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
 use std::net::SocketAddr;
 use tokio::time::timeout;
+use crate::error::ConsensusError;
 
 #[cfg(test)]
 #[path = "tests/synchronizer_tests.rs"]
@@ -87,6 +88,11 @@ impl Synchronizer {
                                 panic!("Failed to send message through core channel: {}", e);
                             }
                         },
+                        Err(ConsensusError::StoreReadTimeout {wait_on, deliver}) => {
+                            warn!("Failed to retrieve parent {} for block {}", wait_on, deliver);
+                            let _ = pending.remove(&deliver.digest());
+                            let _ = requests.remove(&wait_on);
+                        },
                         Err(e) => error!("{}", e)
                     },
                     () = &mut timer => {
@@ -141,9 +147,21 @@ impl Synchronizer {
         }
     }
 
+    // async fn waiter(store: Store, wait_on: Digest, deliver: Block) -> ConsensusResult<Block> {
+    //     let _ = store.notify_read(wait_on.to_vec()).await?;
+    //     Ok(deliver)
+    // }
+
     async fn waiter(store: Store, wait_on: Digest, deliver: Block) -> ConsensusResult<Block> {
-        let _ = store.notify_read(wait_on.to_vec()).await?;
-        Ok(deliver)
+        match timeout(Duration::from_secs(20), store.notify_read(wait_on.to_vec())).await {
+            Ok(read_result) => {
+                let _ = read_result?;
+                Ok(deliver)
+            }
+            Err(_) => {
+                Err(ConsensusError::StoreReadTimeout {wait_on, deliver})
+            }
+        }
     }
 
     pub async fn get_parent_block(&mut self, block: &Block) -> ConsensusResult<Option<Block>> {
@@ -162,18 +180,33 @@ impl Synchronizer {
         }
     }
 
+    // pub async fn get_ancestors(
+    //     &mut self,
+    //     block: &Block,
+    // ) -> ConsensusResult<Option<(Block, Block)>> {
+    //     let b1 = match self.get_parent_block(block).await? {
+    //         Some(b) => b,
+    //         None => return Ok(None),
+    //     };
+    //     let b0 = self
+    //         .get_parent_block(&b1)
+    //         .await?
+    //         .expect("We should have all ancestors of delivered blocks");
+    //     Ok(Some((b0, b1)))
+    // }
+
     pub async fn get_ancestors(
         &mut self,
         block: &Block,
     ) -> ConsensusResult<Option<(Block, Block)>> {
         let b1 = match self.get_parent_block(block).await? {
             Some(b) => b,
+            None => return Ok(None)
+        };
+        let b0 = match self.get_parent_block(&b1).await? {
+            Some(b) => b,
             None => return Ok(None),
         };
-        let b0 = self
-            .get_parent_block(&b1)
-            .await?
-            .expect("We should have all ancestors of delivered blocks");
         Ok(Some((b0, b1)))
     }
 }

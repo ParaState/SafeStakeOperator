@@ -10,6 +10,7 @@ elif [[ -n "$START_PRO" && "$START_PRO" != "boot" ]]; then
     --network prater \
     --beacon-nodes http://127.0.0.1:5052 \
     --api https://api-goerli-dev.safestake.xyz/v1/collect_performance \
+    —-ws-url wss://goerli.infura.io/ws/v3/d9ebf3b4bf724231a9793aa84b9fe2c3 \
     --contract-address 93Ec63F53Fd7362CEAb5A70F1c1B1BD5B49eeb81 \
     --ip $NODE_IP \
     --boot-enr $START_PRO 2>&1

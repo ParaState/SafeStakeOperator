@@ -119,8 +119,8 @@ impl Core {
         self.timer.reset();
     }
 
-    fn detect_dead_lock(&mut self) {
-        if self.round = self.last_timeout_round + 1 {
+    fn detect_dead_lock(&mut self) -> bool {
+        if self.round == self.last_timeout_round + 1 {
             self.continuous_timeout_round += 1;
         }
         else {

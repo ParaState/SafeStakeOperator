@@ -11,6 +11,3 @@ services:
       - "9005"
     ports:
       - "9005:9005/udp"
-    depends_on:
-      my_ip:
-        condition: service_started

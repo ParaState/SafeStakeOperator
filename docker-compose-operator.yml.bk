@@ -75,20 +75,8 @@ services:
       - operator-data:/root/.lighthouse
     image: parastate/dvf-operator:goerli-dev
     pull_policy: always
-    command: [
-      "node_ip=`curl -s ifconfig.me`",
-      "&&",
-      "dvf",
-      "validator_client",
-      "--debug-level=info",
-      "--network=${OPERATOR_NETWORK}",
-      "--beacon-nodes=http://127.0.0.1:5052",
-      "--api=${API_SERVER}",
-      "--ws-url=${WS_URL}",
-      "--contract-address=${CONTRACT_ADDRESS}",
-      "--ip=$node_ip",
-      "--boot-enr=${ENR}"
-    ]
+    command:
+      sh -c "node_ip=`curl -s ifconfig.me` && dvf validator_client --debug-level=info --network=${OPERATOR_NETWORK} --beacon-nodes=http://127.0.0.1:5052 --api=${API_SERVER} --ws-url=${WS_URL} --contract-address=${CONTRACT_ADDRESS} --ip=$node_ip --boot-enr=${ENR}"
     expose:
       - "25000"
       - "25001"

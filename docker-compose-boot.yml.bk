@@ -1,17 +1,12 @@
 version: '3'
 services:
-  my_ip:
-    image: busybox:latest
-    command: 'curl -s ifconfig.me > /data/nodeip/ip.log' 
-    volumes:
-      - node-ip:/data/nodeip
   dvf_root_node:
     network_mode: "host"
     image: parastate/dvf-operator:${BOOT_IMAGE_TAG}
     pull_policy: always
     volumes:
       - node-ip:/data/nodeip
-    command: 'dvf_root_node `cat /data/nodeip/ip.log` 9005 2>&1'
+    command: sh -c "node_ip=`curl -s ifconfig.me` && dvf_root_node $node_ip 9005 2>&1"
     expose:
       - "9005"
     ports:
@@ -19,10 +14,3 @@ services:
     depends_on:
       my_ip:
         condition: service_started
-volumes:
-  node-ip:
-    driver: local
-    driver_opts:
-      o: bind
-      type: none
-      device: /data/nodeip

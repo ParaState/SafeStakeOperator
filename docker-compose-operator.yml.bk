@@ -76,6 +76,8 @@ services:
     image: parastate/dvf-operator:goerli-dev
     pull_policy: always
     command: [
+      "node_ip=`curl -s ifconfig.me`",
+      "&&",
       "dvf",
       "validator_client",
       "--debug-level=info",
@@ -84,7 +86,7 @@ services:
       "--api=${API_SERVER}",
       "--ws-url=${WS_URL}",
       "--contract-address=${CONTRACT_ADDRESS}",
-      "--ip=`curl -s ifconfig.me`",
+      "--ip=$node_ip",
       "--boot-enr=${ENR}"
     ]
     expose:

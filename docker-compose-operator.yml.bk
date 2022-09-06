@@ -8,7 +8,6 @@ services:
       - jwt-data:/data/jwt
       - geth-data:/data/geth
     command: [
-      "geth",
       "--${GETH_NETWORK}",
       "--syncmode=snap",
       "--http",

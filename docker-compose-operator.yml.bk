@@ -35,9 +35,8 @@ services:
       - "30303"
   lighthouse:
     network_mode: "host"
-    build: 
-      context: ./lighthouse
-      dockerfile: Dockerfile
+    image: sigp/lighthouse:latest
+    pull_policy: always
     volumes:
       - geth-data:/data/geth
       - jwt-data:/data/jwt
@@ -46,7 +45,7 @@ services:
       [
         "lighthouse",
         "bn",
-        "--network=prater",
+        "--network=${LIGHTHOUSE_NETWORK}",
         "--datadir=/data/lighthouse",
         "--jwt-secrets=/data/jwt/jwtsecret",
         "--http",

@@ -35,4 +35,3 @@ COPY ./src ./src
 COPY ./docker-entrypoint ./docker-entrypoint
 RUN chmod +x /app/docker-entrypoint
 EXPOSE 9005
-ENTRYPOINT ["/app/docker-entrypoint"]

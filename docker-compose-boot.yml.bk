@@ -2,7 +2,7 @@ version: '3'
 services:
   dvf_root_node:
     network_mode: "host"
-    image: parastate/dvf-operator:${BOOT_IMAGE_TAG}
+    image: parastate/dvf-operator:${IMAGE_TAG}
     pull_policy: always
     command: sh -c "node_ip=`curl -s ifconfig.me` && dvf_root_node $node_ip 9005 2>&1"
     expose:

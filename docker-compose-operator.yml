@@ -1,13 +1,32 @@
 version: '3'
 services:
   geth:
+    image: ethereum/client-go:stable
+    pull_policy: always
     network_mode: "host"
-    build:
-      context: ./geth
-      dockerfile: Dockerfile
     volumes:
       - jwt-data:/data/jwt
       - geth-data:/data/geth
+    command: [
+      "--${GETH_NETWORK}",
+      "--syncmode=snap",
+      "--http",
+      "--http.addr=0.0.0.0",
+      "--http.vhosts=*",
+      "--http.port=8545",
+      "--authrpc.addr=0.0.0.0",
+      "--authrpc.vhosts=*",
+      "--authrpc.port=8551",
+      "--discovery.port=30303",
+      "--port=30303",
+      "--datadir=/data/geth",
+      "--pprof",
+      "--pprof.addr=0.0.0.0",
+      "--http.api=engine,eth,web3,net,debug",
+      "--http.corsdomain=*",
+      "--authrpc.jwtsecret=/data/jwt/jwtsecret",
+      "--override.terminaltotaldifficulty=50000000000000000"
+    ]
     expose:
       - "8545"
       - "8546"
@@ -16,9 +35,8 @@ services:
       - "30303"
   lighthouse:
     network_mode: "host"
-    build: 
-      context: ./lighthouse
-      dockerfile: Dockerfile
+    image: sigp/lighthouse:latest
+    pull_policy: always
     volumes:
       - geth-data:/data/geth
       - jwt-data:/data/jwt
@@ -27,7 +45,7 @@ services:
       [
         "lighthouse",
         "bn",
-        "--network=prater",
+        "--network=${LIGHTHOUSE_NETWORK}",
         "--datadir=/data/lighthouse",
         "--jwt-secrets=/data/jwt/jwtsecret",
         "--http",
@@ -55,12 +73,14 @@ services:
     network_mode: "host"
     volumes:
       - operator-data:/root/.lighthouse
-    build:
-      context: .
-      args:
-        CPU_NUM: 8
-      dockerfile: Dockerfile
-    command: "${ENR}"
+    image: parastate/dvf-operator:${IMAGE_TAG}
+    pull_policy: always
+    command:
+      - /bin/sh
+      - -c
+      - |
+        node_ip=$$(curl -s ifconfig.me) 
+        dvf validator_client --debug-level=info --network=${OPERATOR_NETWORK} --beacon-nodes=http://127.0.0.1:5052 --api=${API_SERVER} --ws-url=${WS_URL} --contract-address=${CONTRACT_ADDRESS} --ip=$$node_ip --boot-enr=${ENR} 2>&1
     expose:
       - "25000"
       - "25001"

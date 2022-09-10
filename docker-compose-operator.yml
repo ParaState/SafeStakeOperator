@@ -25,7 +25,7 @@ services:
       "--http.api=engine,eth,web3,net,debug",
       "--http.corsdomain=*",
       "--authrpc.jwtsecret=/data/jwt/jwtsecret",
-      "--override.terminaltotaldifficulty=50000000000000000"
+      "--override.terminaltotaldifficulty=${TTD}"
     ]
     expose:
       - "8545"
@@ -57,12 +57,12 @@ services:
         "--http-allow-sync-stalled",
         "--merge",
         "--execution-endpoint=http://127.0.0.1:8551",
-        "--eth1-endpoints=http://127.0.0.1:8545",
+        # "--eth1-endpoints=http://127.0.0.1:8545",
         "--metrics",
         "--subscribe-all-subnets",
         "--import-all-attestations",
         "--validator-monitor-auto",
-        "--terminal-total-difficulty-override=50000000000000000"
+        "--terminal-total-difficulty-override=${TTD}"
       ]
     expose:
       - "5052"

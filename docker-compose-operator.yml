@@ -48,6 +48,7 @@ services:
         "--network=${LIGHTHOUSE_NETWORK}",
         "--datadir=/data/lighthouse",
         "--jwt-secrets=/data/jwt/jwtsecret",
+        "--execution-jwt=/data/jwt/jwtsecret",
         "--http",
         "--listen-address=0.0.0.0",
         "--http-address=0.0.0.0",

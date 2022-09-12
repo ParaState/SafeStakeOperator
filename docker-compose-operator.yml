@@ -62,6 +62,7 @@ services:
         "--subscribe-all-subnets",
         "--import-all-attestations",
         "--validator-monitor-auto",
+        "--checkpoint-sync-url=https://goerli.checkpoint-sync.ethpandaops.io",
         "--terminal-total-difficulty-override=${TTD}"
       ]
     expose:

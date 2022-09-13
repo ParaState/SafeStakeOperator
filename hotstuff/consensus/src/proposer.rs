@@ -113,6 +113,8 @@ impl Proposer {
             .await
             .expect("Failed to send block");
 
+        info!("[VA {}] makeblock after loopback");
+
         // Control system: Wait for 2f+1 nodes to acknowledge our block before continuing.
         let mut wait_for_quorum: FuturesUnordered<_> = names
             .into_iter()
@@ -130,6 +132,7 @@ impl Proposer {
                 break;
             }
         }
+        info!("[VA {}] makeblock end of block broadcast");
     }
 
     async fn run(&mut self) {

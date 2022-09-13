@@ -66,6 +66,9 @@ impl Proposer {
     }
 
     async fn make_block(&mut self, round: Round, qc: QC, tc: Option<TC>) {
+        if self.buffer.is_empty() {
+            return;
+        }
         // Generate a new block.
         let block = Block::new(
             qc,
@@ -107,11 +110,15 @@ impl Proposer {
             .broadcast(addresses, Bytes::from(serialized_msg))
             .await;
 
+        debug!("[VA {}] makeblock before loopback", self.validator_id);
+
         // Send our block to the core for processing.
         self.tx_loopback
             .send(block)
             .await
             .expect("Failed to send block");
+
+        debug!("[VA {}] makeblock after loopback", self.validator_id);
 
         // Control system: Wait for 2f+1 nodes to acknowledge our block before continuing.
         let mut wait_for_quorum: FuturesUnordered<_> = names
@@ -130,6 +137,7 @@ impl Proposer {
                 break;
             }
         }
+        debug!("[VA {}] makeblock end of block broadcast", self.validator_id);
     }
 
     async fn run(&mut self) {

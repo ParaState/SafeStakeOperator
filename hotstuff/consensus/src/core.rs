@@ -295,7 +295,7 @@ impl Core {
 
         let mut to_commit = VecDeque::new();
         let mut parent = block.clone();
-        let mut heuristic_history_rounds = 5; // This is more than enough for us
+        let mut heuristic_history_rounds = 13; // This is more than enough for us
         while self.last_committed_round + 1 < parent.round && heuristic_history_rounds > 0 {
             let ancestor = self
                 .get_parent_block(&parent)

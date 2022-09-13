@@ -35,7 +35,7 @@ services:
       - "30303"
   lighthouse:
     network_mode: "host"
-    image: sigp/lighthouse:latest
+    image: sigp/lighthouse:v3.1.0
     pull_policy: always
     volumes:
       - geth-data:/data/geth

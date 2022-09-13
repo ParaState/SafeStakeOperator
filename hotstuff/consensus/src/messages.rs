@@ -174,6 +174,7 @@ impl fmt::Debug for Vote {
 pub struct QC {
     pub hash: Digest,
     pub round: Round,
+    pub payload_size: u64,
     pub votes: Vec<(PublicKey, Signature)>,
 }
 
@@ -217,6 +218,7 @@ impl Hash for QC {
         let mut hasher = Sha512::new();
         hasher.update(&self.hash);
         hasher.update(self.round.to_le_bytes());
+        hasher.update(self.payload_size.to_le_bytes());
         Digest(hasher.finalize().as_slice()[..32].try_into().unwrap())
     }
 }

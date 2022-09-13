@@ -119,6 +119,7 @@ impl fmt::Display for Block {
 pub struct Vote {
     pub hash: Digest,
     pub round: Round,
+    pub payload_size: u64,
     pub author: PublicKey,
     pub signature: Signature,
 }
@@ -132,6 +133,7 @@ impl Vote {
         let vote = Self {
             hash: block.digest(),
             round: block.round,
+            payload_size: block.payload.len() as u64,
             author,
             signature: Signature::default(),
         };
@@ -157,6 +159,7 @@ impl Hash for Vote {
         let mut hasher = Sha512::new();
         hasher.update(&self.hash);
         hasher.update(self.round.to_le_bytes());
+        hasher.update(self.payload_size.to_le_bytes());
         Digest(hasher.finalize().as_slice()[..32].try_into().unwrap())
     }
 }

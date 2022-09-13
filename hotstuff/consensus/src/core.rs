@@ -48,11 +48,7 @@ pub struct Core {
     exit: exit_future::Exit,
     recover_count: u64,
     high_tc: TC,
-    // block_map: HashMap<Digest, Block>,
     prune_depth: u64,
-    // last_timeout_round: Round,
-    // continuous_timeout_round: u64,
-    // deadlock: bool,
 }
 
 impl Core {
@@ -97,59 +93,24 @@ impl Core {
                 exit,
                 recover_count: 0,
                 high_tc: TC::default(),
-                // block_map: HashMap::new(),
                 prune_depth: 10,
-                // last_timeout_round: 0,
-                // continuous_timeout_round: 0,
-                // deadlock: false,
             }
             .run()
             .await
         });
     }
 
-    // fn reset(&mut self) {
-    //     self.round =  1;
-    //     self.last_voted_round = 0;
-    //     self.last_committed_round = 0;
-    //     self.last_timeout_round = 0;
-    //     self.continuous_timeout_round = 0;
-    //     self.high_qc = QC::genesis();
-    //     self.high_tc = TC::default();
-    //     self.timer.reset();
-    // }
-
-    // fn detect_dead_lock(&mut self) -> bool {
-    //     if self.round == self.last_timeout_round + 1 {
-    //         self.continuous_timeout_round += 1;
-    //     }
-    //     else {
-    //         self.continuous_timeout_round = 0;
-    //     }
-    //     if self.continuous_timeout_round >= 3 {
-    //         warn!("[VA {}] Deadlock detected. Restarting...", self.validator_id);
-    //         self.deadlock = true;
-    //         self.reset();
-    //         true
-    //     }
-    //     else {
-    //         false
-    //     }
-    // }
-
     async fn store_block(&mut self, block: &Block) {
         let key = block.digest().to_vec();
         let value = bincode::serialize(block).expect("Failed to serialize block");
         self.store.write(key, value).await;
         
-        // block_map.insert(key, value);
     }
 
     async fn remove_block(&mut self, block: &Block) {
         let key = block.digest().to_vec();
         self.store.delete(key).await;
         
-        // block_map.remove(key);
     }
 
     async fn get_parent_block(&self, block: &Block) -> Option<Block> {
@@ -320,7 +281,7 @@ impl Core {
         while let Some(block) = to_commit.pop_back() {
 
             if !block.payload.is_empty() {
-                info!("Committed {}", block);
+                info!("[VA {}] Committed {}", self.validator_id, block);
 
                 #[cfg(feature = "benchmark")]
                 for x in &block.payload {
@@ -412,15 +373,18 @@ impl Core {
         if let Some(qc) = self.aggregator.add_vote(vote.clone())? {
             debug!("Assembled {:?}", qc);
 
-            // // If receive a quorum vote for a block, we can safely remove the deadlock guard
-            // self.deadlock = false;
-
             // Process the QC.
             self.process_qc(&qc).await;
 
             // Make a new block if we are the next leader.
             if self.name == self.leader_elector.get_leader(self.round) {
-                self.generate_proposal(None).await;
+                if vote.payload_size > 0 {
+                    // Force to create the next block (even if empty) for a fast commit
+                    self.generate_proposal(Some(self.high_tc.clone())).await;
+                }
+                else {
+                    self.generate_proposal(None).await;
+                }
             }
         }
         Ok(())

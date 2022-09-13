@@ -107,6 +107,8 @@ impl Proposer {
             .broadcast(addresses, Bytes::from(serialized_msg))
             .await;
 
+        info!("[VA {}] makeblock before loopback");
+
         // Send our block to the core for processing.
         self.tx_loopback
             .send(block)

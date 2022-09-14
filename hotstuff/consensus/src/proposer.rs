@@ -66,9 +66,9 @@ impl Proposer {
     }
 
     async fn make_block(&mut self, round: Round, qc: QC, tc: Option<TC>) {
-        if self.buffer.is_empty() && tc.is_none() {
-            return;
-        }
+        // if self.buffer.is_empty() && tc.is_none() {
+        //     return;
+        // }
         // Generate a new block.
         let block = Block::new(
             qc,

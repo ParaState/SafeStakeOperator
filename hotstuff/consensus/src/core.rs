@@ -20,6 +20,7 @@ use store::Store;
 use tokio::sync::mpsc::{Receiver, Sender};
 use std::collections::HashMap;
 use crypto::Digest;
+use tokio::time::{sleep, Duration};
 
 #[cfg(test)]
 #[path = "tests/core_tests.rs"]
@@ -383,6 +384,7 @@ impl Core {
                     self.generate_proposal(Some(self.high_tc.clone())).await;
                 }
                 else {
+                    sleep(Duration::from_millis(1_000)).await;
                     self.generate_proposal(None).await;
                 }
             }

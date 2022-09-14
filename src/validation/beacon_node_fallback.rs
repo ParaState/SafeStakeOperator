@@ -7,7 +7,7 @@ use crate::validation::http_metrics::metrics::{inc_counter_vec, ENDPOINT_ERRORS,
 use environment::RuntimeContext;
 use eth2::BeaconNodeHttpClient;
 use futures::future;
-use slog::{debug, error, info, warn, Logger};
+use slog::{error, info, warn, Logger};
 use slot_clock::SlotClock;
 use std::fmt;
 use std::fmt::Debug;
@@ -16,7 +16,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::{sync::RwLock, time::sleep};
-use types::{ChainSpec, EthSpec};
+use types::{ChainSpec, Config, EthSpec};
 
 /// The number of seconds *prior* to slot start that we will try and update the state of fallback
 /// nodes.
@@ -213,9 +213,9 @@ impl<E: EthSpec> CandidateBeaconNode<E> {
 
     /// Checks if the node has the correct specification.
     async fn is_compatible(&self, spec: &ChainSpec, log: &Logger) -> Result<(), CandidateError> {
-        let config_and_preset = self
+        let config = self
             .beacon_node
-            .get_config_spec()
+            .get_config_spec::<Config>()
             .await
             .map_err(|e| {
                 error!(
@@ -229,7 +229,7 @@ impl<E: EthSpec> CandidateBeaconNode<E> {
             .data;
 
         let beacon_node_spec =
-            ChainSpec::from_config::<E>(&config_and_preset.config).ok_or_else(|| {
+            ChainSpec::from_config::<E>(&config).ok_or_else(|| {
                 error!(
                     log,
                     "The minimal/mainnet spec type of the beacon node does not match the validator \
@@ -238,15 +238,6 @@ impl<E: EthSpec> CandidateBeaconNode<E> {
                 );
                 CandidateError::Incompatible
             })?;
-
-        if !config_and_preset.extra_fields.is_empty() {
-            debug!(
-                log,
-                "Beacon spec includes unknown fields";
-                "endpoint" => %self.beacon_node,
-                "fields" => ?config_and_preset.extra_fields,
-            );
-        }
 
         if beacon_node_spec.genesis_fork_version != spec.genesis_fork_version {
             error!(

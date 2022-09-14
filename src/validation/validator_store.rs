@@ -152,12 +152,16 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         enable: bool,
         graffiti: Option<GraffitiString>,
         suggested_fee_recipient: Option<Address>,
+        gas_limit: Option<u64>,
+        builder_proposals: Option<bool>,
     ) -> Result<ValidatorDefinition, String> {
         let mut validator_def = ValidatorDefinition::new_keystore_with_password(
             voting_keystore_path,
             Some(password),
             graffiti.map(Into::into),
             suggested_fee_recipient,
+            gas_limit,
+            builder_proposals
         )
         .map_err(|e| format!("failed to create validator definitions: {:?}", e))?;
 
@@ -175,6 +179,8 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         enable: bool,
         graffiti: Option<GraffitiString>,
         suggested_fee_recipient: Option<Address>,
+        gas_limit: Option<u64>,
+        builder_proposals: Option<bool>,
         operator_committee_definition_path: P,
         operator_committee_index: u64,
         operator_id: u64
@@ -184,6 +190,8 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
             voting_keystore_share_password_path,
             graffiti.map(Into::into),
             suggested_fee_recipient,
+            gas_limit,
+            builder_proposals,
             operator_committee_definition_path,
             operator_committee_index,
             operator_id,

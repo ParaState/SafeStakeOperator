@@ -50,6 +50,7 @@ pub struct Core {
     recover_count: u64,
     high_tc: TC,
     prune_depth: u64,
+    fast_commit_request: i64,
 }
 
 impl Core {
@@ -94,7 +95,8 @@ impl Core {
                 exit,
                 recover_count: 0,
                 high_tc: TC::default(),
-                prune_depth: 10,
+                prune_depth: 15,
+                fast_commit_request: 0,
             }
             .run()
             .await
@@ -379,12 +381,17 @@ impl Core {
 
             // Make a new block if we are the next leader.
             if self.name == self.leader_elector.get_leader(self.round) {
-                if vote.payload_size > 0 {
+                if vote.payload_size > 0 || self.fast_commit_request > 0 {
+                    self.fast_commit_request -= 1;
                     // Force to create the next block (even if empty) for a fast commit
                     self.generate_proposal(Some(self.high_tc.clone())).await;
+                    if vote.payload_size > 0 {
+                        // Reset a new fast commit request
+                        self.fast_commit_request = 2;
+                    }
                 }
                 else {
-                    sleep(Duration::from_millis(1_000)).await;
+                    sleep(Duration::from_millis(500)).await;
                     self.generate_proposal(None).await;
                 }
             }

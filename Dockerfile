@@ -28,6 +28,7 @@ RUN apt-get update && apt-get -y upgrade && apt-get install -y --no-install-reco
   ca-certificates \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
+RUN rustup install 1.63.0
 WORKDIR /app
 COPY --from=builder /app/target/release/dvf_root_node /usr/local/bin/dvf_root_node
 COPY --from=builder /app/target/release/dvf /usr/local/bin/dvf

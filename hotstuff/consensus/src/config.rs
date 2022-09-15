@@ -17,7 +17,7 @@ impl Default for Parameters {
     fn default() -> Self {
         Self {
             // timeout_delay: 5_000,
-            timeout_delay: 3_000,
+            timeout_delay: 2_000,
             // timeout_delay: 500,
             sync_retry_delay: 10_000,
         }

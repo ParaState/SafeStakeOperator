@@ -391,7 +391,7 @@ impl Core {
                     }
                 }
                 else {
-                    sleep(Duration::from_millis(500)).await;
+                    sleep(Duration::from_millis(200)).await;
                     self.generate_proposal(None).await;
                 }
             }

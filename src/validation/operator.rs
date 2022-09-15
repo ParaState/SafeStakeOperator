@@ -70,11 +70,12 @@ pub struct RemoteOperator {
 #[async_trait]
 impl TOperator for RemoteOperator {
     async fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> { 
+        let n_try: u64 = 3;
         let timeout_mill :u64 = 400;
         // Err(DvfError::Unknown)
         let dvf_message = DvfMessage { validator_id: self.validator_id, message: msg.to_fixed_bytes().to_vec()};
         let serialize_msg = bincode::serialize(&dvf_message).unwrap();
-        for _ in 0..5 {
+        for i in 0..n_try {
             let next_try_instant = Instant::now() + Duration::from_millis(timeout_mill);
             let receiver = self.network.send(self.signature_address, Bytes::from(serialize_msg.clone())).await;
             let result = timeout(Duration::from_millis(timeout_mill), receiver).await; 
@@ -101,7 +102,9 @@ impl TOperator for RemoteOperator {
                     warn!("Retry from operator {}/{}", self.operator_id, self.validator_id);
                 }
             }
-            sleep_until(next_try_instant).await;
+            if i < n_try - 1 {
+                sleep_until(next_try_instant).await;
+            }
         }
         warn!("Failed to receive a signature from operator {}/{} ({:?})", self.operator_id, self.validator_id, self.signature_address);
         Err(DvfError::Unknown)

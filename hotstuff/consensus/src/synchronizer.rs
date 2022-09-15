@@ -97,7 +97,7 @@ impl Synchronizer {
                     },
                     () = &mut timer => {
                         let mut i: u64 = 0;
-                        info!("[VA {}] Sync timer with {} requests", validator_id, requests.len());
+                        debug!("[VA {}] Sync timer with {} requests", validator_id, requests.len());
                         let addresses: Vec<SocketAddr> = committee
                             .broadcast_addresses(&name)
                             .into_iter()

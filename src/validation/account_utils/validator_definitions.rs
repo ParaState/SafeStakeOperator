@@ -129,6 +129,12 @@ pub struct ValidatorDefinition {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub suggested_fee_recipient: Option<Address>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gas_limit: Option<u64>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub builder_proposals: Option<bool>,
+    #[serde(default)]
     pub description: String,
     #[serde(flatten)]
     pub signing_definition: SigningDefinition,
@@ -146,6 +152,8 @@ impl ValidatorDefinition {
         voting_keystore_password: Option<ZeroizeString>,
         graffiti: Option<GraffitiString>,
         suggested_fee_recipient: Option<Address>,
+        gas_limit: Option<u64>,
+        builder_proposals: Option<bool>,
     ) -> Result<Self, Error> {
         let voting_keystore_path = voting_keystore_path.as_ref().into();
         let keystore =
@@ -158,6 +166,8 @@ impl ValidatorDefinition {
             description: keystore.description().unwrap_or("").to_string(),
             graffiti,
             suggested_fee_recipient,
+            gas_limit,
+            builder_proposals,
             signing_definition: SigningDefinition::LocalKeystore {
                 voting_keystore_path,
                 voting_keystore_password_path: None,
@@ -177,6 +187,8 @@ impl ValidatorDefinition {
         voting_keystore_share_password_path: P,
         graffiti: Option<GraffitiString>,
         suggested_fee_recipient: Option<Address>,
+        gas_limit: Option<u64>,
+        builder_proposals: Option<bool>,
         operator_committee_definition_path: P,
         operator_committee_index: u64,
         operator_id: u64
@@ -192,6 +204,8 @@ impl ValidatorDefinition {
             description: keystore_share.keystore.description().unwrap_or("").to_string(),
             graffiti,
             suggested_fee_recipient,
+            gas_limit,
+            builder_proposals,
             signing_definition: SigningDefinition::DistributedKeystore {
                 voting_keystore_share_path,
                 voting_keystore_share_password_path: Some(voting_keystore_share_password_path.as_ref().into()),
@@ -343,6 +357,8 @@ impl ValidatorDefinitions {
                     description: keystore.description().unwrap_or("").to_string(),
                     graffiti: None,
                     suggested_fee_recipient: None,
+                    gas_limit: None,
+                    builder_proposals: None,
                     signing_definition: SigningDefinition::LocalKeystore {
                         voting_keystore_path,
                         voting_keystore_password_path,
@@ -460,6 +476,8 @@ impl ValidatorDefinitions {
                     description: keystore_share.keystore.description().unwrap_or("").to_string(),
                     graffiti: None,
                     suggested_fee_recipient: None,
+                    gas_limit: None,
+                    builder_proposals: None,
                     signing_definition: SigningDefinition::DistributedKeystore {
                         voting_keystore_share_path,
                         voting_keystore_share_password_path,

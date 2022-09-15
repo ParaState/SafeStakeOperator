@@ -281,6 +281,8 @@ impl<T: EthSpec> Node<T> {
                                                     true,
                                                     None,
                                                     None,
+                                                    None,
+                                                    None,
                                                     committee_def_path,
                                                     keystore_share.master_id,
                                                     keystore_share.share_id, 

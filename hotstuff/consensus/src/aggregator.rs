@@ -92,6 +92,7 @@ impl QCMaker {
             return Ok(Some(QC {
                 hash: vote.hash.clone(),
                 round: vote.round,
+                payload_size: vote.payload_size,
                 votes: self.votes.clone(),
             }));
         }

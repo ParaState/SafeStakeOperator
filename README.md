@@ -53,21 +53,15 @@ enr configure
 
 ```
 cd dvf
-vim .env
+cp .env.example .env
 ```
-### Build operator image
-```
-sudo docker compose -f  docker-compose-operator.yml build
-```
+> Fill your data
 
 ## Run
 ### Run your operator
 ```
 sudo docker compose -f  docker-compose-operator.yml up -d
 ```
-
-### Wait for geth data ready
-maybe 24 hours later
 ### Get your operator public key
 ```
 sudo docker compose -f docker-compose-operator.yml logs -f operator | grep "node public key"

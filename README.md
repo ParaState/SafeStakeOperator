@@ -8,9 +8,9 @@ SafeStake is a decentralized validation framework for performing ETH2 duties and
 
  * Public Static Network IP 
  * Hardware(recommend)
-   * CPU: 4
-   * Memory: 8G
-   * Disk: 500GB
+   * CPU: 16
+   * Memory: 32G
+   * Disk: 600GB
  * OS
    * Unix
  * Software
@@ -50,19 +50,33 @@ openssl rand -hex 32 | tr -d "\n" | sudo tee /data/jwt/jwtsecret
 ```
 git clone --recurse-submodules https://github.com/ParaState/SafeStakeOperator.git dvf
 ```
-
-### Fill enr you get in testnet.xyz
-enr configure 
-
-**It has default value in latest source code**
-
 ```
 cd dvf
 cp .env.example .env
+```
+### Get your infura ws_url
+  - Follow the document [https://docs.infura.io/infura/](https://docs.infura.io/infura/)
+  - Regiter a infura account
+  - Create new key
+  
+  > ![infura step1](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/infura-step1.png?raw=true)
+  - Select goerli network
+  
+  > ![infura step1](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/infura-step2.png?raw=true)
+  
+  - Select Websocks
+  
+  > ![infura step1](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/infura-step3.png?raw=true)
+  
+  - Copy your WS_URL
+
+  
+  
+### Use your own configuration
+```
 vim .env
 ```
-> Fill your WS_URL. You can get it by [https://docs.infura.io/infura/](https://docs.infura.io/infura/).
-![infura api](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/infura.png?raw=true)
+Fill your WS_URL
 
 ## Run
 ### Run your operator

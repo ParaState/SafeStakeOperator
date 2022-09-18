@@ -27,6 +27,11 @@ SafeStake is a decentralized validation framework for performing ETH2 duties and
 * [install docker engine](https://docs.docker.com/engine/install/)
 * [install docker compose](https://docs.docker.com/compose/install/)
 
+### Enable docker service and start it immediately.
+```
+ sudo systemctl enable docker
+```
+
 ### Create local volume directory
 
 ```
@@ -54,8 +59,10 @@ enr configure
 ```
 cd dvf
 cp .env.example .env
+vim .env
 ```
-> Fill your data
+> Fill your WS_URL. You can get it by [https://docs.infura.io/infura/](https://docs.infura.io/infura/).
+![infura api](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/infura.png?raw=true)
 
 ## Run
 ### Run your operator
@@ -73,5 +80,5 @@ output
 path
 
 ```
-/data/operator/ropsten/node_key.json
+/data/operator/prater/node_key.json
 ```

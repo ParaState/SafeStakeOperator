@@ -384,7 +384,7 @@ impl Core {
                 if vote.payload_size > 0 || self.fast_commit_request > 0 {
                     self.fast_commit_request -= 1;
                     // Force to create the next block (even if empty) for a fast commit
-                    self.generate_proposal(Some(self.high_tc.clone())).await;
+                    self.generate_proposal(None).await;
                     if vote.payload_size > 0 {
                         // Reset a new fast commit request
                         self.fast_commit_request = 2;

@@ -1226,8 +1226,8 @@ impl<T: EthSpec> InitializedValidators<T> {
                                     "operator/validator" => format!("{}/{}", operator_id, operator_committee_index),
                                 );
 
-                                // Exit on an invalid validator.
-                                return Err(e);
+                                // Exit on an invalid validator. zico: Do we need to?
+                                // return Err(e);
                             }
                         }
                     }

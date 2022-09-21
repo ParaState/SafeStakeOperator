@@ -7,13 +7,14 @@ use std::sync::Arc;
 use tokio::sync::{RwLock};
 use tokio::sync::mpsc::{channel, Sender};
 use types::Hash256;
+use hsutils::monitored_channel::{MonitoredChannel, MonitoredSender};
 
 
 impl OperatorCommittee { 
     pub async fn from_definition(
         def: OperatorCommitteeDefinition,
-    ) -> (Self, Sender<Hash256>) {
-        let (tx, rx) = channel(DEFAULT_CHANNEL_CAPACITY);
+    ) -> (Self, MonitoredSender<Hash256>) {
+        let (tx, rx) = MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "dvf-op-committee".to_string());
 
         let mut committee = Self::new(def.validator_id, def.validator_public_key.clone(), def.threshold as usize, rx);
         for i in 0..(def.total as usize) {

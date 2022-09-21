@@ -1,4 +1,5 @@
 use hsconfig::{Committee as HotstuffCommittee, Parameters};
+use hsutils::monitored_channel::{MonitoredChannel, MonitoredSender};
 use consensus::Committee as ConsensusCommittee;
 use mempool::Committee as MempoolCommittee;
 use consensus::{Block, Consensus};
@@ -28,6 +29,7 @@ use parking_lot::{RwLock as ParkingRwLock};
 use crate::validation::operator_committee_definitions::OperatorCommitteeDefinition; 
 use crate::node::config::{TRANSACTION_PORT_OFFSET, MEMPOOL_PORT_OFFSET, CONSENSUS_PORT_OFFSET, SIGNATURE_PORT_OFFSET};
 use std::net::SocketAddr;
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DvfInfo {
   pub validator_id : u64,
@@ -255,7 +257,7 @@ pub struct DvfCore {
     pub validator_id: u64, 
     pub operator_id: u64,
     pub bls_keypair: Keypair,
-    pub tx_consensus: Sender<Hash256>,
+    pub tx_consensus: MonitoredSender<Hash256>,
     pub operator: LocalOperator,
     pub exit: exit_future::Exit,
 }
@@ -270,12 +272,16 @@ impl DvfCore {
         validator_id: u64,
         committee: HotstuffCommittee,
         keypair: Keypair,
-        tx_consensus: Sender<Hash256>,
+        tx_consensus: MonitoredSender<Hash256>,
     ) -> exit_future::Signal {
         let node = node.read();
-        let (tx_commit, rx_commit) = channel(CHANNEL_CAPACITY);
-        let (tx_consensus_to_mempool, rx_consensus_to_mempool) = channel(CHANNEL_CAPACITY);
-        let (tx_mempool_to_consensus, rx_mempool_to_consensus) = channel(CHANNEL_CAPACITY);
+        // let (tx_commit, rx_commit) = channel(CHANNEL_CAPACITY);
+        // let (tx_consensus_to_mempool, rx_consensus_to_mempool) = channel(CHANNEL_CAPACITY);
+        // let (tx_mempool_to_consensus, rx_mempool_to_consensus) = channel(CHANNEL_CAPACITY);
+
+        let (tx_commit, rx_commit) = MonitoredChannel::new(CHANNEL_CAPACITY, "dvf-commit".to_string());
+        let (tx_consensus_to_mempool, rx_consensus_to_mempool) = MonitoredChannel::new(CHANNEL_CAPACITY, "dvf-cs2mp".to_string());
+        let (tx_mempool_to_consensus, rx_mempool_to_consensus) = MonitoredChannel::new(CHANNEL_CAPACITY, "dvf-mp2cs".to_string());
 
         let parameters = Parameters::default();
         let store_path = node.config.base_store_path.join(validator_id.to_string()).join(operator_id.to_string()); 

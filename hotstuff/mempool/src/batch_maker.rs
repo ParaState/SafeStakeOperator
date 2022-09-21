@@ -14,6 +14,7 @@ use std::convert::TryInto as _;
 use std::net::SocketAddr;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
+use utils::monitored_channel::MonitoredSender;
 
 #[cfg(test)]
 #[path = "tests/batch_maker_tests.rs"]
@@ -31,7 +32,7 @@ pub struct BatchMaker {
     /// Channel to receive transactions from the network.
     rx_transaction: Receiver<Transaction>,
     /// Output channel to deliver sealed batches to the `QuorumWaiter`.
-    tx_message: Sender<QuorumWaiterMessage>,
+    tx_message: MonitoredSender<QuorumWaiterMessage>,
     /// The network addresses of the other mempools.
     mempool_addresses: Vec<(PublicKey, SocketAddr)>,
     /// Holds the current batch.
@@ -50,7 +51,7 @@ impl BatchMaker {
         batch_size: usize,
         max_batch_delay: u64,
         rx_transaction: Receiver<Transaction>,
-        tx_message: Sender<QuorumWaiterMessage>,
+        tx_message: MonitoredSender<QuorumWaiterMessage>,
         mempool_addresses: Vec<(PublicKey, SocketAddr)>,
         validator_id: u64,
         exit: exit_future::Exit

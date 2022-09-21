@@ -18,6 +18,7 @@ use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::sync::RwLock;
 use std::collections::HashMap;
 use futures::executor::block_on;
+use utils::monitored_channel::{MonitoredChannel, MonitoredSender};
 #[cfg(test)]
 #[path = "tests/mempool_tests.rs"]
 pub mod mempool_tests;
@@ -54,7 +55,7 @@ pub struct Mempool {
     /// The persistent storage.
     store: Store,
     /// Send messages to consensus.
-    tx_consensus: Sender<Digest>,
+    tx_consensus: MonitoredSender<Digest>,
     /// Validator id.
     validator_id: u64,
     /// Exit 
@@ -68,7 +69,7 @@ impl Mempool {
         parameters: Parameters,
         store: Store,
         rx_consensus: Receiver<ConsensusMempoolMessage>,
-        tx_consensus: Sender<Digest>,
+        tx_consensus: MonitoredSender<Digest>,
         validator_id: u64,
         tx_handler_map : Arc<RwLock<HashMap<u64, TxReceiverHandler>>>,
         mempool_handler_map: Arc<RwLock<HashMap<u64, MempoolReceiverHandler>>>,
@@ -123,9 +124,13 @@ impl Mempool {
 
     /// Spawn all tasks responsible to handle clients transactions.
     async fn handle_clients_transactions(&self, tx_handler_map: Arc<RwLock<HashMap<u64, TxReceiverHandler>>>) {
-        let (tx_batch_maker, rx_batch_maker) = channel(CHANNEL_CAPACITY);
-        let (tx_quorum_waiter, rx_quorum_waiter) = channel(CHANNEL_CAPACITY);
-        let (tx_processor, rx_processor) = channel(CHANNEL_CAPACITY);
+        // let (tx_batch_maker, rx_batch_maker) = channel(CHANNEL_CAPACITY);
+        // let (tx_quorum_waiter, rx_quorum_waiter) = channel(CHANNEL_CAPACITY);
+        // let (tx_processor, rx_processor) = channel(CHANNEL_CAPACITY);
+
+        let (tx_batch_maker, rx_batch_maker) = MonitoredChannel::new(CHANNEL_CAPACITY, "mempool-tx-batch-maker".to_string());
+        let (tx_quorum_waiter, rx_quorum_waiter) = MonitoredChannel::new(CHANNEL_CAPACITY, "mempool-tx-quorum-waiter".to_string());
+        let (tx_processor, rx_processor) = MonitoredChannel::new(CHANNEL_CAPACITY, "mempool-tx-processor".to_string());
 
         // We first receive clients' transactions from the network.
         // let mut address = self
@@ -184,8 +189,11 @@ impl Mempool {
 
     /// Spawn all tasks responsible to handle messages from other mempools.
     async fn handle_mempool_messages(&self, mempool_handler_map: Arc<RwLock<HashMap<u64, MempoolReceiverHandler>>>) {
-        let (tx_helper, rx_helper) = channel(CHANNEL_CAPACITY);
-        let (tx_processor, rx_processor) = channel(CHANNEL_CAPACITY);
+        // let (tx_helper, rx_helper) = channel(CHANNEL_CAPACITY);
+        // let (tx_processor, rx_processor) = channel(CHANNEL_CAPACITY);
+
+        let (tx_helper, rx_helper) = MonitoredChannel::new(CHANNEL_CAPACITY, "mempool-helper".to_string());
+        let (tx_processor, rx_processor) = MonitoredChannel::new(CHANNEL_CAPACITY, "mempool-processor".to_string());
 
         // Receive incoming messages from other mempools.
         // let mut address = self
@@ -236,7 +244,7 @@ impl Mempool {
 /// Defines how the network receiver handles incoming transactions.
 #[derive(Clone)]
 pub struct TxReceiverHandler {
-    tx_batch_maker: Sender<Transaction>,
+    tx_batch_maker: MonitoredSender<Transaction>,
 }
 
 #[async_trait]
@@ -257,8 +265,8 @@ impl MessageHandler for TxReceiverHandler {
 /// Defines how the network receiver handles incoming mempool messages.
 #[derive(Clone)]
 pub struct MempoolReceiverHandler {
-    tx_helper: Sender<(Vec<Digest>, PublicKey)>,
-    tx_processor: Sender<SerializedBatchMessage>,
+    tx_helper: MonitoredSender<(Vec<Digest>, PublicKey)>,
+    tx_processor: MonitoredSender<SerializedBatchMessage>,
 }
 
 #[async_trait]

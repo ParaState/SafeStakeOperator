@@ -11,21 +11,22 @@ use mempool::ConsensusMempoolMessage;
 use std::collections::HashMap;
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
+use utils::monitored_channel::{MonitoredSender, MonitoredChannel};
 
 pub struct MempoolDriver {
     store: Store,
-    tx_mempool: Sender<ConsensusMempoolMessage>,
-    tx_payload_waiter: Sender<PayloadWaiterMessage>,
+    tx_mempool: MonitoredSender<ConsensusMempoolMessage>,
+    tx_payload_waiter: MonitoredSender<PayloadWaiterMessage>,
 }
 
 impl MempoolDriver {
     pub fn new(
         store: Store,
-        tx_mempool: Sender<ConsensusMempoolMessage>,
-        tx_loopback: Sender<Block>,
+        tx_mempool: MonitoredSender<ConsensusMempoolMessage>,
+        tx_loopback: MonitoredSender<Block>,
         exit: exit_future::Exit
     ) -> Self {
-        let (tx_payload_waiter, rx_payload_waiter) = channel(CHANNEL_CAPACITY);
+        let (tx_payload_waiter, rx_payload_waiter) = MonitoredChannel::new(CHANNEL_CAPACITY, "mp-driver-payload-waiter".to_string());
 
         // Spawn the payload waiter.
         PayloadWaiter::spawn(store.clone(), rx_payload_waiter, tx_loopback, exit.clone());
@@ -88,7 +89,7 @@ enum PayloadWaiterMessage {
 struct PayloadWaiter {
     store: Store,
     rx_message: Receiver<PayloadWaiterMessage>,
-    tx_loopback: Sender<Block>,
+    tx_loopback: MonitoredSender<Block>,
     exit: exit_future::Exit
 }
 
@@ -96,7 +97,7 @@ impl PayloadWaiter {
     pub fn spawn(
         store: Store,
         rx_message: Receiver<PayloadWaiterMessage>,
-        tx_loopback: Sender<Block>,
+        tx_loopback: MonitoredSender<Block>,
         exit: exit_future::Exit
     ) {
         tokio::spawn(async move {

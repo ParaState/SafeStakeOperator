@@ -5,6 +5,7 @@ use std::convert::TryInto;
 use store::Store;
 use tokio::sync::mpsc::{Receiver, Sender};
 use log::{info};
+use utils::monitored_channel::MonitoredSender;
 
 #[cfg(test)]
 #[path = "tests/processor_tests.rs"]
@@ -23,7 +24,7 @@ impl Processor {
         // Input channel to receive batches.
         mut rx_batch: Receiver<SerializedBatchMessage>,
         // Output channel to send out batches' digests.
-        tx_digest: Sender<Digest>,
+        tx_digest: MonitoredSender<Digest>,
         exit: exit_future::Exit
     ) {
         tokio::spawn(async move {

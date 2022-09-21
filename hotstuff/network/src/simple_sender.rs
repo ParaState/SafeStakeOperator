@@ -21,7 +21,7 @@ use crate::CHANNEL_CAPACITY;
 #[path = "tests/simple_sender_tests.rs"]
 pub mod simple_sender_tests;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub enum Command {
     Send(Bytes),
     Feed(Bytes),

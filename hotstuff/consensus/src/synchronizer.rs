@@ -17,6 +17,7 @@ use tokio::time::{sleep, Duration, Instant};
 use std::net::SocketAddr;
 use tokio::time::timeout;
 use crate::error::ConsensusError;
+use utils::monitored_channel::{MonitoredChannel, MonitoredSender};
 
 #[cfg(test)]
 #[path = "tests/synchronizer_tests.rs"]
@@ -26,7 +27,7 @@ const TIMER_ACCURACY: u64 = 5_000;
 
 pub struct Synchronizer {
     store: Store,
-    inner_channel: Sender<Block>,
+    inner_channel: MonitoredSender<Block>,
 }
 
 impl Synchronizer {
@@ -34,13 +35,13 @@ impl Synchronizer {
         name: PublicKey,
         committee: Committee,
         store: Store,
-        tx_loopback: Sender<Block>,
+        tx_loopback: MonitoredSender<Block>,
         sync_retry_delay: u64,
         validator_id: u64,
         exit: exit_future::Exit
     ) -> Self {
         let mut network = SimpleSender::new();
-        let (tx_inner, mut rx_inner): (_, Receiver<Block>) = channel(CHANNEL_CAPACITY);
+        let (tx_inner, mut rx_inner): (_, Receiver<Block>) = MonitoredChannel::new(CHANNEL_CAPACITY, "sync-inner".to_string());
 
         let store_copy = store.clone();
         tokio::spawn(async move {

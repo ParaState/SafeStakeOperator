@@ -5,6 +5,7 @@ use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
 use network::CancelHandler;
 use tokio::sync::mpsc::{Receiver, Sender};
+use utils::monitored_channel::MonitoredSender;
 
 #[cfg(test)]
 #[path = "tests/quorum_waiter_tests.rs"]
@@ -27,7 +28,7 @@ pub struct QuorumWaiter {
     /// Input Channel to receive commands.
     rx_message: Receiver<QuorumWaiterMessage>,
     /// Channel to deliver batches for which we have enough acknowledgements.
-    tx_batch: Sender<SerializedBatchMessage>,
+    tx_batch: MonitoredSender<SerializedBatchMessage>,
     exit: exit_future::Exit
 }
 
@@ -37,7 +38,7 @@ impl QuorumWaiter {
         committee: Committee,
         stake: Stake,
         rx_message: Receiver<QuorumWaiterMessage>,
-        tx_batch: Sender<Vec<u8>>,
+        tx_batch: MonitoredSender<Vec<u8>>,
         exit: exit_future::Exit
     ) {
         tokio::spawn(async move {

@@ -23,6 +23,7 @@ store = { path = "../store" }
 crypto = { path = "../crypto" }
 network = { path = "../network" }
 mempool = { path = "../mempool" }
+utils = { path = "../utils" }
 
 [dev-dependencies]
 tokio-util = { version = "0.6.2", features= ["codec"] }

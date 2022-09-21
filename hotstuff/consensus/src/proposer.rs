@@ -10,6 +10,8 @@ use network::{CancelHandler, ReliableSender, DvfMessage};
 use std::collections::HashSet;
 use tokio::sync::mpsc::{Receiver, Sender};
 use crypto::Hash;
+use utils::monitored_channel::MonitoredSender;
+
 
 #[derive(Debug)]
 pub enum ProposerMessage {
@@ -23,7 +25,7 @@ pub struct Proposer {
     signature_service: SignatureService,
     rx_mempool: Receiver<Digest>,
     rx_message: Receiver<ProposerMessage>,
-    tx_loopback: Sender<Block>,
+    tx_loopback: MonitoredSender<Block>,
     buffer: HashSet<Digest>,
     network: ReliableSender,
     validator_id: u64, 
@@ -37,7 +39,7 @@ impl Proposer {
         signature_service: SignatureService,
         rx_mempool: Receiver<Digest>,
         rx_message: Receiver<ProposerMessage>,
-        tx_loopback: Sender<Block>,
+        tx_loopback: MonitoredSender<Block>,
         validator_id: u64, 
         exit: exit_future::Exit
     ) {

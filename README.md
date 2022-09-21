@@ -8,9 +8,9 @@ SafeStake is a decentralized validation framework for performing ETH2 duties and
 
  * Public Static Network IP 
  * Hardware(recommend)
-   * CPU: 4
-   * Memory: 8G
-   * Disk: 500GB
+   * CPU: 16
+   * Memory: 32G
+   * Disk: 600GB
  * OS
    * Unix
  * Software
@@ -26,6 +26,11 @@ SafeStake is a decentralized validation framework for performing ETH2 duties and
 ### Install Docker and Docker compose
 * [install docker engine](https://docs.docker.com/engine/install/)
 * [install docker compose](https://docs.docker.com/compose/install/)
+
+### Enable docker service and start it immediately.
+```
+ sudo systemctl enable docker
+```
 
 ### Create local volume directory
 
@@ -45,29 +50,39 @@ openssl rand -hex 32 | tr -d "\n" | sudo tee /data/jwt/jwtsecret
 ```
 git clone --recurse-submodules https://github.com/ParaState/SafeStakeOperator.git dvf
 ```
-
-### Fill enr you get in testnet.xyz
-enr configure 
-
-**It has default value in latest source code**
-
 ```
 cd dvf
+cp .env.example .env
+```
+### Get your infura ws_url
+  - Follow the document [https://docs.infura.io/infura/](https://docs.infura.io/infura/)
+  - Regiter a infura account
+  - Create new key
+  
+  > ![infura step1](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/infura-step1.png?raw=true)
+  - Select goerli network
+  
+  > ![infura step1](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/infura-step2.png?raw=true)
+  
+  - Select Websocks
+  
+  > ![infura step1](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/infura-step3.png?raw=true)
+  
+  - Copy your WS_URL
+
+  
+  
+### Use your own configuration
+```
 vim .env
 ```
-### Build operator image
-```
-sudo docker compose -f  docker-compose-operator.yml build
-```
+Fill your WS_URL
 
 ## Run
 ### Run your operator
 ```
 sudo docker compose -f  docker-compose-operator.yml up -d
 ```
-
-### Wait for geth data ready
-maybe 24 hours later
 ### Get your operator public key
 ```
 sudo docker compose -f docker-compose-operator.yml logs -f operator | grep "node public key"
@@ -79,5 +94,5 @@ output
 path
 
 ```
-/data/operator/ropsten/node_key.json
+/data/operator/prater/node_key.json
 ```

@@ -164,7 +164,14 @@ impl Config {
         if cli_args.value_of("contract-address").is_some() {
             let contract_address_str: String = parse_required(cli_args, "contract-address")?;
             info!(log, "read contract-address"; "contract-address" => &contract_address_str);
-            DEFAULT_CONTRACT_ADDRESS.set(contract_address_str).unwrap();
+            // check contract address 
+            if contract_address_str.starts_with("0x") {
+                let address = &contract_address_str[2..contract_address_str.len()];
+                DEFAULT_CONTRACT_ADDRESS.set(address.to_string()).unwrap();
+            } else {
+                DEFAULT_CONTRACT_ADDRESS.set(contract_address_str).unwrap();
+            }
+            
         }
 
         if cli_args.value_of("ws-url").is_some() {

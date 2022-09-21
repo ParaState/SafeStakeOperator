@@ -250,6 +250,9 @@ impl<T: EthSpec> Node<T> {
                                             sleep(Duration::from_secs(10)).await;
                                             let _ = tx_validator_command.send(ValidatorCommand::Start(validator)).await;
                                             info!("process the validator again");
+                                            if added_validator_dir.exists() {
+                                                remove_dir_all(&added_validator_dir).unwrap();
+                                            }
                                             continue;
                                         }
 

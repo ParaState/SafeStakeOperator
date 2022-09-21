@@ -78,21 +78,28 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                 match frame.map_err(|e| NetworkError::FailedToReceiveMessage(peer, e)) {
                     Ok(message) => {
                         // get validator
-                        let dvf_message : DvfMessage = bincode::deserialize(&message[..]).unwrap();
-                        let validator_id = dvf_message.validator_id;
-                        match handler_map.read().await.get(&validator_id) {
-                            Some(handler) => {
-                                // trunctate the prefix
-                                let msg = dvf_message.message;
-                                if let Err(e) = handler.dispatch(&mut writer, Bytes::from(msg)).await {
-                                    warn!("{}", e);
-                                    return;
+                        match bincode::deserialize::<DvfMessage>(&message[..]) {
+                            Ok(dvf_message) => {
+                                let validator_id = dvf_message.validator_id;
+                                match handler_map.read().await.get(&validator_id) {
+                                    Some(handler) => {
+                                        // trunctate the prefix
+                                        let msg = dvf_message.message;
+                                        if let Err(e) = handler.dispatch(&mut writer, Bytes::from(msg)).await {
+                                            warn!("{}", e);
+                                            return;
+                                        }
+                                    },
+                                    None => {
+                                        // error!("Unhandled message: {:?}", dvf_message);
+                                        error!("Receive a message for validator {}, but no handler found! [{:?}]", validator_id, name);
+                                    } 
                                 }
                             },
-                            None => {
-                                // error!("Unhandled message: {:?}", dvf_message);
-                                error!("Receive a message for validator {}, but no handler found! [{:?}]", validator_id, name);
-                            } 
+                            Err(e) => {
+                                warn!("can't deserialize {}", e);
+                                return;
+                            }
                         }
                     }
                     Err(e) => {

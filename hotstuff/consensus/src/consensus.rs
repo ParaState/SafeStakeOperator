@@ -68,10 +68,10 @@ impl Consensus {
         // let (tx_proposer, rx_proposer) = channel(CHANNEL_CAPACITY);
         // let (tx_helper, rx_helper) = channel(CHANNEL_CAPACITY);
 
-        let (tx_consensus, rx_consensus) = MonitoredChannel::new(CHANNEL_CAPACITY, "consensus-consensus".to_string());
-        let (tx_loopback, rx_loopback) = MonitoredChannel::new(CHANNEL_CAPACITY, "consensus-loopback".to_string());
-        let (tx_proposer, rx_proposer) = MonitoredChannel::new(CHANNEL_CAPACITY, "consensus-proposer".to_string());
-        let (tx_helper, rx_helper) = MonitoredChannel::new(CHANNEL_CAPACITY, "consensus-helper".to_string());
+        let (tx_consensus, rx_consensus) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-consensus-consensus", self.validator_id));
+        let (tx_loopback, rx_loopback) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-consensus-loopback", self.validator_id));
+        let (tx_proposer, rx_proposer) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-consensus-proposer", self.validator_id));
+        let (tx_helper, rx_helper) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-consensus-helper", self.validator_id));
 
 
         // Spawn the network receiver.

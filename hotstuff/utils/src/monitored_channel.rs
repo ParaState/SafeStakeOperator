@@ -42,7 +42,7 @@ where T: Send + 'static {
 
     async fn log(&self) {
         loop {
-            sleep(Duration::from_millis(20_000)).await;
+            sleep(Duration::from_millis(60_000)).await;
             info!("[{}] remaining capacity: {}", self.tag, self.channel.capacity());
         }
     }

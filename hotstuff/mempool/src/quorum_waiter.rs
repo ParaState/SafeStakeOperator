@@ -56,8 +56,19 @@ impl QuorumWaiter {
 
     /// Helper function. It waits for a future to complete and then delivers a value.
     async fn waiter(wait_for: CancelHandler, deliver: Stake) -> Stake {
-        let _ = wait_for.await;
-        deliver
+        let result = wait_for.await;
+        if let Ok(ack) = result {
+            if ack == "Ack" {
+                deliver
+            }
+            else {
+                // Not a normal ack. Something is wrong.
+                0
+            }
+        }
+        else {
+            0
+        }
     }
 
     /// Main loop.
@@ -79,21 +90,28 @@ impl QuorumWaiter {
                     // the dag). This should reduce the amount of synching.
                     let mut total_stake = self.stake;
                     
-                    loop {
+                    'wait: loop {
                         let inner_exit = self.exit.clone();
                         tokio::select! {
-                            Some(stake) = wait_for_quorum.next() => {
-                                total_stake += stake;
-                                if total_stake >= self.committee.quorum_threshold() {
-                                    self.tx_batch
-                                        .send(batch)
-                                        .await
-                                        .expect("Failed to deliver batch");
-                                    break;
+                            result = wait_for_quorum.next() => {
+                                match result {
+                                    Some(stake) => {
+                                        total_stake += stake;
+                                        if total_stake >= self.committee.quorum_threshold() {
+                                            self.tx_batch
+                                                .send(batch)
+                                                .await
+                                                .expect("Failed to deliver batch");
+                                            break 'wait;
+                                        }
+                                    }
+                                    None => {
+                                        break 'wait;
+                                    }
                                 }
                             },
                             () = inner_exit => {
-                                break;
+                                break 'wait;
                             }
                         }
                     }

@@ -193,7 +193,7 @@ impl Mempool {
         // let (tx_processor, rx_processor) = channel(CHANNEL_CAPACITY);
 
         let (tx_helper, rx_helper) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-mempool-helper", self.validator_id));
-        let (tx_processor, rx_processor) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("mempool-processor", self.validator_id));
+        let (tx_processor, rx_processor) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-mempool-processor", self.validator_id));
 
         // Receive incoming messages from other mempools.
         // let mut address = self
@@ -257,7 +257,7 @@ impl MessageHandler for TxReceiverHandler {
             .expect("Failed to send transaction");
 
         // Give the change to schedule other tasks.
-        tokio::task::yield_now().await;
+        // tokio::task::yield_now().await;
         Ok(())
     }
 }

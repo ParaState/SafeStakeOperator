@@ -112,11 +112,12 @@ impl MessageHandler for DvfSignatureReceiverHandler {
           }
         },
         Err(e) => {
-          error!("can't read database, {}", e)
+            let _ = writer.send(Bytes::from("can't read database, please wait")).await;
+            error!("can't read database, {}", e)
         }
       }
       // Give the change to schedule other tasks.
-      tokio::task::yield_now().await;
+    //   tokio::task::yield_now().await;
       Ok(())
     }
 }

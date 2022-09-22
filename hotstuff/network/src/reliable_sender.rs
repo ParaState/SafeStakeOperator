@@ -18,6 +18,7 @@ use tokio::time::{sleep, Duration};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use std::sync::Arc;
 use crate::CHANNEL_CAPACITY;
+use utils::monitored_channel::{MonitoredChannel, MonitoredSender};
 
 #[cfg(test)]
 #[path = "tests/reliable_sender_tests.rs"]
@@ -32,7 +33,7 @@ pub type CancelHandler = oneshot::Receiver<Bytes>;
 /// receive an ACK back (until they succeed or are canceled).
 pub struct ReliableSender {
     /// A map holding the channels to our connections.
-    connections: Arc<RwLock<HashMap<SocketAddr, Sender<InnerMessage>>>>,
+    connections: Arc<RwLock<HashMap<SocketAddr, MonitoredSender<InnerMessage>>>>,
     /// Small RNG just used to shuffle nodes and randomize connections (not crypto related).
     rng: SmallRng,
 }
@@ -52,9 +53,9 @@ impl ReliableSender {
     }
 
     /// Helper function to spawn a new connection.
-    fn spawn_connection(address: SocketAddr) -> Sender<InnerMessage> {
+    fn spawn_connection(address: SocketAddr) -> MonitoredSender<InnerMessage> {
         debug!("[Reliable] Openning a new connection to {}", address);
-        let (tx, rx) = channel(CHANNEL_CAPACITY);
+        let (tx, rx) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("reliable-{}", address));
         Connection::spawn(address, rx);
         tx
     }

@@ -502,7 +502,7 @@ async fn poll_beacon_attesters<T: SlotClock + 'static, E: EthSpec>(
         )
     }
     else {
-        info!(
+        debug!(
             log,
             "Finish downloading attester duties";
             "current_epoch" => current_epoch,
@@ -530,7 +530,7 @@ async fn poll_beacon_attesters<T: SlotClock + 'static, E: EthSpec>(
         )
     }
     else {
-        info!(
+        debug!(
             log,
             "Finish downloading attester duties";
             "current_epoch" => current_epoch,
@@ -736,7 +736,7 @@ async fn poll_beacon_attesters_for_epoch<T: SlotClock + 'static, E: EthSpec>(
         }
         count = count + 1;
     }
-    info!(
+    debug!(
         log,
         "Polled attester duties";
         "epoch" => epoch.as_u64(),

@@ -16,6 +16,7 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use crate::CHANNEL_CAPACITY;
+use utils::monitored_channel::{MonitoredChannel, MonitoredSender};
 
 #[cfg(test)]
 #[path = "tests/simple_sender_tests.rs"]
@@ -32,7 +33,7 @@ pub enum Command {
 /// We communicate with our 'connections' through a dedicated channel kept by the HashMap called `connections`.
 pub struct SimpleSender {
     /// A map holding the channels to our connections.
-    connections: Arc<RwLock<HashMap<SocketAddr, Sender<Command>>>>,
+    connections: Arc<RwLock<HashMap<SocketAddr, MonitoredSender<Command>>>>,
     /// Small RNG just used to shuffle nodes and randomize connections (not crypto related).
     rng: SmallRng,
 }
@@ -52,8 +53,8 @@ impl SimpleSender {
     }
 
     /// Helper function to spawn a new connection.
-    fn spawn_connection(address: SocketAddr) -> Sender<Command> {
-        let (tx, rx) = channel(CHANNEL_CAPACITY);
+    fn spawn_connection(address: SocketAddr) -> MonitoredSender<Command> {
+        let (tx, rx) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("simple-{}", address));
         Connection::spawn(address, rx);
         tx
     }

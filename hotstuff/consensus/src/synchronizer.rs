@@ -41,7 +41,7 @@ impl Synchronizer {
         exit: exit_future::Exit
     ) -> Self {
         let mut network = SimpleSender::new();
-        let (tx_inner, mut rx_inner): (_, Receiver<Block>) = MonitoredChannel::new(CHANNEL_CAPACITY, "sync-inner".to_string());
+        let (tx_inner, mut rx_inner): (_, Receiver<Block>) = MonitoredChannel::new(CHANNEL_CAPACITY, "sync-inner".to_string(), "info");
 
         let store_copy = store.clone();
         tokio::spawn(async move {

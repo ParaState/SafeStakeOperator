@@ -55,7 +55,7 @@ impl ReliableSender {
     /// Helper function to spawn a new connection.
     fn spawn_connection(address: SocketAddr) -> MonitoredSender<InnerMessage> {
         debug!("[Reliable] Openning a new connection to {}", address);
-        let (tx, rx) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("reliable-{}", address));
+        let (tx, rx) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("reliable-{}", address), "info");
         Connection::spawn(address, rx);
         tx
     }

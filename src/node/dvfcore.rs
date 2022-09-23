@@ -280,9 +280,9 @@ impl DvfCore {
         // let (tx_consensus_to_mempool, rx_consensus_to_mempool) = channel(CHANNEL_CAPACITY);
         // let (tx_mempool_to_consensus, rx_mempool_to_consensus) = channel(CHANNEL_CAPACITY);
 
-        let (tx_commit, rx_commit) = MonitoredChannel::new(CHANNEL_CAPACITY, "dvf-commit".to_string());
-        let (tx_consensus_to_mempool, rx_consensus_to_mempool) = MonitoredChannel::new(CHANNEL_CAPACITY, "dvf-cs2mp".to_string());
-        let (tx_mempool_to_consensus, rx_mempool_to_consensus) = MonitoredChannel::new(CHANNEL_CAPACITY, "dvf-mp2cs".to_string());
+        let (tx_commit, rx_commit) = MonitoredChannel::new(CHANNEL_CAPACITY, "dvf-commit".to_string(), "info");
+        let (tx_consensus_to_mempool, rx_consensus_to_mempool) = MonitoredChannel::new(CHANNEL_CAPACITY, "dvf-cs2mp".to_string(), "info");
+        let (tx_mempool_to_consensus, rx_mempool_to_consensus) = MonitoredChannel::new(CHANNEL_CAPACITY, "dvf-mp2cs".to_string(), "info");
 
         let parameters = Parameters::default();
         let store_path = node.config.base_store_path.join(validator_id.to_string()).join(operator_id.to_string()); 

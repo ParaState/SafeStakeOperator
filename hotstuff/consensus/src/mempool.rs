@@ -26,7 +26,7 @@ impl MempoolDriver {
         tx_loopback: MonitoredSender<Block>,
         exit: exit_future::Exit
     ) -> Self {
-        let (tx_payload_waiter, rx_payload_waiter) = MonitoredChannel::new(CHANNEL_CAPACITY, "mp-driver-payload-waiter".to_string());
+        let (tx_payload_waiter, rx_payload_waiter) = MonitoredChannel::new(CHANNEL_CAPACITY, "mp-driver-payload-waiter".to_string(), "info");
 
         // Spawn the payload waiter.
         PayloadWaiter::spawn(store.clone(), rx_payload_waiter, tx_loopback, exit.clone());

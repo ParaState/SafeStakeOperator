@@ -14,7 +14,7 @@ impl OperatorCommittee {
     pub async fn from_definition(
         def: OperatorCommitteeDefinition,
     ) -> (Self, MonitoredSender<Hash256>) {
-        let (tx, rx) = MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, format!("{}-dvf-op-committee", def.validator_id));
+        let (tx, rx) = MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, format!("{}-dvf-op-committee", def.validator_id), "info");
 
         let mut committee = Self::new(def.validator_id, def.validator_public_key.clone(), def.threshold as usize, rx);
         for i in 0..(def.total as usize) {

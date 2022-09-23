@@ -6,6 +6,8 @@ use futures::stream::StreamExt as _;
 use network::CancelHandler;
 use tokio::sync::mpsc::{Receiver, Sender};
 use utils::monitored_channel::MonitoredSender;
+use tokio::time::{sleep, Duration, timeout};
+use log::{warn};
 
 #[cfg(test)]
 #[path = "tests/quorum_waiter_tests.rs"]
@@ -89,32 +91,39 @@ impl QuorumWaiter {
                     // delivered and we send its digest to the consensus (that will include it into
                     // the dag). This should reduce the amount of synching.
                     let mut total_stake = self.stake;
-                    
-                    'wait: loop {
-                        let inner_exit = self.exit.clone();
-                        tokio::select! {
-                            result = wait_for_quorum.next() => {
-                                match result {
-                                    Some(stake) => {
-                                        total_stake += stake;
-                                        if total_stake >= self.committee.quorum_threshold() {
-                                            self.tx_batch
-                                                .send(batch)
-                                                .await
-                                                .expect("Failed to deliver batch");
-                                            break 'wait;
-                                        }
-                                    }
-                                    None => {
+
+                    let tx_batch = self.tx_batch.clone();
+                    let committee = self.committee.clone();
+
+                    let wait_fut = tokio::spawn(async move {
+                        'wait: loop {
+                            match wait_for_quorum.next().await {
+                                Some(stake) => {
+                                    total_stake += stake;
+                                    if total_stake >= committee.quorum_threshold() {
+                                        tx_batch
+                                            .send(batch)
+                                            .await
+                                            .expect("Failed to deliver batch");
                                         break 'wait;
                                     }
                                 }
-                            },
-                            () = inner_exit => {
-                                break 'wait;
+                                None => {
+                                    break 'wait;
+                                }
                             }
                         }
+                    });
+
+                    // Drop the batch after 12 seconds. This is adapted to our scenario.
+                    match timeout(Duration::from_secs(12), wait_fut).await {
+                        Ok(_) => {
+                        }
+                        Err(_) => {
+                            warn!("Failed to broadcast batch: Timeout");
+                        }
                     }
+                    
                 },
                 () = exit => {
                     break;

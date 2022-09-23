@@ -54,7 +54,7 @@ impl SimpleSender {
 
     /// Helper function to spawn a new connection.
     fn spawn_connection(address: SocketAddr) -> MonitoredSender<Command> {
-        let (tx, rx) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("simple-{}", address));
+        let (tx, rx) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("simple-{}", address), "debug");
         Connection::spawn(address, rx);
         tx
     }

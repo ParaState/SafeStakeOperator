@@ -128,9 +128,9 @@ impl Mempool {
         // let (tx_quorum_waiter, rx_quorum_waiter) = channel(CHANNEL_CAPACITY);
         // let (tx_processor, rx_processor) = channel(CHANNEL_CAPACITY);
 
-        let (tx_batch_maker, rx_batch_maker) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-mempool-tx-batch-maker", self.validator_id));
-        let (tx_quorum_waiter, rx_quorum_waiter) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-mempool-tx-quorum-waiter", self.validator_id));
-        let (tx_processor, rx_processor) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-mempool-tx-processor", self.validator_id));
+        let (tx_batch_maker, rx_batch_maker) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-mempool-tx-batch-maker", self.validator_id), "info");
+        let (tx_quorum_waiter, rx_quorum_waiter) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-mempool-tx-quorum-waiter", self.validator_id), "info");
+        let (tx_processor, rx_processor) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-mempool-tx-processor", self.validator_id), "info");
 
         // We first receive clients' transactions from the network.
         // let mut address = self
@@ -192,8 +192,8 @@ impl Mempool {
         // let (tx_helper, rx_helper) = channel(CHANNEL_CAPACITY);
         // let (tx_processor, rx_processor) = channel(CHANNEL_CAPACITY);
 
-        let (tx_helper, rx_helper) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-mempool-helper", self.validator_id));
-        let (tx_processor, rx_processor) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-mempool-processor", self.validator_id));
+        let (tx_helper, rx_helper) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-mempool-helper", self.validator_id), "info");
+        let (tx_processor, rx_processor) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-mempool-processor", self.validator_id), "info");
 
         // Receive incoming messages from other mempools.
         // let mut address = self

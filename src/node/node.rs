@@ -231,10 +231,18 @@ impl<T: EthSpec> Node<T> {
                                                         //let keystore_share_dir = default_keystore_share_dir(&keystore_share, validator_dir.clone());
                                                         //ensure_dir_exists(&keystore_share_dir).unwrap();
 
-                                                        ShareBuilder::new(validator_dir.clone())
+                                                        match ShareBuilder::new(validator_dir.clone())
                                                             .password_dir(secret_dir.clone())
                                                             .voting_keystore_share(keystore_share.clone().unwrap(), INSECURE_PASSWORD)
-                                                            .build().unwrap();
+                                                            .build() {
+                                                                Ok(va_dir) => {
+                                                                    info!("build validator dir in {:?}", va_dir);
+                                                                }, 
+                                                                Err(e) => {
+                                                                    error!("keystore share build failed: {:?}", e);
+                                                                    continue;
+                                                                }
+                                                            };
                                                     }
 
                                                     node_public_keys.push(node_pk);
@@ -270,7 +278,13 @@ impl<T: EthSpec> Node<T> {
 
                                         let committee_def_path = default_operator_committee_definition_path(&validator_pk, validator_dir.clone());
                                         info!("path {:?}, pk {:?}", &committee_def_path, &validator_pk);
-                                        def.to_file(committee_def_path.clone()).map_err(|e| format!("Unable to save committee definition: error:{:?}", e)).unwrap();
+                                        match def.to_file(committee_def_path.clone()).map_err(|e| format!("Unable to save committee definition: error:{:?}", e)) {
+                                            Ok(_) => { },
+                                            Err(e) => {
+                                                error!("{}", e);
+                                                continue;
+                                            }
+                                        }
 
                                         let keystore_share = keystore_share.unwrap();
                                         let voting_keystore_share_path = default_keystore_share_path(&keystore_share, validator_dir.clone());

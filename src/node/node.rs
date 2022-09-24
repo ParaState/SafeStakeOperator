@@ -171,6 +171,7 @@ impl<T: EthSpec> Node<T> {
                                 let validator_id = validator.id;
                                 // check validator exists
                                 let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
+                                info!("add validator {}", validator_pk);
                                 let added_validator_dir = validator_dir.join(format!("{}", validator_pk));
                                 if added_validator_dir.exists() {
                                     continue;
@@ -319,6 +320,7 @@ impl<T: EthSpec> Node<T> {
                                 let node = node.read();
                                 let validator_id = validator.id;
                                 let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
+                                info!("stop validator {}", validator_pk);
                                 let base_dir = node.config.secrets_dir.parent().unwrap();
                                 // delete secret 
                                 let _ = node.tx_handler_map.write().await.remove(&validator_id);

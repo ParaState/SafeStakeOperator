@@ -22,6 +22,8 @@ use tokio::sync::RwLock;
 use std::collections::HashMap;
 use futures::executor::block_on;
 use log::{info};
+use utils::monitored_channel::{MonitoredChannel, MonitoredSender};
+
 #[cfg(test)]
 #[path = "tests/consensus_tests.rs"]
 pub mod consensus_tests;
@@ -32,7 +34,7 @@ pub const CHANNEL_CAPACITY: usize = 10_000;
 /// The consensus round number.
 pub type Round = u64;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ConsensusMessage {
     Propose(Block),
     Vote(Vote),
@@ -52,8 +54,8 @@ impl Consensus {
         signature_service: SignatureService,
         store: Store,
         rx_mempool: Receiver<Digest>,
-        tx_mempool: Sender<ConsensusMempoolMessage>,
-        tx_commit: Sender<Block>,
+        tx_mempool: MonitoredSender<ConsensusMempoolMessage>,
+        tx_commit: MonitoredSender<Block>,
         validator_id: u64, 
         consensus_handler_map: Arc<RwLock<HashMap<u64, ConsensusReceiverHandler>>>,
         exit: exit_future::Exit
@@ -61,10 +63,16 @@ impl Consensus {
         // NOTE: This log entry is used to compute performance.
         parameters.log();
 
-        let (tx_consensus, rx_consensus) = channel(CHANNEL_CAPACITY);
-        let (tx_loopback, rx_loopback) = channel(CHANNEL_CAPACITY);
-        let (tx_proposer, rx_proposer) = channel(CHANNEL_CAPACITY);
-        let (tx_helper, rx_helper) = channel(CHANNEL_CAPACITY);
+        // let (tx_consensus, rx_consensus) = channel(CHANNEL_CAPACITY);
+        // let (tx_loopback, rx_loopback) = channel(CHANNEL_CAPACITY);
+        // let (tx_proposer, rx_proposer) = channel(CHANNEL_CAPACITY);
+        // let (tx_helper, rx_helper) = channel(CHANNEL_CAPACITY);
+
+        let (tx_consensus, rx_consensus) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-consensus-consensus", validator_id), "info");
+        let (tx_loopback, rx_loopback) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-consensus-loopback", validator_id), "info");
+        let (tx_proposer, rx_proposer) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-consensus-proposer", validator_id), "info");
+        let (tx_helper, rx_helper) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-consensus-helper", validator_id), "info");
+
 
         // Spawn the network receiver.
         // let mut address = committee
@@ -72,9 +80,16 @@ impl Consensus {
         //     .expect("Our public key is not in the committee");
         // address.set_ip("0.0.0.0".parse().unwrap());
         {
-            block_on(consensus_handler_map.write())
+            // Using a thread here avoids blocking the caller due to waiting for the write lock.
+            // This might give us a non-fully initialized hotstuff instance because the consensus receiver 
+            // handler has not been inserted, but it is worthwhile to save us from the blocking issue.
+            tokio::spawn(async move {
+                consensus_handler_map
+                .write()
+                .await
                 .insert(validator_id, ConsensusReceiverHandler{tx_consensus, tx_helper});
-            info!("Insert consensus handler for validator: {}", validator_id);
+                info!("Insert consensus handler for validator: {}", validator_id);
+            });
         }
         
         // NetworkReceiver::spawn(
@@ -145,8 +160,8 @@ impl Consensus {
 /// Defines how the network receiver handles incoming primary messages.
 #[derive(Clone)]
 pub struct ConsensusReceiverHandler {
-    tx_consensus: Sender<ConsensusMessage>,
-    tx_helper: Sender<(Digest, PublicKey)>,
+    tx_consensus: MonitoredSender<ConsensusMessage>,
+    tx_helper: MonitoredSender<(Digest, PublicKey)>,
 }
 
 #[async_trait]

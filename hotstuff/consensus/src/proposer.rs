@@ -10,6 +10,8 @@ use network::{CancelHandler, ReliableSender, DvfMessage};
 use std::collections::HashSet;
 use tokio::sync::mpsc::{Receiver, Sender};
 use crypto::Hash;
+use utils::monitored_channel::MonitoredSender;
+
 
 #[derive(Debug)]
 pub enum ProposerMessage {
@@ -23,7 +25,7 @@ pub struct Proposer {
     signature_service: SignatureService,
     rx_mempool: Receiver<Digest>,
     rx_message: Receiver<ProposerMessage>,
-    tx_loopback: Sender<Block>,
+    tx_loopback: MonitoredSender<Block>,
     buffer: HashSet<Digest>,
     network: ReliableSender,
     validator_id: u64, 
@@ -37,7 +39,7 @@ impl Proposer {
         signature_service: SignatureService,
         rx_mempool: Receiver<Digest>,
         rx_message: Receiver<ProposerMessage>,
-        tx_loopback: Sender<Block>,
+        tx_loopback: MonitoredSender<Block>,
         validator_id: u64, 
         exit: exit_future::Exit
     ) {
@@ -61,8 +63,19 @@ impl Proposer {
 
     /// Helper function. It waits for a future to complete and then delivers a value.
     async fn waiter(wait_for: CancelHandler, deliver: Stake) -> Stake {
-        let _ = wait_for.await;
-        deliver
+        let result = wait_for.await;
+        if let Ok(ack) = result {
+            if ack == "Ack" {
+                deliver
+            }
+            else {
+                // Not a normal ack. Something is wrong.
+                0
+            }
+        }
+        else {
+            0
+        }
     }
 
     async fn make_block(&mut self, round: Round, qc: QC, tc: Option<TC>) {

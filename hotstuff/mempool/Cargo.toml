@@ -18,6 +18,7 @@ exit-future = "0.2.0"
 crypto = { path = "../crypto" }
 store = { path = "../store" }
 network = { path = "../network" }
+utils = { path = "../utils" }
 
 [dev-dependencies]
 tokio-util = { version = "0.6.2", features= ["codec"] }

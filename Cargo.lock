@@ -888,6 +888,7 @@ dependencies = [
  "store 0.1.0",
  "thiserror",
  "tokio",
+ "utils",
 ]
 
 [[package]]
@@ -1440,6 +1441,7 @@ dependencies = [
  "tree_hash",
  "types",
  "url",
+ "utils",
  "validator_dir",
  "warp",
  "warp_utils",
@@ -3684,6 +3686,7 @@ dependencies = [
  "serde",
  "store 0.1.0",
  "tokio",
+ "utils",
 ]
 
 [[package]]
@@ -3968,6 +3971,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util 0.6.10",
+ "utils",
 ]
 
 [[package]]
@@ -6890,6 +6894,14 @@ name = "utf-8"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
+
+[[package]]
+name = "utils"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "tokio",
+]
 
 [[package]]
 name = "uuid"

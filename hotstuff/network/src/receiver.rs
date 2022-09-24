@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::sync::{Arc};
 use tokio::sync::{RwLock};
 use crate::dvf_message::DvfMessage;
+use futures::SinkExt;
 
 #[cfg(test)]
 #[path = "tests/receiver_tests.rs"]
@@ -91,8 +92,9 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                         }
                                     },
                                     None => {
-                                        // error!("Unhandled message: {:?}", dvf_message);
-                                        error!("Receive a message for validator {}, but no handler found! [{:?}]", validator_id, name);
+                                        // [zico] Constantly review this. For now, we sent back a message, which is different from a normal 'Ack' message
+                                        let _ = writer.send(Bytes::from("No handler found")).await;
+                                        error!("Receive a message for validator {}, but no handler found! [{:?}]", validator_id, name);                                    
                                     } 
                                 }
                             },

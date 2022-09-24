@@ -5,6 +5,9 @@ use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
 use network::CancelHandler;
 use tokio::sync::mpsc::{Receiver, Sender};
+use utils::monitored_channel::MonitoredSender;
+use tokio::time::{sleep, Duration, timeout};
+use log::{warn};
 
 #[cfg(test)]
 #[path = "tests/quorum_waiter_tests.rs"]
@@ -27,7 +30,7 @@ pub struct QuorumWaiter {
     /// Input Channel to receive commands.
     rx_message: Receiver<QuorumWaiterMessage>,
     /// Channel to deliver batches for which we have enough acknowledgements.
-    tx_batch: Sender<SerializedBatchMessage>,
+    tx_batch: MonitoredSender<SerializedBatchMessage>,
     exit: exit_future::Exit
 }
 
@@ -37,7 +40,7 @@ impl QuorumWaiter {
         committee: Committee,
         stake: Stake,
         rx_message: Receiver<QuorumWaiterMessage>,
-        tx_batch: Sender<Vec<u8>>,
+        tx_batch: MonitoredSender<Vec<u8>>,
         exit: exit_future::Exit
     ) {
         tokio::spawn(async move {
@@ -55,8 +58,19 @@ impl QuorumWaiter {
 
     /// Helper function. It waits for a future to complete and then delivers a value.
     async fn waiter(wait_for: CancelHandler, deliver: Stake) -> Stake {
-        let _ = wait_for.await;
-        deliver
+        let result = wait_for.await;
+        if let Ok(ack) = result {
+            if ack == "Ack" {
+                deliver
+            }
+            else {
+                // Not a normal ack. Something is wrong.
+                0
+            }
+        }
+        else {
+            0
+        }
     }
 
     /// Main loop.
@@ -77,25 +91,39 @@ impl QuorumWaiter {
                     // delivered and we send its digest to the consensus (that will include it into
                     // the dag). This should reduce the amount of synching.
                     let mut total_stake = self.stake;
-                    
-                    loop {
-                        let inner_exit = self.exit.clone();
-                        tokio::select! {
-                            Some(stake) = wait_for_quorum.next() => {
-                                total_stake += stake;
-                                if total_stake >= self.committee.quorum_threshold() {
-                                    self.tx_batch
-                                        .send(batch)
-                                        .await
-                                        .expect("Failed to deliver batch");
-                                    break;
+
+                    let tx_batch = self.tx_batch.clone();
+                    let committee = self.committee.clone();
+
+                    let wait_fut = tokio::spawn(async move {
+                        'wait: loop {
+                            match wait_for_quorum.next().await {
+                                Some(stake) => {
+                                    total_stake += stake;
+                                    if total_stake >= committee.quorum_threshold() {
+                                        tx_batch
+                                            .send(batch)
+                                            .await
+                                            .expect("Failed to deliver batch");
+                                        break 'wait;
+                                    }
                                 }
-                            },
-                            () = inner_exit => {
-                                break;
+                                None => {
+                                    break 'wait;
+                                }
                             }
                         }
+                    });
+
+                    // Drop the batch after 12 seconds. This is adapted to our scenario.
+                    match timeout(Duration::from_secs(12), wait_fut).await {
+                        Ok(_) => {
+                        }
+                        Err(_) => {
+                            warn!("Failed to broadcast batch: Timeout");
+                        }
                     }
+                    
                 },
                 () = exit => {
                     break;

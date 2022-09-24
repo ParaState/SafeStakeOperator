@@ -303,14 +303,22 @@ impl SigningMethod {
                     //         Err(Error::CommitteeSignFailed(format!("{:?}", e)))
                     //     }
                     // }
-                    let task_timeout = match signable_message {
-                        SignableMessage::SelectionProof(s) => {
-                            Duration::from_secs(spec.seconds_per_slot * (signing_context.epoch.end_slot(T::slots_per_epoch())-s+1).as_u64())
-                        }
-                        _ => {
-                            Duration::from_secs(spec.seconds_per_slot)
-                        }
-                    };
+
+                    // let task_timeout = match signable_message {
+                    //     SignableMessage::SelectionProof(s) => {
+                    //         Duration::from_secs(spec.seconds_per_slot * (signing_context.epoch.end_slot(T::slots_per_epoch())-s+1).as_u64())
+                    //     }
+                    //     _ => {
+                    //         Duration::from_secs(spec.seconds_per_slot)
+                    //     }
+                    // };
+
+                    // Should NOT take more than a slot duration for two reasons:
+                    // 1. if longer than slot duration, it might affect duty retrieval for other VAs (for example, previously,
+                    // I set this to be the epoch remaining time for selection proof, so bad committee (VA) might take several mintues
+                    // to timeout, making duties of other VAs outdated.)
+                    // 2. most duties should complete in a slot
+                    let task_timeout = Duration::from_secs(spec.seconds_per_slot / 2);
 
                     let work = dvf_signer.sign(signing_root);
                     let timeout = sleep(task_timeout);

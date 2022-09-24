@@ -21,6 +21,7 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use std::collections::HashMap;
 use crypto::Digest;
 use tokio::time::{sleep, Duration};
+use utils::monitored_channel::MonitoredSender;
 
 #[cfg(test)]
 #[path = "tests/core_tests.rs"]
@@ -36,8 +37,8 @@ pub struct Core {
     synchronizer: Synchronizer,
     rx_message: Receiver<ConsensusMessage>,
     rx_loopback: Receiver<Block>,
-    tx_proposer: Sender<ProposerMessage>,
-    tx_commit: Sender<Block>,
+    tx_proposer: MonitoredSender<ProposerMessage>,
+    tx_commit: MonitoredSender<Block>,
     round: Round,
     last_voted_round: Round,
     last_committed_round: Round,
@@ -66,8 +67,8 @@ impl Core {
         timeout_delay: u64,
         rx_message: Receiver<ConsensusMessage>,
         rx_loopback: Receiver<Block>,
-        tx_proposer: Sender<ProposerMessage>,
-        tx_commit: Sender<Block>,
+        tx_proposer: MonitoredSender<ProposerMessage>,
+        tx_commit: MonitoredSender<Block>,
         validator_id : u64,
         exit: exit_future::Exit
     ) {

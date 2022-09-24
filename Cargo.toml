@@ -28,6 +28,7 @@ types = { path = "lighthouse/consensus/types" }
 
 # hotstuff
 hscrypto = { path = "hotstuff/crypto", package="crypto"}
+hsutils = { path = "hotstuff/utils", package="utils"}
 store = { path = "hotstuff/store" }
 consensus = { path = "hotstuff/consensus" }
 mempool = { path = "hotstuff/mempool" }

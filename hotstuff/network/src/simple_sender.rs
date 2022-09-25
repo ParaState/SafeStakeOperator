@@ -12,6 +12,7 @@ use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::sync::RwLock;
+use tokio::time::{sleep, Duration};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
@@ -175,6 +176,9 @@ impl Connection {
                     "{}",
                     NetworkError::FailedToConnect(self.address, /* retry */ 0, e)
                 );
+                // If failed to connect, retry after 10 seconds. Any further message sent in these 10 seconds
+                // is ignored. This is fine for simple sender, which does not guarantee the receiver will receive the message. 
+                sleep(Duration::from_secs(10)).await;
                 return;
             }
         };

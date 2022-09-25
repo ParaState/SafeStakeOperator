@@ -6,7 +6,7 @@ use crypto::{Digest, PublicKey, SignatureService};
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
 use log::{debug, info};
-use network::{CancelHandler, ReliableSender, DvfMessage, VERSION};
+use network::{CancelHandler, ReliableSender, SimpleSender, DvfMessage, VERSION};
 use std::collections::HashSet;
 use tokio::sync::mpsc::{Receiver, Sender};
 use crypto::Hash;
@@ -27,7 +27,8 @@ pub struct Proposer {
     rx_message: Receiver<ProposerMessage>,
     tx_loopback: MonitoredSender<Block>,
     buffer: HashSet<Digest>,
-    network: ReliableSender,
+    // network: ReliableSender,
+    network: SimpleSender,
     validator_id: u64, 
     exit: exit_future::Exit
 }
@@ -52,7 +53,8 @@ impl Proposer {
                 rx_message,
                 tx_loopback,
                 buffer: HashSet::new(),
-                network: ReliableSender::new(),
+                // network: ReliableSender::new(),
+                network: SimpleSender::new(),
                 validator_id,
                 exit
             }
@@ -118,8 +120,11 @@ impl Proposer {
             .expect("Failed to serialize block");
         let dvf_message = DvfMessage {version: VERSION, validator_id: self.validator_id, message: message};
         let serialized_msg = bincode::serialize(&dvf_message).unwrap();
-        let handles = self
-            .network
+        // let handles = self
+        //     .network
+        //     .broadcast(addresses, Bytes::from(serialized_msg))
+        //     .await;
+        self.network
             .broadcast(addresses, Bytes::from(serialized_msg))
             .await;
 
@@ -129,23 +134,23 @@ impl Proposer {
             .await
             .expect("Failed to send block");
 
-        // Control system: Wait for 2f+1 nodes to acknowledge our block before continuing.
-        let mut wait_for_quorum: FuturesUnordered<_> = names
-            .into_iter()
-            .zip(handles.into_iter())
-            .map(|(name, handler)| {
-                let stake = self.committee.stake(&name);
-                Self::waiter(handler, stake)
-            })
-            .collect();
+        // // Control system: Wait for 2f+1 nodes to acknowledge our block before continuing.
+        // let mut wait_for_quorum: FuturesUnordered<_> = names
+        //     .into_iter()
+        //     .zip(handles.into_iter())
+        //     .map(|(name, handler)| {
+        //         let stake = self.committee.stake(&name);
+        //         Self::waiter(handler, stake)
+        //     })
+        //     .collect();
 
-        let mut total_stake = self.committee.stake(&self.name);
-        while let Some(stake) = wait_for_quorum.next().await {
-            total_stake += stake;
-            if total_stake >= self.committee.quorum_threshold() {
-                break;
-            }
-        }
+        // let mut total_stake = self.committee.stake(&self.name);
+        // while let Some(stake) = wait_for_quorum.next().await {
+        //     total_stake += stake;
+        //     if total_stake >= self.committee.quorum_threshold() {
+        //         break;
+        //     }
+        // }
     }
 
     async fn run(&mut self) {

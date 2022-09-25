@@ -471,17 +471,19 @@ impl Core {
     }
 
     async fn cleanup_proposer(&mut self, b0: &Block, b1: &Block, block: &Block) {
-        let digests = b0
+        let digests: Vec<Digest> = b0
             .payload
             .iter()
             .cloned()
             .chain(b1.payload.iter().cloned())
             .chain(block.payload.iter().cloned())
             .collect();
-        self.tx_proposer
-            .send(ProposerMessage::Cleanup(digests))
-            .await
-            .expect("Failed to send message to proposer");
+        if !digests.is_empty() {
+            self.tx_proposer
+                .send(ProposerMessage::Cleanup(digests))
+                .await
+                .expect("Failed to send message to proposer");
+        }
     }
 
     // async fn cleanup_proposer(&mut self, b0: &Block, block: &Block) {

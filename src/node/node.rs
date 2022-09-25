@@ -3,7 +3,7 @@ use hsconfig::{ConfigError, Secret};
 use log::{info, error};
 use consensus::{ConsensusReceiverHandler};
 use mempool::{TxReceiverHandler, MempoolReceiverHandler};
-use network::{Receiver as NetworkReceiver};
+use network::{Receiver as NetworkReceiver, VERSION};
 use std::sync::{Arc};
 use std::collections::{HashMap, HashSet};
 use tokio::sync::RwLock;
@@ -65,6 +65,7 @@ impl<T: EthSpec> Node<T> {
         let secret = Node::<T>::open_or_create_secret(config.node_key_path.clone())?;
         
         info!("node public key {}", secret.name.encode_base64());
+        info!("dvf message version: {}", VERSION);
 
         let tx_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let mempool_handler_map = Arc::new(RwLock::new(HashMap::new()));

@@ -94,8 +94,8 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                     None => {
                                         // [zico] Constantly review this. For now, we sent back a message, which is different from a normal 'Ack' message
                                         let _ = writer.send(Bytes::from("No handler found")).await;
-                                        error!("Receive a message for validator {}, but no handler found! [{:?}]", validator_id, name);                                    
-                                    } 
+                                        error!("[VA {}] Receive a message, but no handler found! [{:?}]", validator_id, name);                                    
+                                    }
                                 }
                             },
                             Err(e) => {

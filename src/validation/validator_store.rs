@@ -848,7 +848,14 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         &self,
         pubkey: &PublicKey
     ) {
-        self.validators.write().delete_definition_and_keystore(pubkey).await.unwrap();
+        match self.validators.write().delete_definition_and_keystore(pubkey).await {
+            Ok(_) => {
+                info!("Success: delete definition and keystore {}", pubkey);
+            }
+            Err(e) => {
+                error!("Failure: delete definition and keystore {}", pubkey);
+            }
+        }
     }
 
     //pub fn is_duty_leader(&self, pubkey: &PublicKeyBytes, nonce: u64) -> bool {

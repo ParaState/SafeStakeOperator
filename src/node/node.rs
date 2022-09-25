@@ -171,7 +171,7 @@ impl<T: EthSpec> Node<T> {
                                 let validator_id = validator.id;
                                 // check validator exists
                                 let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
-                                info!("add validator {}", validator_pk);
+                                info!("[VA {}] adding validator {}", validator_id, validator_pk);
                                 let added_validator_dir = validator_dir.join(format!("{}", validator_pk));
                                 if added_validator_dir.exists() {
                                     continue;
@@ -305,12 +305,15 @@ impl<T: EthSpec> Node<T> {
                                                     keystore_share.master_id,
                                                     keystore_share.share_id, 
                                                 ).await;
+                                                info!("[VA {}] added validator {}", validator_id, validator_pk); 
                                             },
-                                            _ => {error!("validator added, node keystore is empty"); }
+                                            _ => {
+                                                error!("[VA {}] failed to add validator {}", validator_id, validator_pk); 
+                                            }
                                         }
                                     }, 
                                     None => {
-                                        error!("can't find validator's releated operators");
+                                        error!("[VA {}] can't find validator's releated operators", validator_id);
                                     }
                                 }
 
@@ -320,7 +323,7 @@ impl<T: EthSpec> Node<T> {
                                 let node = node.read();
                                 let validator_id = validator.id;
                                 let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
-                                info!("stop validator {}", validator_pk);
+                                info!("[VA {}] stopping validator {}...", validator_id, validator_pk);
                                 let base_dir = node.config.secrets_dir.parent().unwrap();
                                 // delete secret 
                                 let _ = node.tx_handler_map.write().await.remove(&validator_id);
@@ -362,7 +365,8 @@ impl<T: EthSpec> Node<T> {
                                     None => {
                                         error!("can't find validator's releated operators");
                                     }
-                                } 
+                                }
+                                info!("[VA {}] stopped validator {}", validator_id, validator_pk); 
                             }
                         }
                     }
@@ -374,12 +378,5 @@ impl<T: EthSpec> Node<T> {
             }
         });
     }
-
-    //pub async fn process_dvfinfo(&mut self) {
-        //while let Some(dvfinfo) = self.rx_dvfinfo.recv().await {
-            //// This is where we can further process committed block.
-            //info!("received validator {}", dvfinfo.validator_id);
-        //}
-      //}
 }
 

@@ -13,7 +13,7 @@ use bytes::Bytes;
 use crypto::Hash as _;
 use crypto::{PublicKey, SignatureService};
 use log::{debug, error, info, warn};
-use network::{SimpleSender, DvfMessage};
+use network::{SimpleSender, DvfMessage, VERSION};
 use std::cmp::max;
 use std::collections::VecDeque;
 use store::Store;
@@ -352,7 +352,7 @@ impl Core {
             .collect();
         let message = bincode::serialize(&ConsensusMessage::Timeout(timeout.clone()))
             .expect("Failed to serialize timeout message");
-        let dvf_message = DvfMessage { validator_id: self.validator_id, message: message};
+        let dvf_message = DvfMessage { version: VERSION, validator_id: self.validator_id, message: message};
         let serialized_msg = bincode::serialize(&dvf_message).unwrap();
         debug!("[CORE] Broacasting to {:?}", addresses);
         self.network
@@ -433,7 +433,7 @@ impl Core {
                 .collect();
             let message = bincode::serialize(&ConsensusMessage::TC(tc.clone()))
                 .expect("Failed to serialize timeout certificate");
-            let dvf_message = DvfMessage { validator_id: self.validator_id, message: message};
+            let dvf_message = DvfMessage { version: VERSION, validator_id: self.validator_id, message: message};
             let serialized_msg = bincode::serialize(&dvf_message).unwrap();
             debug!("[CORE] Broacasting to {:?}", addresses);
             self.network
@@ -619,7 +619,7 @@ impl Core {
                 .collect();
             let message = bincode::serialize(&ConsensusMessage::Vote(vote))
                 .expect("Failed to serialize vote");
-            let dvf_message = DvfMessage { validator_id: self.validator_id, message: message};
+            let dvf_message = DvfMessage { version: VERSION, validator_id: self.validator_id, message: message};
             let serialized_msg = bincode::serialize(&dvf_message).unwrap();
             self.network.broadcast(addresses, Bytes::from(serialized_msg)).await;
         }

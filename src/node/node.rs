@@ -352,7 +352,7 @@ impl<T: EthSpec> Node<T> {
                                         let password_file_dir = secret_dir.join(password_file_name);
                                         if password_file_dir.exists() {
                                             remove_file(&password_file_dir).unwrap();
-                                            info!("[VA {}] removed file {:?}", password_file_dir, validator_id);
+                                            info!("[VA {}] removed file {:?}", validator_id, password_file_dir);
                                             break;
                                         }
                                     }

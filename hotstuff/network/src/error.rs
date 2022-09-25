@@ -22,4 +22,7 @@ pub enum NetworkError {
 
     #[error("Receive unexpected ACK from {0}")]
     UnexpectedAck(SocketAddr),
+
+    #[error("Version mismatch: got ({0}), expected ({1})")]
+    VersionMismatch(u64, u64),
 }

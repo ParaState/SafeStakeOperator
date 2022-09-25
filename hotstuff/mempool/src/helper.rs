@@ -2,7 +2,7 @@ use crate::config::Committee;
 use bytes::Bytes;
 use crypto::{Digest, PublicKey};
 use log::{error, warn, debug};
-use network::{SimpleSender, DvfMessage};
+use network::{SimpleSender, DvfMessage, VERSION};
 use store::Store;
 use tokio::sync::mpsc::Receiver;
 
@@ -66,7 +66,7 @@ impl Helper {
                     for digest in digests {
                         match self.store.read(digest.to_vec()).await {
                             Ok(Some(data)) => {
-                                let dvf_message = DvfMessage { validator_id: self.validator_id, message: data};
+                                let dvf_message = DvfMessage { version: VERSION, validator_id: self.validator_id, message: data};
                                 let serialized_msg = bincode::serialize(&dvf_message).unwrap();
                                 debug!("[MemHELPER] Sending to {:?}", address);
                                 self.network.feed(address, Bytes::from(serialized_msg)).await

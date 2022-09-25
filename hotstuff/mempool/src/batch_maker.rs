@@ -8,7 +8,7 @@ use crypto::PublicKey;
 use ed25519_dalek::{Digest as _, Sha512};
 #[cfg(feature = "benchmark")]
 use log::info;
-use network::{ReliableSender, DvfMessage};
+use network::{ReliableSender, DvfMessage, VERSION};
 #[cfg(feature = "benchmark")]
 use std::convert::TryInto as _;
 use std::net::SocketAddr;
@@ -154,7 +154,7 @@ impl BatchMaker {
 
         // Broadcast the batch through the network.
         let (names, addresses): (Vec<_>, _) = self.mempool_addresses.iter().cloned().unzip();
-        let dvf_message = DvfMessage { validator_id: self.validator_id, message: serialized.clone()};
+        let dvf_message = DvfMessage { version: VERSION, validator_id: self.validator_id, message: serialized.clone()};
         let serialized_msg = bincode::serialize(&dvf_message).unwrap();
         let handlers = self.network.broadcast(addresses, Bytes::from(serialized_msg)).await;
 

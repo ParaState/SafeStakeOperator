@@ -6,7 +6,7 @@ use crypto::{Digest, PublicKey, SignatureService};
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
 use log::{debug, info};
-use network::{CancelHandler, ReliableSender, DvfMessage};
+use network::{CancelHandler, ReliableSender, DvfMessage, VERSION};
 use std::collections::HashSet;
 use tokio::sync::mpsc::{Receiver, Sender};
 use crypto::Hash;
@@ -103,7 +103,7 @@ impl Proposer {
             }
         }
         else {
-            debug!("Created empty {}", block);
+            debug!("[VA {}] Created empty {} ({})", self.validator_id, block, block.digest());
         }
 
         // Broadcast our new block.
@@ -116,22 +116,18 @@ impl Proposer {
             .unzip();
         let message = bincode::serialize(&ConsensusMessage::Propose(block.clone()))
             .expect("Failed to serialize block");
-        let dvf_message = DvfMessage { validator_id: self.validator_id, message: message};
+        let dvf_message = DvfMessage {version: VERSION, validator_id: self.validator_id, message: message};
         let serialized_msg = bincode::serialize(&dvf_message).unwrap();
         let handles = self
             .network
             .broadcast(addresses, Bytes::from(serialized_msg))
             .await;
 
-        debug!("[VA {}] makeblock before loopback", self.validator_id);
-
         // Send our block to the core for processing.
         self.tx_loopback
             .send(block)
             .await
             .expect("Failed to send block");
-
-        debug!("[VA {}] makeblock after loopback", self.validator_id);
 
         // Control system: Wait for 2f+1 nodes to acknowledge our block before continuing.
         let mut wait_for_quorum: FuturesUnordered<_> = names
@@ -150,7 +146,6 @@ impl Proposer {
                 break;
             }
         }
-        debug!("[VA {}] makeblock end of block broadcast", self.validator_id);
     }
 
     async fn run(&mut self) {

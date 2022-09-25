@@ -850,10 +850,12 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
     ) {
         match self.validators.write().delete_definition_and_keystore(pubkey).await {
             Ok(_) => {
-                info!("Success: delete definition and keystore {}", pubkey);
+                info!(self.log, "stop validator keystore";
+                "msg" => format!("Success: delete definition and keystore {:?}", pubkey));
             }
             Err(e) => {
-                error!("Failure: delete definition and keystore {}", pubkey);
+                error!(self.log, "stop validator keystore";
+                "msg" => format!("Failure: delete definition and keystore {:?}", pubkey));
             }
         }
     }

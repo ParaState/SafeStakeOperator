@@ -12,7 +12,7 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use std::collections::HashMap;
 use std::sync::{Arc};
 use tokio::sync::{RwLock};
-use crate::dvf_message::DvfMessage;
+use crate::dvf_message::{DvfMessage, VERSION};
 use futures::SinkExt;
 
 #[cfg(test)]
@@ -73,6 +73,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
         let name = self.name.clone();
 
         tokio::spawn(async move {
+            let mut handler_opt: Option<Handler> = None;
             let transport = Framed::new(socket, LengthDelimitedCodec::new());
             let (mut writer, mut reader) = transport.split();
             while let Some(frame) = reader.next().await {
@@ -82,7 +83,17 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                         match bincode::deserialize::<DvfMessage>(&message[..]) {
                             Ok(dvf_message) => {
                                 let validator_id = dvf_message.validator_id;
-                                match handler_map.read().await.get(&validator_id) {
+                                let version = dvf_message.version;
+                                if version != VERSION {
+                                    error!("[VA {}] Version mismatch: got ({}), expected ({})", validator_id, version, VERSION);
+                                    return;
+                                }
+                                
+                                if handler_opt.is_none() {
+                                    let handler_map_lock = handler_map.read().await;
+                                    handler_opt = handler_map_lock.get(&validator_id).cloned();
+                                }                                
+                                match handler_opt.as_ref() {
                                     Some(handler) => {
                                         // trunctate the prefix
                                         let msg = dvf_message.message;
@@ -93,8 +104,10 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                     },
                                     None => {
                                         // [zico] Constantly review this. For now, we sent back a message, which is different from a normal 'Ack' message
-                                        let _ = writer.send(Bytes::from("No handler found")).await;
-                                        error!("[VA {}] Receive a message, but no handler found! [{:?}]", validator_id, name);                                    
+                                        // let _ = writer.send(Bytes::from("No handler found")).await;
+                                        error!("[VA {}] Receive a message, but no handler found! [{:?}]", validator_id, name);
+                                        // Kill the connection. This is important to let a reliable sender to resend the message.
+                                        return;
                                     }
                                 }
                             },

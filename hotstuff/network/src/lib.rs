@@ -14,3 +14,4 @@ pub use crate::receiver::{MessageHandler, Receiver, Writer};
 pub use crate::reliable_sender::{CancelHandler, ReliableSender};
 pub use crate::simple_sender::SimpleSender;
 pub use crate::dvf_message::DvfMessage;
+pub use crate::dvf_message::VERSION;

@@ -1,7 +1,7 @@
 use types::{Hash256, Signature, Keypair, PublicKey};
 use std::sync::Arc;
 use crate::utils::error::DvfError;
-use network::{ReliableSender, SimpleSender, DvfMessage};
+use network::{ReliableSender, SimpleSender, DvfMessage, VERSION};
 use std::net::SocketAddr;
 use bytes::Bytes;
 use downcast_rs::DowncastSync;
@@ -42,7 +42,7 @@ impl TOperator for LocalOperator {
 
     async fn propose(&self, msg: Hash256) {
         info!("[Dvf {}/{}] Proposing msg {}", self.operator_id, self.validator_id, msg);
-        let dvf_message = DvfMessage { validator_id: self.validator_id, message: msg.to_fixed_bytes().to_vec()};
+        let dvf_message = DvfMessage { version: VERSION, validator_id: self.validator_id, message: msg.to_fixed_bytes().to_vec()};
         self.network.send(self.transaction_address, Bytes::from(bincode::serialize(&dvf_message).unwrap())).await;
     }
 }
@@ -73,7 +73,7 @@ impl TOperator for RemoteOperator {
         let n_try: u64 = 3;
         let timeout_mill :u64 = 400;
         // Err(DvfError::Unknown)
-        let dvf_message = DvfMessage { validator_id: self.validator_id, message: msg.to_fixed_bytes().to_vec()};
+        let dvf_message = DvfMessage { version: VERSION, validator_id: self.validator_id, message: msg.to_fixed_bytes().to_vec()};
         let serialize_msg = bincode::serialize(&dvf_message).unwrap();
         for i in 0..n_try {
             let next_try_instant = Instant::now() + Duration::from_millis(timeout_mill);

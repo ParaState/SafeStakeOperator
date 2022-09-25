@@ -8,7 +8,7 @@ use crypto::{Digest, PublicKey};
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
 use log::{debug, error, info, warn};
-use network::{SimpleSender, DvfMessage};
+use network::{SimpleSender, DvfMessage, VERSION};
 use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 use store::Store;
@@ -74,7 +74,7 @@ impl Synchronizer {
                                 let message = ConsensusMessage::SyncRequest(parent, name);
                                 let message = bincode::serialize(&message)
                                     .expect("Failed to serialize sync request");
-                                let dvf_message = DvfMessage { validator_id: validator_id, message: message};
+                                let dvf_message = DvfMessage { version: VERSION, validator_id: validator_id, message: message};
                                 let serialized_msg = bincode::serialize(&dvf_message).unwrap();
                                 debug!("[SYNC] Sending to {:?}", address);
                                 network.feed(address, Bytes::from(serialized_msg)).await;
@@ -118,7 +118,7 @@ impl Synchronizer {
                                         let message = ConsensusMessage::SyncRequest(digest.clone(), name);
                                         let message = bincode::serialize(&message)
                                             .expect("Failed to serialize sync request");
-                                        let dvf_message = DvfMessage { validator_id: validator_id, message: message};
+                                        let dvf_message = DvfMessage { version: VERSION, validator_id: validator_id, message: message};
                                         let serialized_msg = bincode::serialize(&dvf_message).unwrap();
                                         debug!("[SYNC] Broacasting to {:?}", addresses);
                                         network.broadcast_feed(addresses.clone(), Bytes::from(serialized_msg)).await;

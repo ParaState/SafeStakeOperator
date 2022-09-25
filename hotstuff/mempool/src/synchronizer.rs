@@ -5,7 +5,7 @@ use crypto::{Digest, PublicKey};
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
 use log::{debug, error, info, warn};
-use network::{SimpleSender, DvfMessage};
+use network::{SimpleSender, DvfMessage, VERSION};
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use store::{Store, StoreError};
@@ -150,7 +150,7 @@ impl Synchronizer {
                         let message = MempoolMessage::BatchRequest(missing, self.name);
                         let serialized = bincode::serialize(&message).expect("Failed to serialize our own message");
                         
-                        let dvf_message = DvfMessage { validator_id: self.validator_id, message: serialized};
+                        let dvf_message = DvfMessage { version: VERSION, validator_id: self.validator_id, message: serialized};
                         let serialized_msg = bincode::serialize(&dvf_message).unwrap();
                         debug!("[MemSYNC] Sending to {:?}", address);
                         self.network.feed(address, Bytes::from(serialized_msg)).await;
@@ -214,7 +214,7 @@ impl Synchronizer {
                             if !retry.is_empty() {
                                 let message = MempoolMessage::BatchRequest(retry, self.name);
                                 let serialized = bincode::serialize(&message).expect("Failed to serialize our own message");
-                                let dvf_message = DvfMessage { validator_id: self.validator_id, message: serialized};
+                                let dvf_message = DvfMessage { version: VERSION, validator_id: self.validator_id, message: serialized};
                                 let serialized_msg = bincode::serialize(&dvf_message).unwrap();
                                 info!("[MemSYNC] Lucky broacasting to {:?}", addresses);
                                 self.network

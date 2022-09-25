@@ -258,7 +258,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         start_fallback_updater_service(context.clone(), beacon_nodes.clone())?;
 
         loop {
-            if beacon_nodes.num_synced_fallback().await == 0 {
+            if beacon_nodes.num_synced().await == 0 {
                 warn!(log, 
                     "beancon node unsynced";
                     "action" => "Automatically re-check after 1 minute. You can safely close this program and re-run it after making sure your beacon node instance is synced."

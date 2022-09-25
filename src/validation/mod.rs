@@ -270,6 +270,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
                     "beacon node is synced";
                     "action" => "Moving on to further initialization steps..."
                 );
+                break;
             }
         }
 

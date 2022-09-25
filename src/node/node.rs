@@ -345,28 +345,41 @@ impl<T: EthSpec> Node<T> {
                                 if deleted_validator_dir.exists() {
                                     remove_dir_all(&deleted_validator_dir).unwrap();
                                 }
-                                let validator_operators = validator_operators_map.read().await;
-                                let operators_vec = validator_operators.get(&validator_id);
-                                match operators_vec {
-                                    Some(operators) => {
-                                        for operator in operators {
-                                            let node_pk = hscrypto::PublicKey(operator.node_public_key.clone().try_into().unwrap()); 
-                                            if *self_pk == node_pk {
-                                                let operator_id = operator.id;
-                                                let password_file_name = format!("{}_{}", validator_pk, operator_id);
-                                                let password_file_dir = secret_dir.join(password_file_name);
-                                                if password_file_dir.exists() {
-                                                    remove_file(&password_file_dir).unwrap();
-                                                }
-                                                break;
-                                            }
+                                for password_file in secret_dir.read_dir().unwrap() {
+                                    let password_file_name = password_file.unwrap().file_name().into_string().unwrap();
+                                    let validator_pk_prefix = format!("{}", validator_pk);
+                                    if password_file_name.starts_with(&validator_pk_prefix) {
+                                        let password_file_dir = secret_dir.join(password_file_name);
+                                        if password_file_dir.exists() {
+                                            remove_file(&password_file_dir).unwrap();
+                                            info!("[VA {}] removed file {:?}", password_file_dir, validator_id);
+                                            break;
                                         }
-                                    }
-                                    None => {
-                                        error!("can't find validator's releated operators");
                                     }
                                 }
                                 info!("[VA {}] stopped validator {}", validator_id, validator_pk); 
+
+                                // let validator_operators = validator_operators_map.read().await;
+                                // let operators_vec = validator_operators.get(&validator_id);
+                                // match operators_vec {
+                                //     Some(operators) => {
+                                //         for operator in operators {
+                                //             let node_pk = hscrypto::PublicKey(operator.node_public_key.clone().try_into().unwrap()); 
+                                //             if *self_pk == node_pk {
+                                //                 let operator_id = operator.id;
+                                //                 let password_file_name = format!("{}_{}", validator_pk, operator_id);
+                                //                 let password_file_dir = secret_dir.join(password_file_name);
+                                //                 if password_file_dir.exists() {
+                                //                     remove_file(&password_file_dir).unwrap();
+                                //                 }
+                                //                 break;
+                                //             }
+                                //         }
+                                //     }
+                                //     None => {
+                                //         error!("can't find validator's releated operators");
+                                //     }
+                                // } 
                             }
                         }
                     }

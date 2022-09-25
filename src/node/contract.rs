@@ -283,6 +283,7 @@ impl ListenContract {
     if let token::Token::Array(operators) = &eth_log.params[2].value {
 
       let mut included_self = false;
+      let mut self_operator_id: u64 = 0;
       // check self is added to a validator
       let operators_list : Vec<Operator> = operators.into_iter().map(|operator_tuple| {
         let operator = match operator_tuple {
@@ -297,6 +298,7 @@ impl ListenContract {
             };
             if &self.node_public_key == node_public_key.unwrap() {
               included_self = true;
+              self_operator_id = id.unwrap() + 1
             }
 
             // check self is included in the list 
@@ -375,7 +377,7 @@ impl ListenContract {
     // check self is included in this validators
     match self.validators_map.write().await.remove(&validator_id) {
       Some(validator) => {
-        let _ = self.channel.send(ValidatorCommand::Stop (validator)).await;
+        let _ = self.channel.send(ValidatorCommand::Stop(validator)).await;
       }, 
       None => {
         let validator = Validator {

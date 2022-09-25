@@ -87,7 +87,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                         // trunctate the prefix
                                         let msg = dvf_message.message;
                                         if let Err(e) = handler.dispatch(&mut writer, Bytes::from(msg)).await {
-                                            warn!("{}", e);
+                                            error!("[VA {}] Handler dispatch error ({})", validator_id, e);
                                             return;
                                         }
                                     },

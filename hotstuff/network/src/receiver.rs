@@ -85,6 +85,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                 let validator_id = dvf_message.validator_id;
                                 let version = dvf_message.version;
                                 if version != VERSION {
+                                    let _ = writer.send(Bytes::from("Version mismatch")).await;
                                     error!("[VA {}] Version mismatch: got ({}), expected ({})", validator_id, version, VERSION);
                                     return;
                                 }
@@ -104,7 +105,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                     },
                                     None => {
                                         // [zico] Constantly review this. For now, we sent back a message, which is different from a normal 'Ack' message
-                                        // let _ = writer.send(Bytes::from("No handler found")).await;
+                                        let _ = writer.send(Bytes::from("No handler found")).await;
                                         error!("[VA {}] Receive a message, but no handler found! [{:?}]", validator_id, name);
                                         // Kill the connection. This is important to let a reliable sender to resend the message.
                                         return;
@@ -112,6 +113,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                 }
                             },
                             Err(e) => {
+                                let _ = writer.send(Bytes::from("Invalid message")).await;
                                 warn!("can't deserialize {}", e);
                                 return;
                             }

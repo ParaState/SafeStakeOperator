@@ -261,8 +261,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             if beacon_nodes.num_synced_fallback().await == 0 {
                 warn!(log, 
                     "beancon node unsynced";
-                    "action" => "Automatically re-check after 1 minute. You can safely close this program and 
-                        re-run it after making sure your beacon node instance is synced."
+                    "action" => "Automatically re-check after 1 minute. You can safely close this program and re-run it after making sure your beacon node instance is synced."
                 );
                 sleep(Duration::from_secs(60)).await;
             }

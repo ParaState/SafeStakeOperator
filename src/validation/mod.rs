@@ -162,6 +162,118 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             );
         };
 
+
+        let last_beacon_node_index = config
+        .beacon_nodes
+        .len()
+        .checked_sub(1)
+        .ok_or_else(|| "No beacon nodes defined.".to_string())?;
+
+        let beacon_nodes: Vec<BeaconNodeHttpClient> = config
+        .beacon_nodes
+        .iter()
+        .enumerate()
+        .map(|(i, url)| {
+            let slot_duration = Duration::from_secs(context.eth2_config.spec.seconds_per_slot);
+
+            let mut beacon_node_http_client_builder = ClientBuilder::new();
+
+            // Add new custom root certificates if specified.
+            if let Some(certificates) = &config.beacon_nodes_tls_certs {
+                for cert in certificates {
+                    beacon_node_http_client_builder = beacon_node_http_client_builder
+                        .add_root_certificate(load_pem_certificate(cert)?);
+                }
+            }
+
+            let beacon_node_http_client = beacon_node_http_client_builder
+                // Set default timeout to be the full slot duration.
+                .timeout(slot_duration)
+                .build()
+                .map_err(|e| format!("Unable to build HTTP client: {:?}", e))?;
+
+            // Use quicker timeouts if a fallback beacon node exists.
+            let timeouts = if i < last_beacon_node_index && !config.use_long_timeouts {
+                info!(
+                    log,
+                    "Fallback endpoints are available, using optimized timeouts.";
+                );
+                Timeouts {
+                    attestation: slot_duration / HTTP_ATTESTATION_TIMEOUT_QUOTIENT,
+                    attester_duties: slot_duration / HTTP_ATTESTER_DUTIES_TIMEOUT_QUOTIENT,
+                    liveness: slot_duration / HTTP_LIVENESS_TIMEOUT_QUOTIENT,
+                    proposal: slot_duration / HTTP_PROPOSAL_TIMEOUT_QUOTIENT,
+                    proposer_duties: slot_duration / HTTP_PROPOSER_DUTIES_TIMEOUT_QUOTIENT,
+                    sync_committee_contribution: slot_duration
+                        / HTTP_SYNC_COMMITTEE_CONTRIBUTION_TIMEOUT_QUOTIENT,
+                    sync_duties: slot_duration / HTTP_SYNC_DUTIES_TIMEOUT_QUOTIENT,
+                }
+            } else {
+                Timeouts::set_all(slot_duration)
+            };
+
+            Ok(BeaconNodeHttpClient::from_components(
+                url.clone(),
+                beacon_node_http_client,
+                timeouts,
+            ))
+        })
+        .collect::<Result<Vec<BeaconNodeHttpClient>, String>>()?;
+
+        let num_nodes = beacon_nodes.len();
+        let candidates = beacon_nodes
+            .into_iter()
+            .map(CandidateBeaconNode::new)
+            .collect();
+
+        // Set the count for beacon node fallbacks excluding the primary beacon node.
+        set_gauge(
+            &http_metrics::metrics::ETH2_FALLBACK_CONFIGURED,
+            num_nodes.saturating_sub(1) as i64,
+        );
+        // Initialize the number of connected, synced fallbacks to 0.
+        set_gauge(&http_metrics::metrics::ETH2_FALLBACK_CONNECTED, 0);
+        let mut beacon_nodes: BeaconNodeFallback<_, T> =
+            BeaconNodeFallback::new(candidates, context.eth2_config.spec.clone(), log.clone());
+
+        // Perform some potentially long-running initialization tasks.
+        let (genesis_time, genesis_validators_root) = tokio::select! {
+            tuple = init_from_beacon_node(&beacon_nodes, &context) => tuple?,
+            () = context.executor.exit() => return Err("Shutting down".to_string())
+        };
+
+        // Update the metrics server.
+        if let Some(ctx) = &http_metrics_ctx {
+            ctx.shared.write().genesis_time = Some(genesis_time);
+        }
+
+        let slot_clock = SystemTimeSlotClock::new(
+            context.eth2_config.spec.genesis_slot,
+            Duration::from_secs(genesis_time),
+            Duration::from_secs(context.eth2_config.spec.seconds_per_slot),
+        );
+
+        beacon_nodes.set_slot_clock(slot_clock.clone());
+        let beacon_nodes = Arc::new(beacon_nodes);
+        start_fallback_updater_service(context.clone(), beacon_nodes.clone())?;
+
+        loop {
+            if beacon_nodes.num_synced_fallback().await == 0 {
+                warn!(log, 
+                    "beancon node unsynced";
+                    "action" => "Automatically re-check after 1 minute. You can safely close this program and 
+                        re-run it after making sure your beacon node instance is synced."
+                );
+                sleep(Duration::from_secs(60)).await;
+            }
+            else {
+                info!(log, 
+                    "beacon node is synced";
+                    "action" => "Moving on to further initialization steps..."
+                );
+            }
+        }
+
         let mut validator_defs = ValidatorDefinitions::open_or_create(&config.validator_dir)
             .map_err(|e| format!("Unable to open or create validator definitions: {:?}", e))?;
 
@@ -254,99 +366,8 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
                 })?;
         }
 
-        let last_beacon_node_index = config
-            .beacon_nodes
-            .len()
-            .checked_sub(1)
-            .ok_or_else(|| "No beacon nodes defined.".to_string())?;
 
-        let beacon_nodes: Vec<BeaconNodeHttpClient> = config
-            .beacon_nodes
-            .iter()
-            .enumerate()
-            .map(|(i, url)| {
-                let slot_duration = Duration::from_secs(context.eth2_config.spec.seconds_per_slot);
 
-                let mut beacon_node_http_client_builder = ClientBuilder::new();
-
-                // Add new custom root certificates if specified.
-                if let Some(certificates) = &config.beacon_nodes_tls_certs {
-                    for cert in certificates {
-                        beacon_node_http_client_builder = beacon_node_http_client_builder
-                            .add_root_certificate(load_pem_certificate(cert)?);
-                    }
-                }
-
-                let beacon_node_http_client = beacon_node_http_client_builder
-                    // Set default timeout to be the full slot duration.
-                    .timeout(slot_duration)
-                    .build()
-                    .map_err(|e| format!("Unable to build HTTP client: {:?}", e))?;
-
-                // Use quicker timeouts if a fallback beacon node exists.
-                let timeouts = if i < last_beacon_node_index && !config.use_long_timeouts {
-                    info!(
-                        log,
-                        "Fallback endpoints are available, using optimized timeouts.";
-                    );
-                    Timeouts {
-                        attestation: slot_duration / HTTP_ATTESTATION_TIMEOUT_QUOTIENT,
-                        attester_duties: slot_duration / HTTP_ATTESTER_DUTIES_TIMEOUT_QUOTIENT,
-                        liveness: slot_duration / HTTP_LIVENESS_TIMEOUT_QUOTIENT,
-                        proposal: slot_duration / HTTP_PROPOSAL_TIMEOUT_QUOTIENT,
-                        proposer_duties: slot_duration / HTTP_PROPOSER_DUTIES_TIMEOUT_QUOTIENT,
-                        sync_committee_contribution: slot_duration
-                            / HTTP_SYNC_COMMITTEE_CONTRIBUTION_TIMEOUT_QUOTIENT,
-                        sync_duties: slot_duration / HTTP_SYNC_DUTIES_TIMEOUT_QUOTIENT,
-                    }
-                } else {
-                    Timeouts::set_all(slot_duration)
-                };
-
-                Ok(BeaconNodeHttpClient::from_components(
-                    url.clone(),
-                    beacon_node_http_client,
-                    timeouts,
-                ))
-            })
-            .collect::<Result<Vec<BeaconNodeHttpClient>, String>>()?;
-
-        let num_nodes = beacon_nodes.len();
-        let candidates = beacon_nodes
-            .into_iter()
-            .map(CandidateBeaconNode::new)
-            .collect();
-
-        // Set the count for beacon node fallbacks excluding the primary beacon node.
-        set_gauge(
-            &http_metrics::metrics::ETH2_FALLBACK_CONFIGURED,
-            num_nodes.saturating_sub(1) as i64,
-        );
-        // Initialize the number of connected, synced fallbacks to 0.
-        set_gauge(&http_metrics::metrics::ETH2_FALLBACK_CONNECTED, 0);
-        let mut beacon_nodes: BeaconNodeFallback<_, T> =
-            BeaconNodeFallback::new(candidates, context.eth2_config.spec.clone(), log.clone());
-
-        // Perform some potentially long-running initialization tasks.
-        let (genesis_time, genesis_validators_root) = tokio::select! {
-            tuple = init_from_beacon_node(&beacon_nodes, &context) => tuple?,
-            () = context.executor.exit() => return Err("Shutting down".to_string())
-        };
-
-        // Update the metrics server.
-        if let Some(ctx) = &http_metrics_ctx {
-            ctx.shared.write().genesis_time = Some(genesis_time);
-        }
-
-        let slot_clock = SystemTimeSlotClock::new(
-            context.eth2_config.spec.genesis_slot,
-            Duration::from_secs(genesis_time),
-            Duration::from_secs(context.eth2_config.spec.seconds_per_slot),
-        );
-
-        beacon_nodes.set_slot_clock(slot_clock.clone());
-        let beacon_nodes = Arc::new(beacon_nodes);
-        start_fallback_updater_service(context.clone(), beacon_nodes.clone())?;
 
         let doppelganger_service = if config.enable_doppelganger_protection {
             Some(Arc::new(DoppelgangerService::new(

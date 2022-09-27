@@ -26,6 +26,6 @@ pub enum NetworkError {
     #[error("Version mismatch: got ({0}), expected ({1})")]
     VersionMismatch(u64, u64),
 
-    #[error("Tokio sender channel is closed")]
-    TokioChannelClosed,
+    #[error("Tokio sender channel is closed for {0}")]
+    TokioChannelClosed(SocketAddr),
 }

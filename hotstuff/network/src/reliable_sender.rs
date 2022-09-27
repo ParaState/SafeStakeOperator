@@ -180,7 +180,7 @@ impl Connection {
                     let error = self.keep_alive(stream).await;
                     warn!("{}", error);
                     match error {
-                        NetworkError::TokioChannelClosed => {
+                        NetworkError::TokioChannelClosed(_) => {
                             return;
                         }
                         _ => {}
@@ -198,11 +198,6 @@ impl Connection {
                             () = &mut timer => {
                                 delay = min(2*delay, 60_000);
                                 retry +=1;
-                                // There is no need to retry connecting after a long time in our scenario.
-                                // Messages that have are in buffer will simply be dropped and never get a reply.
-                                if retry > 10 {
-                                    return;
-                                } 
                                 break 'waiter;
                             },
 
@@ -273,7 +268,7 @@ impl Connection {
                         None => {
                             // Channel has been closed. This only happens when the reliable sender is dropped.
                             // Therefore, no one cares about the replies any more, just return.
-                            break 'connection NetworkError::TokioChannelClosed;
+                            break 'connection NetworkError::TokioChannelClosed(self.address);
                         }
                     }
                 }
@@ -297,7 +292,7 @@ impl Connection {
                     }
                 },
                 () = exit => {
-                    break 'connection NetworkError::TokioChannelClosed;
+                    break 'connection NetworkError::TokioChannelClosed(self.address);
                 }
             }
         };

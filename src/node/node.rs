@@ -1,6 +1,6 @@
 use hsconfig::Export as _;
 use hsconfig::{ConfigError, Secret};
-use log::{info, error};
+use log::{info, error, warn};
 use consensus::{ConsensusReceiverHandler};
 use mempool::{TxReceiverHandler, MempoolReceiverHandler};
 use network::{Receiver as NetworkReceiver, VERSION};
@@ -434,8 +434,11 @@ pub fn cleanup_password_dir(secret_dir: &Path, validator_pk: &PublicKey, validat
             let password_file_dir = secret_dir.join(password_file_name);
             if password_file_dir.exists() {
                 remove_file(&password_file_dir).map_err(|e| format!("[VA {}] Failed to delete password file ({})", validator_id, e))?;
-                info!("[VA {}] removed file {:?}", validator_id, password_file_dir);
+                info!("[VA {}] removed password file {:?}", validator_id, password_file_dir);
                 break;
+            }
+            else {
+                warn!("[VA {}] password file does not exist: {:?}", validator_id, password_file_dir);
             }
         }
     }

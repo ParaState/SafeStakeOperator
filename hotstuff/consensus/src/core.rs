@@ -696,7 +696,10 @@ impl Core {
                 },
                 Some(block) = self.rx_loopback.recv() => {debug!("loopback");self.process_block(&block).await},
                 () = &mut self.timer => {debug!("timer");self.local_timeout_round().await},
-                () = exit => {break; }
+                () = exit => {
+                    info!("Shut down hotstuff core");
+                    break; 
+                }
             };
             match result {
                 Ok(()) => (),

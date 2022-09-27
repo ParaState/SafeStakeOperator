@@ -8,3 +8,4 @@ publish = false
 [dependencies]
 tokio = { version = "1.3.0", features = ["rt", "time", "macros", "sync"] }
 log = "0.4.0"
+exit-future = "0.2.0"

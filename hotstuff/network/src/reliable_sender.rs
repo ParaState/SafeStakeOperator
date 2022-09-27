@@ -31,11 +31,17 @@ pub type CancelHandler = oneshot::Receiver<Bytes>;
 /// We communicate with our 'connections' through a dedicated channel kept by the HashMap called `connections`.
 /// This sender is 'reliable' in the sense that it keeps trying to re-transmit messages for which it didn't
 /// receive an ACK back (until they succeed or are canceled).
+/// [zico] Update: We have modified it to be non-fully reliable. If the ReliableSender instance is dropped, then everything 
+/// will be destroyed and any message in the buffer will be ignored. So, don't wait for the CancelHanler to receive an ACK
+/// if you have already dropped the ReliableSender instance.
 pub struct ReliableSender {
     /// A map holding the channels to our connections.
     connections: Arc<RwLock<HashMap<SocketAddr, MonitoredSender<InnerMessage>>>>,
     /// Small RNG just used to shuffle nodes and randomize connections (not crypto related).
     rng: SmallRng,
+
+    signal: Option<exit_future::Signal>,
+    exit: exit_future::Exit,
 }
 
 impl std::default::Default for ReliableSender {
@@ -44,19 +50,30 @@ impl std::default::Default for ReliableSender {
     }
 }
 
+impl Drop for ReliableSender {
+    fn drop(&mut self) {
+        if let Some(signal) = self.signal.take() {
+            let _ = signal.fire();
+        } 
+    }
+}
+
 impl ReliableSender {
     pub fn new() -> Self {
+        let (signal, exit) = exit_future::signal();
         Self {
             connections: Arc::new(RwLock::new(HashMap::new())),
             rng: SmallRng::from_entropy(),
+            signal: Some(signal),
+            exit,
         }
     }
 
     /// Helper function to spawn a new connection.
-    fn spawn_connection(address: SocketAddr) -> MonitoredSender<InnerMessage> {
+    fn spawn_connection(&self, address: SocketAddr) -> MonitoredSender<InnerMessage> {
         debug!("[Reliable] Openning a new connection to {}", address);
         let (tx, rx) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("reliable-{}", address), "info");
-        Connection::spawn(address, rx);
+        Connection::spawn(address, rx, self.exit.clone());
         tx
     }
 
@@ -67,7 +84,7 @@ impl ReliableSender {
             .write()
             .await
             .entry(address)
-            .or_insert_with(|| Self::spawn_connection(address))
+            .or_insert_with(|| self.spawn_connection(address))
             .send(InnerMessage {
                 data,
                 cancel_handler: sender,
@@ -126,16 +143,19 @@ struct Connection {
     retry_delay: u64,
     /// Buffer keeping all messages that need to be re-transmitted.
     buffer: VecDeque<(Bytes, oneshot::Sender<Bytes>)>,
+
+    exit: exit_future::Exit,
 }
 
 impl Connection {
-    fn spawn(address: SocketAddr, receiver: Receiver<InnerMessage>) {
+    fn spawn(address: SocketAddr, receiver: Receiver<InnerMessage>, exit: exit_future::Exit) {
         tokio::spawn(async move {
             Self {
                 address,
                 receiver,
                 retry_delay: 200,
                 buffer: VecDeque::new(),
+                exit,
             }
             .run()
             .await;
@@ -166,6 +186,7 @@ impl Connection {
                     tokio::pin!(timer);
 
                     'waiter: loop {
+                        let exit = self.exit.clone();
                         tokio::select! {
                             // Wait an increasing delay before attempting to reconnect.
                             () = &mut timer => {
@@ -194,6 +215,10 @@ impl Connection {
                                     }
                                 }
                             }
+
+                            () = exit => {
+                                return;
+                            }
                         }
                     }
                 }
@@ -209,6 +234,7 @@ impl Connection {
 
         let (mut writer, mut reader) = Framed::new(stream, LengthDelimitedCodec::new()).split();
         let error = 'connection: loop {
+            let exit = self.exit.clone();
             // Try to send all messages of the buffer.
             while let Some((data, handler)) = self.buffer.pop_front() {
                 // Skip messages that have been cancelled.
@@ -264,6 +290,9 @@ impl Connection {
                         }
                     }
                 },
+                () = exit => {
+                    break 'connection NetworkError::TokioChannelClosed;
+                }
             }
         };
 

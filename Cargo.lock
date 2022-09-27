@@ -3963,6 +3963,7 @@ dependencies = [
  "async-trait",
  "bincode",
  "bytes",
+ "exit-future",
  "futures",
  "log",
  "parking_lot 0.12.1",

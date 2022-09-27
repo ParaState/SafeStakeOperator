@@ -233,10 +233,19 @@ impl Connection {
 
             // Check if there are any new messages to send or if we get an ACK for messages we already sent.
             tokio::select! {
-                Some(InnerMessage{data, cancel_handler}) = self.receiver.recv() => {
-                    // Add the message to the buffer of messages to send.
-                    self.buffer.push_back((data, cancel_handler));
-                },
+                message = self.receiver.recv() => {
+                    match message {
+                        Some(InnerMessage{data, cancel_handler}) => {
+                            self.buffer.push_back((data, cancel_handler));
+                        }
+                        None => {
+                            // Channel has been closed. This only happens when the reliable sender is dropped.
+                            // Therefore, no one cares about the replies any more, just return.
+                            break 'connection NetworkError::TokioChannelClosed;
+                        }
+                    }
+                }
+                
                 response = reader.next() => {
                     let (data, handler) = match pending_replies.pop_front() {
                         Some(message) => message,

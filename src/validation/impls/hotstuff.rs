@@ -12,6 +12,7 @@ use tokio::sync::mpsc::{Receiver};
 use futures::future::join_all;
 use log::{info};
 use tokio::sync::Notify;
+use tokio::task::JoinHandle;
 use async_trait::async_trait;
 
 
@@ -26,31 +27,30 @@ pub struct HotstuffOperatorCommittee {
     validator_public_key: PublicKey,
     operators: RwLock<HashMap<u64, Arc<RwLock<dyn TOperator>>>>,
     threshold_: usize,
-    rx_consensus: Arc<RwLock<Receiver<Hash256>>>,
     consensus_notifications: Arc<RwLock<HashMap<Hash256, Arc<Notify>>>>,
+    thread_handle: JoinHandle<()>,
+}
+
+impl Drop for HotstuffOperatorCommittee {
+    fn drop(&mut self) {
+        info!("Shutting down hotstuff operator committee");
+        self.thread_handle.abort();
+    }
 }
 
 #[async_trait]
 impl TOperatorCommittee for HotstuffOperatorCommittee {
-    fn new(validator_id: u64, validator_public_key: PublicKey, t: usize, rx_consensus: Receiver<Hash256>) -> Self {
-        let committee = Self {
-            validator_id,
-            validator_public_key,
-            operators: <_>::default(),
-            threshold_: t,
-            rx_consensus: Arc::new(RwLock::new(rx_consensus)),
-            consensus_notifications: Arc::new(RwLock::new(HashMap::default())),
-        };
+    fn new(validator_id: u64, validator_public_key: PublicKey, t: usize, mut rx_consensus: Receiver<Hash256>) -> Self {
 
-        let rx_consensus = committee.rx_consensus.clone();
-        let consensus_notifications = committee.consensus_notifications.clone();
-        tokio::spawn(async move {
+        let consensus_notifications: Arc<RwLock<HashMap<Hash256, Arc<Notify>>>> = 
+            Arc::new(RwLock::new(HashMap::default()));
+        let consensus_notifications_clone = consensus_notifications.clone();
+        let thread_handle = tokio::spawn(async move {
             loop {
-                let mut rx_consensus = rx_consensus.write().await;
                 match rx_consensus.recv().await{
                     Some(value) => {
                         info!("Consensus achieved for msg {}", value);
-                        let mut notes = consensus_notifications.write().await;
+                        let mut notes = consensus_notifications_clone.write().await;
                         if let Some(notify) = notes.get(&value) {
                             notify.notify_one();
                         }
@@ -66,8 +66,15 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
                 }
             }
         });
-        
-        committee
+
+        Self {
+            validator_id,
+            validator_public_key,
+            operators: <_>::default(),
+            threshold_: t,
+            consensus_notifications,
+            thread_handle,
+        }
     }
 
     fn validator_id(&self) -> u64 {

@@ -171,14 +171,28 @@ impl Connection {
                             () = &mut timer => {
                                 delay = min(2*delay, 60_000);
                                 retry +=1;
+                                // There is no need to retry connecting after a long time in our scenario.
+                                // Messages that have are in buffer will simply be dropped and never get a reply.
+                                if retry > 10 {
+                                    return;
+                                } 
                                 break 'waiter;
                             },
 
                             // Drain the channel into the buffer to not saturate the channel and block the caller task.
                             // The caller is responsible to cleanup the buffer through the cancel handlers.
-                            Some(InnerMessage{data, cancel_handler}) = self.receiver.recv() => {
-                                self.buffer.push_back((data, cancel_handler));
-                                self.buffer.retain(|(_, handler)| !handler.is_closed());
+                            message = self.receiver.recv() => {
+                                match message {
+                                    Some(InnerMessage{data, cancel_handler}) => {
+                                        self.buffer.push_back((data, cancel_handler));
+                                        self.buffer.retain(|(_, handler)| !handler.is_closed());
+                                    }
+                                    None => {
+                                        // Channel has been closed. This only happens when the reliable sender is dropped.
+                                        // Therefore, no one cares about the replies any more, just return.
+                                        return;
+                                    }
+                                }
                             }
                         }
                     }

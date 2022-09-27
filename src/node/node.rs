@@ -217,7 +217,8 @@ pub async fn add_validator<T: EthSpec>(
 
     let validator_id = validator.id;
     // check validator exists
-    let validator_pk = PublicKey::deserialize(&validator.validator_public_key).unwrap();
+    let validator_pk = PublicKey::deserialize(&validator.validator_public_key)
+        .map_err(|e| format!("Unable to deserialize validator public key: {:?}", e))?;
     info!("[VA {}] adding validator {}", validator_id, validator_pk);
     let added_validator_dir = validator_dir.join(format!("{}", validator_pk));
     if added_validator_dir.exists() {
@@ -245,7 +246,8 @@ pub async fn add_validator<T: EthSpec>(
                         operator_base_address.push(SocketAddr::new(ip.clone(), base_port));
                         operator_ids.push(operator.id);
 
-                        let operator_pk = PublicKey::deserialize(&operator.shared_public_key).unwrap();                                            
+                        let operator_pk = PublicKey::deserialize(&operator.shared_public_key)
+                            .map_err(|e| format!("Unable to deserialize operator pk: {:?}", e))?;                                        
                         operator_public_keys.push(operator_pk);
                         let node_pk = hscrypto::PublicKey(operator.node_public_key.clone().try_into().unwrap());
 
@@ -259,25 +261,22 @@ pub async fn add_validator<T: EthSpec>(
                                 .map_err(|_e| format!("Unable to decrypt: ciphertext({:?}), secret_key({})", 
                                                      hex::encode(operator.encrypted_key.as_slice()),
                                                      secret_key.display_secret())
-                                ).unwrap();
+                                )?;
 
-                            let shared_secret_key = BlsSecretKey::deserialize(&plain_shared_key).unwrap();
+                            let shared_secret_key = BlsSecretKey::deserialize(&plain_shared_key)
+                                .map_err(|e| format!("Unable to deserialize secret key: {:?}", e))?;
 
                             let shared_public_key = shared_secret_key.public_key();
 
                             let shared_key_pair = BlsKeypair::from_components(shared_public_key.clone(), shared_secret_key);
 
                             let keystore = KeystoreBuilder::new(&shared_key_pair, INSECURE_PASSWORD, "".into())
-                                .map_err(|e| BuilderError::InsecureKeysError(format!("Unable to create keystore builder: {:?}", e))).unwrap()
+                                .map_err(|e| format!("Unable to create keystore builder: {:?}", e))?
                                 .kdf(insecure_kdf())
                                 .build()
-                                .map_err(|e| BuilderError::InsecureKeysError(format!("Unable to build keystore: {:?}", e)))
-                                .unwrap();
+                                .map_err(|e| format!("Unable to build keystore: {:?}", e))?;
 
                             keystore_share = Some(KeystoreShare::new(keystore, validator_pk.clone(), validator_id, operator.id));
-
-                            //let keystore_share_dir = default_keystore_share_dir(&keystore_share, validator_dir.clone());
-                            //ensure_dir_exists(&keystore_share_dir).unwrap();
 
                             match ShareBuilder::new(validator_dir.clone())
                                 .password_dir(secret_dir.clone())
@@ -304,9 +303,8 @@ pub async fn add_validator<T: EthSpec>(
                 sleep(Duration::from_secs(10)).await;
                 let _ = tx_validator_command.send(ValidatorCommand::Start(validator)).await;
                 info!("Will process the validator again");
-                if added_validator_dir.exists() {
-                    remove_dir_all(&added_validator_dir).unwrap();
-                }
+                cleanup_validator_dir(&validator_dir, &validator_pk, validator_id)?;
+                cleanup_password_dir(&secret_dir, &validator_pk, validator_id)?;
                 return Err("Insufficient operators discovered".to_string());
             }
 

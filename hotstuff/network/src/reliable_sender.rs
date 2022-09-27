@@ -179,6 +179,12 @@ impl Connection {
                     // The following function only returns if there is an error.
                     let error = self.keep_alive(stream).await;
                     warn!("{}", error);
+                    match error {
+                        NetworkError::TokioChannelClosed => {
+                            return;
+                        }
+                        _ => {}
+                    }
                 }
                 Err(e) => {
                     warn!("{}", NetworkError::FailedToConnect(self.address, retry, e));

@@ -430,6 +430,8 @@ pub fn cleanup_password_dir(secret_dir: &Path, validator_pk: &PublicKey, validat
             .into_string()
             .map_err(|e| format!("[VA {}] Failed to convert secret entry path to string ({:?})", validator_id, e))?;
         let validator_pk_prefix = format!("{}", validator_pk);
+        info!("password_file_name: {}", password_file_name);
+        info!("validator_pk_prefix: {}", validator_pk_prefix);
         if password_file_name.starts_with(&validator_pk_prefix) {
             let password_file_dir = secret_dir.join(password_file_name);
             if password_file_dir.exists() {

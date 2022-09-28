@@ -81,7 +81,7 @@ Fill your WS_URL
 ## Run
 ### Run your operator
 ```
-sudo docker-compose -f  docker-compose-operator.yml up -d
+sudo docker-compose -f docker-compose-operator.yml up -d
 ```
 ### Get your operator public key
 ```

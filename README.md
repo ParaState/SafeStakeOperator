@@ -79,6 +79,10 @@ vim .env
 Fill your WS_URL
 
 ## Run
+### Build your operator
+```
+sudo docker-compose -f docker-compose-operator.yml build operator
+```
 ### Run your operator
 ```
 sudo docker-compose -f docker-compose-operator.yml up -d

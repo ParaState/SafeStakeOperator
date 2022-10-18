@@ -87,7 +87,13 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                 if version != VERSION {
                                     let _ = writer.send(Bytes::from("Version mismatch")).await;
                                     error!("[VA {}] Version mismatch: got ({}), expected ({})", validator_id, version, VERSION);
-                                    return;
+                                    // [zico] Should we kill the connection here? 
+                                    // If we kill it, then a reliable sender can resend the message because the ACK is not normal, but it may cause the 
+                                    // sender to frequently retry the connection and resend the message when the VA is not ready, making the program to
+                                    // print a lot of error logs.
+
+                                    // return;  // Kill the connection
+                                    continue;  // Keep the connection
                                 }
                                 
                                 if handler_opt.is_none() {
@@ -111,8 +117,8 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                         // If we kill it, then a reliable sender can resend the message because the ACK is not normal, but it may cause the 
                                         // sender to frequently retry the connection and resend the message when the VA is not ready, making the program to
                                         // print a lot of error logs.
-                                        
-                                        // return;
+
+                                        // return;  // Kill the connection
                                     }
                                 }
                             },

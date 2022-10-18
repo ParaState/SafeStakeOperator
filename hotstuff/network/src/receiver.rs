@@ -107,8 +107,12 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                         // [zico] Constantly review this. For now, we sent back a message, which is different from a normal 'Ack' message
                                         let _ = writer.send(Bytes::from("No handler found")).await;
                                         error!("[VA {}] Receive a message, but no handler found! [{:?}]", validator_id, name);
-                                        // Kill the connection. This is important to let a reliable sender to resend the message.
-                                        return;
+                                        // [zico] Should we kill the connection here? 
+                                        // If we kill it, then a reliable sender can resend the message because the ACK is not normal, but it may cause the 
+                                        // sender to frequently retry the connection and resend the message when the VA is not ready, making the program to
+                                        // print a lot of error logs.
+                                        
+                                        // return;
                                     }
                                 }
                             },

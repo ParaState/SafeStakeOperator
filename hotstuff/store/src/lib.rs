@@ -3,6 +3,7 @@ use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::oneshot;
 use rocksdb::{DB, Options};
 use log::{info, warn};
+use utils::size_monitor::{SizeMonitor};
 
 #[cfg(test)]
 #[path = "tests/store_tests.rs"]
@@ -30,14 +31,14 @@ pub struct Store {
 impl Store {
     pub fn new(path: &str) -> StoreResult<Self> {
         let db = rocksdb::DB::open_default(path)?;
-        let mut obligations = HashMap::<_, VecDeque<oneshot::Sender<_>>>::new();
+        let mut obligations = SizeMonitor::monitor_hashmap(HashMap::<_, VecDeque<oneshot::Sender<_>>>::new(), "store-obligations".to_string());
         let (tx, mut rx) = channel(100);
         tokio::spawn(async move {
             while let Some(command) = rx.recv().await {
                 match command {
                     StoreCommand::Write(key, value) => {
                         let _ = db.put(&key, &value);
-                        if let Some(mut senders) = obligations.remove(&key) {
+                        if let Some(mut senders) = obligations.write().await.remove(&key) {
                             while let Some(s) = senders.pop_front() {
                                 let _ = s.send(Ok(value.clone()));
                             }
@@ -51,6 +52,8 @@ impl Store {
                         let response = db.get(&key);
                         match response {
                             Ok(None) => obligations
+                                .write()
+                                .await
                                 .entry(key)
                                 .or_insert_with(VecDeque::new)
                                 .push_back(sender),

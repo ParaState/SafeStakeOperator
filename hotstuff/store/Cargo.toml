@@ -9,3 +9,4 @@ publish = false
 rocksdb = "0.15.0"
 tokio = { version = "1.3.0", features = ["sync", "macros", "rt"] }
 log = "0.4.0"
+utils = { path = "../utils" }

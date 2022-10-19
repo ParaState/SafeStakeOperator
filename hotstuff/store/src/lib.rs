@@ -4,6 +4,8 @@ use tokio::sync::oneshot;
 use rocksdb::{DB, Options};
 use log::{info, warn};
 use utils::size_monitor::{SizeMonitor};
+use tokio::sync::{RwLock};
+use std::sync::{Arc};
 
 #[cfg(test)]
 #[path = "tests/store_tests.rs"]
@@ -31,7 +33,7 @@ pub struct Store {
 impl Store {
     pub fn new(path: &str) -> StoreResult<Self> {
         let db = rocksdb::DB::open_default(path)?;
-        let mut obligations = SizeMonitor::monitor_hashmap(HashMap::<_, VecDeque<oneshot::Sender<_>>>::new(), "store-obligations".to_string());
+        let mut obligations = SizeMonitor::monitor_hashmap(HashMap::<_, Arc<RwLock<VecDeque<oneshot::Sender<_>>>>>::new(), "store-obligations".to_string());
         let (tx, mut rx) = channel(100);
         tokio::spawn(async move {
             while let Some(command) = rx.recv().await {
@@ -39,7 +41,7 @@ impl Store {
                     StoreCommand::Write(key, value) => {
                         let _ = db.put(&key, &value);
                         if let Some(mut senders) = obligations.write().await.remove(&key) {
-                            while let Some(s) = senders.pop_front() {
+                            while let Some(s) = senders.write().await.pop_front() {
                                 let _ = s.send(Ok(value.clone()));
                             }
                         }
@@ -55,7 +57,9 @@ impl Store {
                                 .write()
                                 .await
                                 .entry(key)
-                                .or_insert_with(VecDeque::new)
+                                .or_insert_with(|| SizeMonitor::monitor_vecdeque(VecDeque::new(), "store-vecdeque".to_string()))
+                                .write()
+                                .await
                                 .push_back(sender),
                             _ => {
                                 let _ = sender.send(response.map(|x| x.unwrap()));

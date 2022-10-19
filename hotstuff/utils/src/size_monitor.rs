@@ -7,6 +7,7 @@ use tokio::sync::{RwLock};
 use std::sync::{Arc};
 use log::{info, debug};
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::marker::Send;
 
 pub struct SizeMonitor;
@@ -19,7 +20,19 @@ impl SizeMonitor {
         tokio::spawn(async move {
             loop {
                 sleep(Duration::from_millis(60_000)).await;
-                info!("[{}] monitored size: {}", tag, y_copy.read().await.len());
+                info!("[{}] monitored hashmap size: {}", tag, y_copy.read().await.len());
+            }
+        });
+        y
+    }
+
+    pub fn monitor_vecdeque<T: Send + Sync + 'static>(x: VecDeque<T>, tag: String) -> Arc<RwLock<VecDeque<T>>> {
+        let y = Arc::new(RwLock::new(x));
+        let y_copy = y.clone();
+        tokio::spawn(async move {
+            loop {
+                sleep(Duration::from_millis(60_000)).await;
+                info!("[{}] monitored vecdeque size: {}", tag, y_copy.read().await.len());
             }
         });
         y

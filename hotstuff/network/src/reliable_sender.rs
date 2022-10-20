@@ -19,6 +19,7 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use std::sync::Arc;
 use crate::CHANNEL_CAPACITY;
 use utils::monitored_channel::{MonitoredChannel, MonitoredSender};
+use utils::size_monitor::SizeMonitor;
 
 #[cfg(test)]
 #[path = "tests/reliable_sender_tests.rs"]
@@ -142,7 +143,7 @@ struct Connection {
     /// The initial delay to wait before re-attempting a connection (in ms).
     retry_delay: u64,
     /// Buffer keeping all messages that need to be re-transmitted.
-    buffer: VecDeque<(Bytes, oneshot::Sender<Bytes>)>,
+    buffer: Arc<RwLock<VecDeque<(Bytes, oneshot::Sender<Bytes>)>>>,
 
     exit: exit_future::Exit,
 }
@@ -154,7 +155,7 @@ impl Connection {
                 address,
                 receiver,
                 retry_delay: 200,
-                buffer: VecDeque::new(),
+                buffer: SizeMonitor::monitor_vecdeque(VecDeque::new(), "reliable-buffer".to_string(), "info".to_string()),
                 exit,
             }
             .run()
@@ -206,8 +207,8 @@ impl Connection {
                             message = self.receiver.recv() => {
                                 match message {
                                     Some(InnerMessage{data, cancel_handler}) => {
-                                        self.buffer.push_back((data, cancel_handler));
-                                        self.buffer.retain(|(_, handler)| !handler.is_closed());
+                                        self.buffer.write().await.push_back((data, cancel_handler));
+                                        self.buffer.write().await.retain(|(_, handler)| !handler.is_closed());
                                     }
                                     None => {
                                         // Channel has been closed. This only happens when the reliable sender is dropped.
@@ -231,13 +232,14 @@ impl Connection {
     async fn keep_alive(&mut self, stream: TcpStream) -> NetworkError {
         // This buffer keeps all messages and handlers that we have successfully transmitted but for
         // which we are still waiting to receive an ACK.
-        let mut pending_replies = VecDeque::new();
+        let mut pending_replies = SizeMonitor::monitor_vecdeque(VecDeque::new(), "reliable-pending".to_string(), "info".to_string());
+        let mut buffer = self.buffer.write().await;
 
         let (mut writer, mut reader) = Framed::new(stream, LengthDelimitedCodec::new()).split();
         let error = 'connection: loop {
             let exit = self.exit.clone();
             // Try to send all messages of the buffer.
-            while let Some((data, handler)) = self.buffer.pop_front() {
+            while let Some((data, handler)) = buffer.pop_front() {
                 // Skip messages that have been cancelled.
                 if handler.is_closed() {
                     continue;
@@ -248,11 +250,11 @@ impl Connection {
                     Ok(()) => {
                         // The message has been sent, we remove it from the buffer and add it to
                         // `pending_replies` while we wait for an ACK.
-                        pending_replies.push_back((data, handler));
+                        pending_replies.write().await.push_back((data, handler));
                     }
                     Err(e) => {
                         // We failed to send the message, we put it back into the buffer.
-                        self.buffer.push_front((data, handler));
+                        buffer.push_front((data, handler));
                         break 'connection NetworkError::FailedToSendMessage(self.address, e);
                     }
                 }
@@ -263,7 +265,7 @@ impl Connection {
                 message = self.receiver.recv() => {
                     match message {
                         Some(InnerMessage{data, cancel_handler}) => {
-                            self.buffer.push_back((data, cancel_handler));
+                            buffer.push_back((data, cancel_handler));
                         }
                         None => {
                             // Channel has been closed. This only happens when the reliable sender is dropped.
@@ -274,7 +276,7 @@ impl Connection {
                 }
                 
                 response = reader.next() => {
-                    let (data, handler) = match pending_replies.pop_front() {
+                    let (data, handler) = match pending_replies.write().await.pop_front() {
                         Some(message) => message,
                         None => break 'connection NetworkError::UnexpectedAck(self.address)
                     };
@@ -286,7 +288,7 @@ impl Connection {
                         _ => {
                             // Something has gone wrong (either the channel dropped or we failed to read from it).
                             // Put the message back in the buffer, we will try to send it again.
-                            pending_replies.push_front((data, handler));
+                            pending_replies.write().await.push_front((data, handler));
                             break 'connection NetworkError::FailedToReceiveAck(self.address);
                         }
                     }
@@ -299,8 +301,8 @@ impl Connection {
 
         // If we reach this code, it means something went wrong. Put the messages for which we didn't receive an ACK
         // back into the sending buffer, we will try to send them again once we manage to establish a new connection.
-        while let Some(message) = pending_replies.pop_back() {
-            self.buffer.push_front(message);
+        while let Some(message) = pending_replies.write().await.pop_back() {
+            buffer.push_front(message);
         }
         error
     }

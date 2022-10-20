@@ -232,14 +232,13 @@ impl Connection {
     async fn keep_alive(&mut self, stream: TcpStream) -> NetworkError {
         // This buffer keeps all messages and handlers that we have successfully transmitted but for
         // which we are still waiting to receive an ACK.
-        let mut pending_replies = SizeMonitor::monitor_vecdeque(VecDeque::new(), "reliable-pending".to_string(), "info".to_string());
-        let mut buffer = self.buffer.write().await;
+        let mut pending_replies = SizeMonitor::monitor_vecdeque(VecDeque::new(), "reliable-pending".to_string(), "debug".to_string());
 
         let (mut writer, mut reader) = Framed::new(stream, LengthDelimitedCodec::new()).split();
         let error = 'connection: loop {
             let exit = self.exit.clone();
             // Try to send all messages of the buffer.
-            while let Some((data, handler)) = buffer.pop_front() {
+            while let Some((data, handler)) = self.buffer.write().await.pop_front() {
                 // Skip messages that have been cancelled.
                 if handler.is_closed() {
                     continue;
@@ -254,7 +253,7 @@ impl Connection {
                     }
                     Err(e) => {
                         // We failed to send the message, we put it back into the buffer.
-                        buffer.push_front((data, handler));
+                        self.buffer.write().await.push_front((data, handler));
                         break 'connection NetworkError::FailedToSendMessage(self.address, e);
                     }
                 }
@@ -265,7 +264,7 @@ impl Connection {
                 message = self.receiver.recv() => {
                     match message {
                         Some(InnerMessage{data, cancel_handler}) => {
-                            buffer.push_back((data, cancel_handler));
+                            self.buffer.write().await.push_back((data, cancel_handler));
                         }
                         None => {
                             // Channel has been closed. This only happens when the reliable sender is dropped.
@@ -302,7 +301,7 @@ impl Connection {
         // If we reach this code, it means something went wrong. Put the messages for which we didn't receive an ACK
         // back into the sending buffer, we will try to send them again once we manage to establish a new connection.
         while let Some(message) = pending_replies.write().await.pop_back() {
-            buffer.push_front(message);
+            self.buffer.write().await.push_front(message);
         }
         error
     }

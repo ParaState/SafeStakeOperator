@@ -40,6 +40,10 @@ impl Store {
         options.set_max_log_file_size(1024 * 1024 * 5);
         options.set_recycle_log_file_num(5);
         options.set_max_total_wal_size(1024 * 1024 * 10);
+        options.set_wal_size_limit_mb(10);
+        options.set_write_buffer_size(1024 * 1024 * 5);
+        options.set_max_write_buffer_number(2);
+        options.set_db_write_buffer_size(1024 * 1024 * 5);
         let db = rocksdb::DB::open(&options, path)?;
         let mut obligations = SizeMonitor::monitor_hashmap(HashMap::<_, Arc<RwLock<VecDeque<oneshot::Sender<_>>>>>::new(), "store-obligations".to_string(), "debug".to_string());
         let (tx, mut rx) = channel(100);

@@ -34,6 +34,7 @@ impl Store {
     pub fn new(path: &str) -> StoreResult<Self> {
         // let db = rocksdb::DB::open_default(path)?;
         let mut options = Options::default();
+        options.create_if_missing(true);
         options.set_log_file_time_to_roll(60);
         options.set_log_level(LogLevel::Error);
         options.set_keep_log_file_num(10);
@@ -44,6 +45,7 @@ impl Store {
         options.set_write_buffer_size(1024 * 1024 * 5);
         options.set_max_write_buffer_number(2);
         options.set_db_write_buffer_size(1024 * 1024 * 5);
+        
         let db = rocksdb::DB::open(&options, path)?;
         let mut obligations = HashMap::<_, VecDeque<oneshot::Sender<_>>>::new();
         let (tx, mut rx) = channel(1_000);

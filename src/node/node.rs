@@ -1,5 +1,6 @@
 use hsconfig::Export as _;
 use hsconfig::{ConfigError, Secret};
+use hsutils::monitored_channel::{MonitoredChannel, MonitoredSender};
 use log::{info, error, warn};
 use consensus::{ConsensusReceiverHandler};
 use mempool::{TxReceiverHandler, MempoolReceiverHandler};
@@ -36,6 +37,7 @@ use crate::validation::validator_dir::share_builder::{insecure_kdf, ShareBuilder
 use crate::validation::account_utils::default_keystore_share_password_path;
 use crate::validation::account_utils::default_keystore_share_path;
 use std::path::Path;
+use crate::DEFAULT_CHANNEL_CAPACITY;
 
 const THRESHOLD: u64 = 3;
 fn with_wildcard_ip(mut addr: SocketAddr) -> SocketAddr {
@@ -100,7 +102,7 @@ impl<T: EthSpec> Node<T> {
             secret.name, signature_address
         );
 
-        let (tx_validator_command, rx_validator_command) = channel(1_000);
+        let (tx_validator_command, rx_validator_command) = MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "contract-command".to_string(), "info");
         //// set dvfcore handler map
         //let dvfcore_handler_map : Arc<RwLock<HashMap<u64, DvfReceiverHandler>>>= Arc::new(RwLock::new(HashMap::new()));
         //let (tx_dvfinfo, rx_dvfinfo) = channel(1);
@@ -163,7 +165,7 @@ impl<T: EthSpec> Node<T> {
         validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>, 
         operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,  
         mut rx_validator_command: Receiver<ValidatorCommand>, 
-        tx_validator_command: Sender<ValidatorCommand>
+        tx_validator_command: MonitoredSender<ValidatorCommand>
     ) {
 
         tokio::spawn(async move {
@@ -204,7 +206,7 @@ pub async fn add_validator<T: EthSpec>(
     validator: Validator,
     validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>, 
     operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
-    tx_validator_command: Sender<ValidatorCommand>,
+    tx_validator_command: MonitoredSender<ValidatorCommand>,
 ) -> Result<(), String> {
     let node = node.read();
     let base_port = node.config.base_address.port();

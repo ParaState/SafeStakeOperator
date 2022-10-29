@@ -47,7 +47,7 @@ where T: Send + 'static {
                 debug!("[{}] remaining capacity: {}", tag, sender.capacity());
             }
             else {
-                debug!("[{}] remaining capacity: {}", tag, sender.capacity());
+                info!("[{}] remaining capacity: {}", tag, sender.capacity());
             }
         }
     }

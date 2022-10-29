@@ -45,15 +45,15 @@ impl Store {
         options.set_max_write_buffer_number(2);
         options.set_db_write_buffer_size(1024 * 1024 * 5);
         let db = rocksdb::DB::open(&options, path)?;
-        let mut obligations = SizeMonitor::monitor_hashmap(HashMap::<_, Arc<RwLock<VecDeque<oneshot::Sender<_>>>>>::new(), "store-obligations".to_string(), "debug".to_string());
-        let (tx, mut rx) = channel(100);
+        let mut obligations = HashMap::<_, VecDeque<oneshot::Sender<_>>>::new();
+        let (tx, mut rx) = channel(1_000);
         tokio::spawn(async move {
             while let Some(command) = rx.recv().await {
                 match command {
                     StoreCommand::Write(key, value) => {
                         let _ = db.put(&key, &value);
-                        if let Some(mut senders) = obligations.write().await.remove(&key) {
-                            while let Some(s) = senders.write().await.pop_front() {
+                        if let Some(mut senders) = obligations.remove(&key) {
+                            while let Some(s) = senders.pop_front() {
                                 let _ = s.send(Ok(value.clone()));
                             }
                         }
@@ -66,12 +66,8 @@ impl Store {
                         let response = db.get(&key);
                         match response {
                             Ok(None) => obligations
-                                .write()
-                                .await
                                 .entry(key)
-                                .or_insert_with(|| SizeMonitor::monitor_vecdeque(VecDeque::new(), "store-vecdeque".to_string(), "debug".to_string()))
-                                .write()
-                                .await
+                                .or_insert_with(VecDeque::new)
                                 .push_back(sender),
                             _ => {
                                 let _ = sender.send(response.map(|x| x.unwrap()));

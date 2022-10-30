@@ -99,6 +99,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                 if handler_opt.is_none() {
                                     let handler_map_lock = handler_map.read().await;
                                     handler_opt = handler_map_lock.get(&validator_id).cloned();
+                                    drop(handler_map_lock);
                                 }                                
                                 match handler_opt.as_ref() {
                                     Some(handler) => {

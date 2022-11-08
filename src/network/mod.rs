@@ -7,3 +7,5 @@
 //   BOOTNODE,
 //   DVFNODE
 // }
+
+pub mod io_committee;

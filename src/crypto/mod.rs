@@ -1,9 +1,8 @@
-//pub mod bls;
 pub mod define;
-//pub mod threshold;
 pub mod generic_threshold;
 pub mod impls;
 pub mod elgamal;
+pub mod dkg;
 
 macro_rules! define_mod {
     ($name: ident, $mod: path) => {

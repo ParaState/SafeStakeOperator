@@ -87,12 +87,19 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                 if version != VERSION {
                                     let _ = writer.send(Bytes::from("Version mismatch")).await;
                                     error!("[VA {}] Version mismatch: got ({}), expected ({})", validator_id, version, VERSION);
-                                    return;
+                                    // [zico] Should we kill the connection here? 
+                                    // If we kill it, then a reliable sender can resend the message because the ACK is not normal, but it may cause the 
+                                    // sender to frequently retry the connection and resend the message when the VA is not ready, making the program to
+                                    // print a lot of error logs.
+
+                                    // return;  // Kill the connection
+                                    continue;  // Keep the connection
                                 }
                                 
                                 if handler_opt.is_none() {
                                     let handler_map_lock = handler_map.read().await;
                                     handler_opt = handler_map_lock.get(&validator_id).cloned();
+                                    drop(handler_map_lock);
                                 }                                
                                 match handler_opt.as_ref() {
                                     Some(handler) => {
@@ -107,8 +114,12 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                         // [zico] Constantly review this. For now, we sent back a message, which is different from a normal 'Ack' message
                                         let _ = writer.send(Bytes::from("No handler found")).await;
                                         error!("[VA {}] Receive a message, but no handler found! [{:?}]", validator_id, name);
-                                        // Kill the connection. This is important to let a reliable sender to resend the message.
-                                        return;
+                                        // [zico] Should we kill the connection here? 
+                                        // If we kill it, then a reliable sender can resend the message because the ACK is not normal, but it may cause the 
+                                        // sender to frequently retry the connection and resend the message when the VA is not ready, making the program to
+                                        // print a lot of error logs.
+
+                                        // return;  // Kill the connection
                                     }
                                 }
                             },

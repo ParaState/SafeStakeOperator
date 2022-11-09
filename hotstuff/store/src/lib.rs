@@ -1,8 +1,11 @@
 use std::collections::{HashMap, VecDeque};
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::oneshot;
-use rocksdb::{DB, Options};
+use rocksdb::{DB, Options, LogLevel};
 use log::{info, warn};
+use utils::size_monitor::{SizeMonitor};
+use tokio::sync::{RwLock};
+use std::sync::{Arc};
 
 #[cfg(test)]
 #[path = "tests/store_tests.rs"]
@@ -29,7 +32,21 @@ pub struct Store {
 
 impl Store {
     pub fn new(path: &str) -> StoreResult<Self> {
-        let db = rocksdb::DB::open_default(path)?;
+        // let db = rocksdb::DB::open_default(path)?;
+        let mut options = Options::default();
+        options.create_if_missing(true);
+        options.set_log_file_time_to_roll(60);
+        options.set_log_level(LogLevel::Error);
+        options.set_keep_log_file_num(10);
+        options.set_max_log_file_size(1024 * 1024 * 5);
+        options.set_recycle_log_file_num(5);
+        options.set_max_total_wal_size(1024 * 1024 * 10);
+        options.set_wal_size_limit_mb(10);
+        options.set_write_buffer_size(1024 * 1024 * 5);
+        options.set_max_write_buffer_number(2);
+        options.set_db_write_buffer_size(1024 * 1024 * 5);
+        
+        let db = rocksdb::DB::open(&options, path)?;
         let mut obligations = HashMap::<_, VecDeque<oneshot::Sender<_>>>::new();
         let (tx, mut rx) = channel(1_000);
         tokio::spawn(async move {

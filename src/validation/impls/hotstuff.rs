@@ -54,11 +54,11 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
                         if let Some(notify) = notes.get(&value) {
                             notify.notify_one();
                         }
-                        else {
-                            let notify = Arc::new(Notify::new());
-                            notify.notify_one();
-                            notes.insert(value, notify);
-                        }
+                        // else {
+                        //     let notify = Arc::new(Notify::new());
+                        //     notify.notify_one();
+                        //     notes.insert(value, notify);
+                        // }
                     }
                     None => {
                         return; 
@@ -101,14 +101,6 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
     }
 
     async fn consensus(&self, msg: Hash256) -> Result<(), DvfError> {
-        let operators = self.operators.read().await;
-        for operator in operators.values() {
-            operator.read()
-                .await
-                .propose(msg)
-                .await;
-        }
-
         let notify = {
             let mut notes = self.consensus_notifications.write().await; 
             if let Some(notify) = notes.get(&msg) {
@@ -120,6 +112,26 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
                 notify
             }
         };
+
+        let operators = self.operators.read().await;
+        for operator in operators.values() {
+            operator.read()
+                .await
+                .propose(msg)
+                .await;
+        }
+
+        // let notify = {
+        //     let mut notes = self.consensus_notifications.write().await; 
+        //     if let Some(notify) = notes.get(&msg) {
+        //         notify.clone()
+        //     }
+        //     else {
+        //         let notify = Arc::new(Notify::new());
+        //         notes.insert(msg, notify.clone());
+        //         notify
+        //     }
+        // };
         notify.notified().await;
         let mut notes = self.consensus_notifications.write().await; 
         notes.remove(&msg);

@@ -15,7 +15,6 @@ use bytes::Bytes;
 use std::error::Error;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-pub const CHANNEL_CAPACITY: usize = 10_000;
 use bls::{Hash256, Signature};
 use types::{Keypair, EthSpec};
 use crate::validation::operator::{LocalOperator, TOperator};
@@ -29,6 +28,7 @@ use parking_lot::{RwLock as ParkingRwLock};
 use crate::validation::operator_committee_definitions::OperatorCommitteeDefinition; 
 use crate::node::config::{TRANSACTION_PORT_OFFSET, MEMPOOL_PORT_OFFSET, CONSENSUS_PORT_OFFSET, SIGNATURE_PORT_OFFSET};
 use std::net::SocketAddr;
+use crate::DEFAULT_CHANNEL_CAPACITY;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DvfInfo {
@@ -280,9 +280,9 @@ impl DvfCore {
         // let (tx_consensus_to_mempool, rx_consensus_to_mempool) = channel(CHANNEL_CAPACITY);
         // let (tx_mempool_to_consensus, rx_mempool_to_consensus) = channel(CHANNEL_CAPACITY);
 
-        let (tx_commit, rx_commit) = MonitoredChannel::new(CHANNEL_CAPACITY, "dvf-commit".to_string(), "info");
-        let (tx_consensus_to_mempool, rx_consensus_to_mempool) = MonitoredChannel::new(CHANNEL_CAPACITY, "dvf-cs2mp".to_string(), "info");
-        let (tx_mempool_to_consensus, rx_mempool_to_consensus) = MonitoredChannel::new(CHANNEL_CAPACITY, "dvf-mp2cs".to_string(), "info");
+        let (tx_commit, rx_commit) = MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "dvf-commit".to_string(), "info");
+        let (tx_consensus_to_mempool, rx_consensus_to_mempool) = MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "dvf-cs2mp".to_string(), "info");
+        let (tx_mempool_to_consensus, rx_mempool_to_consensus) = MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "dvf-mp2cs".to_string(), "info");
 
         let parameters = Parameters::default();
         let store_path = node.config.base_store_path.join(validator_id.to_string()).join(operator_id.to_string()); 

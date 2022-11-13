@@ -200,7 +200,7 @@ impl IOCommittee<MemIOChannel> for MemIOCommittee {
     }
 }
 
-/// Network IO committee
+// /// Network IO committee
 // pub struct NetIOCommittee {
 //     party: u64,
 //     ids: Vec<u64>,

@@ -3,8 +3,7 @@ use ed25519_dalek::Digest as _;
 use ed25519_dalek::Sha512;
 use std::convert::TryInto;
 use store::Store;
-use tokio::sync::mpsc::{Receiver, Sender};
-use log::{info};
+use tokio::sync::mpsc::{Receiver};
 use utils::monitored_channel::MonitoredSender;
 
 #[cfg(test)]

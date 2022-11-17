@@ -7,7 +7,7 @@ use hscrypto::SignatureService;
 use log::{info, error, warn};
 use mempool::{Mempool, MempoolMessage};
 use store::Store;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{Receiver, Sender};
 use network::{MessageHandler, Writer};
 use std::sync::{Arc};
 use async_trait::async_trait;

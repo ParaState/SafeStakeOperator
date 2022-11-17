@@ -853,7 +853,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
                 info!(self.log, "stop validator keystore";
                 "msg" => format!("Success: delete definition and keystore {:?}", pubkey));
             }
-            Err(e) => {
+            Err(_e) => {
                 error!(self.log, "stop validator keystore";
                 "msg" => format!("Failure: delete definition and keystore {:?}", pubkey));
             }

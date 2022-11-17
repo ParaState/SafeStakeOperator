@@ -10,11 +10,10 @@ use futures::stream::StreamExt as _;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use futures::SinkExt;
-use std::net::{SocketAddr, IpAddr};
-use log::{info, warn, error, debug};
+use std::net::{SocketAddr};
+use log::{info, warn};
 use tokio::task::JoinHandle;
-use tokio::sync::{Mutex, Notify};
-use lazy_static::lazy_static;
+use tokio::sync::{Notify};
 
 
 #[async_trait]
@@ -132,7 +131,7 @@ impl ConnectionManager {
                 channel.send(Bytes::from(bincode::serialize(&party).unwrap())).await;
                 Some(channel)
             },
-            Err(e) => {
+            Err(_e) => {
                 warn!("Failed to connect to {}", peer_address);
                 None
             }

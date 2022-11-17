@@ -1,8 +1,6 @@
 use tokio::sync::mpsc::{channel, Sender, Receiver};
 use tokio::sync::mpsc::error::SendError;
 use tokio::time::{sleep, Duration};
-use tokio::task::JoinHandle;
-use tokio::sync::oneshot;
 use log::{info, debug};
 
 #[derive(Clone)]

@@ -11,7 +11,7 @@ use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
 use parking_lot::RwLock as ParkingRwLock;
 use std::net::SocketAddr;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{Receiver};
 /// The default channel capacity for this module.
 use crate::node::dvfcore::{ DvfSignatureReceiverHandler};
 use crate::node::config::{NodeConfig, DISCOVERY_PORT_OFFSET, DB_FILENAME};
@@ -31,7 +31,6 @@ use bls::{Keypair as BlsKeypair, SecretKey as BlsSecretKey};
 use crate::crypto::elgamal::{Ciphertext, Elgamal};
 use eth2_keystore::{KeystoreBuilder};
 use validator_dir::insecure_keys::{INSECURE_PASSWORD};
-use validator_dir::{BuilderError};
 use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
 use crate::validation::validator_dir::share_builder::{insecure_kdf, ShareBuilder};
 use crate::validation::account_utils::default_keystore_share_password_path;
@@ -103,28 +102,8 @@ impl<T: EthSpec> Node<T> {
         );
 
         let (tx_validator_command, rx_validator_command) = MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "contract-command".to_string(), "info");
-        //// set dvfcore handler map
-        //let dvfcore_handler_map : Arc<RwLock<HashMap<u64, DvfReceiverHandler>>>= Arc::new(RwLock::new(HashMap::new()));
-        //let (tx_dvfinfo, rx_dvfinfo) = channel(1);
-        //{
-            //let mut dvfcore_handlers = dvfcore_handler_map.write().await; 
-            //let empty_id: u64 = 0;
-            
-            //dvfcore_handlers.insert(
-                //empty_id,
-                //DvfReceiverHandler {
-                    //tx_dvfinfo
-                //}
-            //);
-        //}
         
-        //NetworkReceiver::spawn(config.dvfcore_network_address.clone(), Arc::clone(&dvfcore_handler_map));
-        //info!("DvfCore listening to dvf messages on {}", config.dvfcore_network_address);
-        
-
         info!("Node {} successfully booted", secret.name);
-        let validator_dir = config.validator_dir.clone();
-        let secrets_dir = config.secrets_dir.clone();
         let base_port = config.base_address.port();
         let node = Self { 
             config,

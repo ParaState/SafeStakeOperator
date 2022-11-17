@@ -8,7 +8,6 @@ use web3::ethabi::{Event, EventParam, ParamType, RawLog, Hash, token};
 use serde::{Deserialize, Serialize};
 use serde_derive::{Deserialize as DeriveDeserialize, Serialize as DeriveSerialize};
 use log::{info, error};
-use tokio::sync::{mpsc};
 use std::sync::{Arc};
 use tokio::sync::RwLock;
 use std::collections::{HashMap, HashSet};

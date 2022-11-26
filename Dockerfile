@@ -10,7 +10,7 @@ COPY ./Cargo.lock ./Cargo.lock
 COPY ./Cargo.toml ./Cargo.toml
 COPY ./lighthouse ./lighthouse
 COPY ./hotstuff ./hotstuff
-
+COPY ./contract_config ./contract_config
 RUN cargo build --release
 RUN rm src/*.rs
 
@@ -30,6 +30,7 @@ RUN apt-get update && apt-get -y upgrade && apt-get install -y --no-install-reco
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /app/target/release/dvf_root_node /usr/local/bin/dvf_root_node
+COPY --from=builder /app/contract_config /usr/local/bin/contract_config
 COPY --from=builder /app/target/release/dvf /usr/local/bin/dvf
 COPY ./src ./src
 EXPOSE 9005

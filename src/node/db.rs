@@ -18,6 +18,7 @@ pub enum DbCommand {
     QueryOperatorPublicKeyByIds(Vec<u32>, oneshot::Sender<DbResult<Option<Vec<String>>>>)
 }
 
+#[derive(Clone)]
 pub struct Database {
     channel: Sender<DbCommand>,
 }
@@ -119,6 +120,26 @@ impl Database {
             panic!("Failed to send query operator command to store: {}", e);
         }
         receiver.await.expect("Failed to receive reply to query operator command from db")
+    }
+
+    pub async fn query_operators_publick_key_by_ids(&self, operator_ids: Vec<u32>) -> DbResult<Option<Vec<String>>> {
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self.channel.send(DbCommand::QueryOperatorPublicKeyByIds(operator_ids, sender)).await {
+            panic!("Failed to send query operator command to store: {}", e);
+        }
+        receiver.await.expect("Failed to receive reply to query operator command from db")
+    }
+
+    pub async fn delete_validator(&self, validator_pk: String) {
+        if let Err(e) = self.channel.send(DbCommand::DeleteValidator(validator_pk)).await {
+            panic!("Failed to send query operator command to store: {}", e);
+        }
+    }
+
+    pub async fn delete_operator(&self, operator_id: u32) {
+        if let Err(e) = self.channel.send(DbCommand::DeleteOperator(operator_id)).await {
+            panic!("Failed to send query operator command to store: {}", e);
+        }
     }
 
 }

@@ -2,7 +2,7 @@ use rusqlite::{params, Connection, Result, OpenFlags, DropBehavior};
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::oneshot;
 use log::{error};
-use crate::node::new_contract::{Operator, Validator};
+use crate::node::new_contract::{Operator, Validator, Initializer};
 use web3::types::Address;
 use std::path::{Path};
 pub type DbError = rusqlite::Error;
@@ -15,7 +15,10 @@ pub enum DbCommand {
     DeleteValidator(String), // delete validator by pk
     QueryOperatorById(u32, oneshot::Sender<DbResult<Option<Operator>>>), // query operator by operator id
     QueryValidatorByPublicKey(String, oneshot::Sender<DbResult<Option<Validator>>>),
-    QueryOperatorPublicKeyByIds(Vec<u32>, oneshot::Sender<DbResult<Option<Vec<String>>>>)
+    QueryOperatorPublicKeyByIds(Vec<u32>, oneshot::Sender<DbResult<Option<Vec<String>>>>),
+    InsertInitializer(Initializer),
+    UpdateInitializer(u32, String, String, oneshot::Sender<DbResult<usize>>),
+    QueryInitializer(u32, oneshot::Sender<DbResult<Option<Initializer>>>)
 }
 
 #[derive(Clone)]
@@ -55,9 +58,28 @@ impl Database {
             CONSTRAINT validator_select_operators_2 FOREIGN KEY (operator_id) REFERENCES operators(id) ON DELETE CASCADE
         )";
 
+        let create_initializer_sql = "CREATE TABLE IF NOT EXISTS initializers(
+            id INTEGER NOT NULL PRIMARY KEY,
+            address CHARACTER(40) NOT NULL, 
+            validator_pk CHARACTER(96),
+            minipool_address CHARACTER(40)
+        )";
+
+        let create_initializer_releation_sql = "CREATE TABLE IF NOT EXISTS initializer_operators_mapping(
+            id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            initializer_id INTEGER NOT NULL,
+            operator_id INTEGER NOT NULL,
+            KEY initializer_id(initializer_id),
+            KEY operator_id(operator_id),
+            CONSTRAINT initializer_select_operators_1 FOREIGN KEY (initializer_id) REFERENCES initializers(id) ON DELETE CASCADE,
+            CONSTRAINT initializer_select_operators_2 FOREIGN KEY (operator_id) REFERENCES operators(id) ON DELETE CASCADE
+        )";
+
         conn.execute(create_operators_sql, [],)?;
         conn.execute(create_validators_sql, [],)?;
         conn.execute(create_releation_sql, [],)?;
+        conn.execute(create_initializer_sql,[])?;
+        conn.execute(create_initializer_releation_sql, [])?;
     
         let (tx, mut rx) = channel(1000);
 
@@ -86,6 +108,17 @@ impl Database {
                     },
                     DbCommand::QueryOperatorPublicKeyByIds(operator_ids, sender) => {
                         let response = query_operators_publick_key_by_ids(&conn, operator_ids);
+                        let _ = sender.send(response);
+                    },
+                    DbCommand::InsertInitializer(initializer) => {
+                        insert_initializer(&mut conn, initializer);
+                    },
+                    DbCommand::UpdateInitializer(id, va_pk, minipool_address, sender) => {
+                        let response = update_initializer(&conn, id, va_pk, minipool_address);
+                        let _ = sender.send(response);
+                    },
+                    DbCommand::QueryInitializer(id, sender) => {
+                        let response = query_initializer(&conn, id);
                         let _ = sender.send(response);
                     }
                 }
@@ -142,6 +175,28 @@ impl Database {
         }
     }
 
+    pub async fn insert_initializer(&self, initializer: Initializer) {
+        if let Err(e) = self.channel.send(DbCommand::InsertInitializer(initializer)).await {
+            panic!("Failed to send query operator command to store: {}", e);
+        }
+    }
+
+    pub async fn update_initializer(&self, id: u32, va_pk: String, minipool_address: String) -> DbResult<usize> {
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self.channel.send(DbCommand::UpdateInitializer(id, va_pk, minipool_address, sender)).await {
+            panic!("Failed to send query operator command to store: {}", e);
+        }
+        receiver.await.expect("Failed to receive reply to query operator command from db")
+    }
+
+    pub async fn query_initializer(&self, id: u32) -> DbResult<Option<Initializer>> {
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self.channel.send(DbCommand::QueryInitializer(id, sender)).await {
+            panic!("Failed to send query operator command to store: {}", e);
+        }
+        receiver.await.expect("Failed to receive reply to query operator command from db")
+    }
+
 }
 
 fn insert_operator(conn: &Connection, operator: Operator) {
@@ -150,6 +205,33 @@ fn insert_operator(conn: &Connection, operator: Operator) {
     }
 }
 
+fn insert_initializer(conn: &mut Connection, initializer: Initializer) {
+    if let Err(e) = conn.execute("INSERT INTO initializers(id, address) values (?1, ?2)", params![initializer.id, format!("{0:0x}", initializer.owner_address), ]) {
+        error!("Can't insert into initializer, error: {} {:?}", e, initializer);
+    }
+    match conn.transaction() {
+        Ok(mut tx) => {
+            tx.set_drop_behavior(DropBehavior::Commit);
+            for operator_id in &initializer.releated_operators {
+                if let Err(e) = &tx.execute("INSERT INTO initializer_operators_mapping(initializer_id, operator_id) values(?1, ?2)", params![initializer.id, operator_id], ) {
+                    error!("Can't insert into initializer_operators_mapping, error: {} operator_id {:?} initializer {}", e, operator_id, initializer.id);
+                    break;
+                }
+            }
+            if let Err(e) = tx.finish() {
+                error!("Can't finish the transaction {}", e);
+            }
+        },
+        Err(e) => {
+            error!("Can't create a transaction for database {}", e);
+        }
+    }
+}
+
+// validator_pk is in hex mode
+fn update_initializer(conn: &Connection, id: u32, validator_pk: String, minipool_address: String) -> DbResult<usize> {
+    conn.execute("UPDATE initializers SET validator_pk = ?1, minipool_address = ?2 WHERE id = ?3", params![validator_pk, minipool_address, id])
+}
 
 fn insert_validator(conn: &mut Connection, validator: Validator) {
     if let Err(e) = conn.execute("INSERT INTO validators(public_key, id, owner_address) values(?1, ?2, ?3)", params![hex::encode(&validator.public_key), &validator.id, format!("{0:0x}", validator.owner_address)],) {
@@ -277,5 +359,37 @@ fn query_operators_publick_key_by_ids(conn: &Connection, operator_ids: Vec<u32>)
     match public_keys.len() {
         0 => Ok(None),
         _ => Ok(Some(public_keys))
+    }
+}
+
+fn query_initializer(conn: &Connection, id: u32) -> DbResult<Option<Initializer>> {
+    match conn.prepare("SELECT id, address, validator_pk, minipool_address from initializers where id = (?)") {
+        Ok(mut stmt) => {
+            let mut rows = stmt.query([id])?;
+            match rows.next()? {
+                Some(row) => { 
+                    let address: String = row.get(1)?;
+                    let validator_pk: String = row.get(2)?;
+                    let minipool_address: String = row.get(3)?;
+                    let va_pk_option = if validator_pk.len() == 0 { None } else {
+                        Some(hex::decode(&validator_pk).unwrap().try_into().unwrap())
+                    };
+                    let minipool_address_option = if minipool_address.len() == 0 { None } else {
+                        Some(Address::from_slice(&hex::decode(minipool_address).unwrap()))
+                    };
+
+                    Ok(Some(Initializer {
+                        id: row.get(0)?,
+                        owner_address: Address::from_slice(&hex::decode(address).unwrap()),
+                        releated_operators: vec![],
+                        validator_pk:  va_pk_option,
+                        minipool_address: minipool_address_option
+                    }))
+                },
+                None => { Ok(None) }
+            }
+        },
+        Err(e) => { error!("Can't prepare statement {}", e); return Err(e);
+        }
     }
 }

@@ -8,10 +8,11 @@ use serde_derive::{Deserialize as DeriveDeserialize, Serialize as DeriveSerializ
 use std::path::{Path, PathBuf};
 use std::fs::File;
 use crate::node::db::Database;
+use crate::utils::error;
 use hscrypto::PublicKey;
 use std::time::Duration;
 use hsutils::monitored_channel::{MonitoredSender};
-use tokio::sync::OnceCell;
+
 
 const CONTRACT_CONFIG_FILE: &str = "contract_config/configs.yml";
 const CONTRACT_RECORD_FILE: &str = "contract_record.yml";
@@ -20,7 +21,9 @@ const CONTRACT_VA_REG_EVENT_NAME: &str =  "ValidatorRegistration";
 const CONTRACT_VA_RM_EVENT_NAME: &str =  "ValidatorRemoval";
 const CONTRACT_OP_REG_EVENT_NAME: &str =  "OperatorRegistration";
 const CONTRACT_OP_RM_EVENT_NAME: &str =  "OperatorRemoval";
-
+const CONTRACT_INI_REG_EVENT_NAME: &str = "InitializerRegistration";
+const CONTRACT_MINIPOOL_CREATED_EVENT_NAME: &str = "InitializerMiniPoolCreated";
+const CONTRACT_MINIPOOL_READY_EVENT_NAME: &str = "InitializerMiniPoolReady";
 pub enum ContractError{
     StoreError,
     BlockNumberError,
@@ -47,29 +50,44 @@ impl ContractError {
     }
 }
 
+type ValidatorPublicKey = [u8; 48];
+type OperatorPublicKey = [u8; 33];
+
 #[derive(Clone, Debug)]
 pub struct Operator {
     pub id: u32,
     pub name: String,
     pub address: Address,
-    pub public_key: [u8;33] // ecc256 public key
+    pub public_key: OperatorPublicKey // ecc256 public key
 }
 
 #[derive(Clone, Debug)]
 pub struct Validator {
     pub id: u64,
     pub owner_address: Address,
-    pub public_key: [u8;48],    // bls public key
+    pub public_key: ValidatorPublicKey,    // bls public key
     pub releated_operators: Vec<u32>
 }
 
+#[derive(Clone, Debug)]
+pub struct Initializer {
+    pub id: u32, 
+    pub owner_address: Address,
+    pub releated_operators: Vec<u32>,
+    pub validator_pk: Option<ValidatorPublicKey>,
+    pub minipool_address: Option<Address>
+}
 
-type SharedPublicKey = Vec<Vec<u8>>;
-type EncryptedSecretKey = Vec<Vec<u8>>;
-type OperatorPublicKey = Vec<Vec<u8>>;
+type SharedPublicKeys = Vec<Vec<u8>>;
+type EncryptedSecretKeys = Vec<Vec<u8>>;
+type OperatorPublicKeys = Vec<Vec<u8>>;
+
 pub enum ContractCommand {
-    StartValidator(Validator, OperatorPublicKey, SharedPublicKey, EncryptedSecretKey),
-    StopValidator(Validator)
+    StartValidator(Validator, OperatorPublicKeys, SharedPublicKeys, EncryptedSecretKeys),
+    StopValidator(Validator),
+    StartInitializer(Initializer, OperatorPublicKeys),
+    MiniPoolCreated(u32, ValidatorPublicKey, Address),
+    MiniPoolReady(u32, ValidatorPublicKey, Address)
 }
 
 pub trait FromFile<T: DeserializeOwned> {
@@ -92,6 +110,9 @@ pub struct ContractConfig {
     pub validator_removal_topic: String,
     pub operator_registration_topic: String, 
     pub operator_removal_topic: String,
+    pub initializer_registration_topic: String,
+    pub initializer_minipool_created_topic: String,
+    pub initializer_minipool_ready_topic: String,
     pub transport_url: String,
     pub safestake_network_address: String,
     pub safestake_registry_address: String,
@@ -151,6 +172,9 @@ impl Contract {
         let va_rm_topic = H256::from_slice(&hex::decode(&config.validator_removal_topic).unwrap());
         let op_reg_topic = H256::from_slice(&hex::decode(&config.operator_registration_topic).unwrap());
         let op_rm_topic = H256::from_slice(&hex::decode(&config.operator_removal_topic).unwrap());
+        let ini_reg_topic = H256::from_slice(&hex::decode(&config.initializer_registration_topic).unwrap());
+        let minipool_created_topic = H256::from_slice(&hex::decode(&config.initializer_minipool_created_topic).unwrap());
+        let minipool_ready_topic = H256::from_slice(&hex::decode(&config.initializer_minipool_ready_topic).unwrap());
 
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(60 * 3)).await;
@@ -204,7 +228,7 @@ impl Contract {
                                 }
                             } else if log.topics[0] == op_reg_topic {
                                 info!("operator registration event");
-                                match process_operator_registration_log(log, &va_reg_topic) {
+                                match process_operator_registration_log(log, &op_reg_topic) {
                                     Ok(op_log) => {
                                         let _ = process_operator_registration(op_log, &db).await.map_err(|e| {error!("process operator registration event failed {}", e.as_str())});
                                     },
@@ -212,13 +236,39 @@ impl Contract {
                                 }
                             } else if log.topics[0] == op_rm_topic {
                                 info!("operator removal event");
-                                match process_operator_removal_log(log, &va_reg_topic) {
+                                match process_operator_removal_log(log, &op_rm_topic) {
                                     Ok(op_log) => {
                                         let _ = process_operator_removal(op_log, &db).await.map_err(|e| {error!("process operator registration event failed {}", e.as_str())});
                                     },
                                     Err(e) => {error!("process operator registration log failed {}", e.as_str()); continue; }
                                 }
-                            } else {
+                            } else if log.topics[0] == ini_reg_topic {
+                                info!("initializer registration event");
+                                match process_initializer_registration_log(log, &ini_reg_topic) {
+                                    Ok(ini_log) => {
+                                        let _ = process_initializer_registration(ini_log, &db, &operator_pk_base64, &sender).await.map_err(|e| {error!("process initializer registration event failed {}", e.as_str())});
+                                    },
+                                    Err(e) => {error!("process initializer registration log failed {}", e.as_str()); continue; }
+                                }
+                            } else if log.topics[0] == minipool_created_topic {
+                                info!("minipool created event");
+                                match process_minipool_created_log(log, &minipool_created_topic) {
+                                    Ok(pool_log) => {
+                                        let _ = process_minipool_created(pool_log, &db, &sender).await.map_err(|e| {error!("process minipool created event failed {}", e.as_str())});
+                                    },
+                                    Err(e) => {error!("process minipool created event failed {}", e.as_str()); continue; }
+                                }
+                            } else if log.topics[0] == minipool_ready_topic {
+                                info!("minipool ready event");
+                                match process_minipool_ready_log(log, &minipool_ready_topic) {
+                                    Ok(pool_log) => {
+                                        let _ = process_minipool_ready(pool_log, &db, &sender).await.map_err(|e| {error!("process minipool ready event failed {}", e.as_str())});
+                                    },
+                                    Err(e) => {error!("process minipool ready event failed {}", e.as_str()); continue; }
+                                }
+                            }
+                            
+                            else {
                                 error!("unkown topic");
                             }
                             
@@ -474,6 +524,161 @@ pub async fn process_operator_removal(log: web3::ethabi::Log, db: &Database) -> 
     let id = log.params[0].value.clone().into_uint().ok_or(ContractError::LogParseError)?.as_u32();
     db.delete_operator(id).await;
     Ok(())
+}
+
+pub fn process_initializer_registration_log(log: Log, topic: &H256) -> Result<web3::ethabi::Log, ContractError> {
+    let ini_reg_event = Event {
+        name: CONTRACT_INI_REG_EVENT_NAME.to_string(),
+        inputs: vec![
+            EventParam {
+                name: "initializerId".to_string(),
+                kind: ParamType::Uint(32),
+                indexed: false
+            },
+            EventParam {
+                name: "ownerAddress".to_string(),
+                kind: ParamType::Address,
+                indexed: false
+            },
+            EventParam {
+                name: "operatorIds".to_string(),
+                kind: ParamType::Array(Box::new(ParamType::Uint(32))),
+                indexed: false
+            }
+        ],
+        anonymous: false
+    };
+    ini_reg_event.parse_log(RawLog {
+        topics: vec![Hash::from_slice(&topic.0)],
+        data: log.data.0
+    }).map_err(|_| {
+        ContractError::LogParseError
+    })
+}
+
+pub async fn process_initializer_registration(log: web3::ethabi::Log, db: &Database, operator_pk_base64: &String, sender: &MonitoredSender<ContractCommand>) -> Result<(), ContractError>{
+    let id = log.params[0].value.clone().into_uint().ok_or(ContractError::LogParseError)?.as_u32();
+    let address = log.params[1].value.clone().into_address().ok_or(ContractError::LogParseError)?;
+    let operator_tokens = log.params[2].value.clone().into_array().ok_or(ContractError::LogParseError)?;
+    let op_ids : Vec<u32> = operator_tokens.into_iter().map(|token| {
+        let op_id = token.into_uint().unwrap();
+        op_id.as_u32()
+    }).collect();
+
+    let operator_pks = db.query_operators_publick_key_by_ids(op_ids.clone()).await;
+
+    match operator_pks {
+        Ok(options) => {
+            let op_pks = options.ok_or(ContractError::NoEnoughOperatorError)?;
+            if op_pks.len() != op_ids.len() {
+                return Err(ContractError::NoEnoughOperatorError);
+            }
+            if op_pks.contains(operator_pk_base64) {
+                let initializer = Initializer {
+                    id,
+                    owner_address: address,
+                    releated_operators: op_ids,
+                    validator_pk: None,
+                    minipool_address: None
+                };
+                let op_pk_bn: Vec<Vec<u8>> = op_pks.into_iter().map(|s| {
+                    base64::decode(s).unwrap()
+                }).collect();
+                db.insert_initializer(initializer.clone()).await;
+                let _ = sender.send(ContractCommand::StartInitializer(initializer, op_pk_bn));
+            } else {
+                info!("This node is not included in this initializer registration event. Continue.");
+            }
+            Ok(())
+        },
+        Err(_) => { 
+            Err(ContractError::DatabaseError) 
+        }
+    }
+}
+
+pub fn process_minipool_created_log(log: Log, topic: &H256) -> Result<web3::ethabi::Log, ContractError> {
+    let minipool_created_event = Event {
+        name: CONTRACT_MINIPOOL_CREATED_EVENT_NAME.to_string(),
+        inputs: vec![
+            EventParam {
+                name: "initializerId".to_string(),
+                kind: ParamType::Uint(32),
+                indexed: false
+            },
+            EventParam {
+                name: "validatorPublicKey".to_string(),
+                kind: ParamType::Bytes,
+                indexed: false
+            },
+            EventParam {
+                name: "minipoolAddress".to_string(),
+                kind: ParamType::Address,
+                indexed: false
+            }
+        ],
+        anonymous: false
+    };
+    minipool_created_event.parse_log(RawLog {
+        topics: vec![Hash::from_slice(&topic.0)],
+        data: log.data.0
+    }).map_err(|_| {
+        ContractError::LogParseError
+    })
+}
+
+pub async fn process_minipool_created(log: web3::ethabi::Log, db: &Database, sender: &MonitoredSender<ContractCommand>) -> Result<(), ContractError> {
+    let id = log.params[0].value.clone().into_uint().ok_or(ContractError::LogParseError)?.as_u32();
+    let va_pk = log.params[1].value.clone().into_bytes().ok_or(ContractError::LogParseError)?;
+    let minipool_address = log.params[2].value.clone().into_address().ok_or(ContractError::LogParseError)?;
+
+    match db.update_initializer(id, hex::encode(&va_pk), format!("{0:0x}", minipool_address)).await {
+        Ok(updated) => { 
+            if updated != 0 {
+                let _ = sender.send(ContractCommand::MiniPoolCreated(id, va_pk.try_into().unwrap(), minipool_address));
+            }
+            Ok(())
+        },
+        Err(e) => { error!("Can't update initializer"); Err(ContractError::DatabaseError) }
+    }
+}
+
+pub fn process_minipool_ready_log(log: Log, topic: &H256) -> Result<web3::ethabi::Log, ContractError> {
+    let minipool_ready_event = Event {
+        name: CONTRACT_MINIPOOL_READY_EVENT_NAME.to_string(),
+        inputs: vec![
+            EventParam {
+                name: "initializerId".to_string(),
+                kind: ParamType::Uint(32),
+                indexed: false
+            }
+        ],
+        anonymous: false
+    };
+    minipool_ready_event.parse_log(RawLog {
+        topics: vec![Hash::from_slice(&topic.0)],
+        data: log.data.0
+    }).map_err(|_| {
+        ContractError::LogParseError
+    })
+}
+
+pub async fn process_minipool_ready(log: web3::ethabi::Log, db: &Database, sender: &MonitoredSender<ContractCommand>) -> Result<(), ContractError> {
+    let id = log.params[0].value.clone().into_uint().ok_or(ContractError::LogParseError)?.as_u32();
+    match db.query_initializer(id).await {
+        Ok(initializer_option) => {
+            match initializer_option {
+                Some(initializer) => {
+                    let _ = initializer.validator_pk.ok_or(ContractError::DatabaseError)?;
+                    let _ = initializer.minipool_address.ok_or(ContractError::DatabaseError)?;
+                    let _ = sender.send(ContractCommand::MiniPoolReady(id, initializer.validator_pk.unwrap(), initializer.minipool_address.unwrap()));
+                    Ok(())
+                },
+                None => { Ok(()) }
+            }
+        }, 
+        Err(_) => {  Err(ContractError::DatabaseError)  }
+    }
 }
 
 pub fn parse_bytes_token(tk: token::Token) -> Result<Vec<Vec<u8>>, ContractError> {

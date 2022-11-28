@@ -83,10 +83,11 @@ pub struct Initializer {
     pub minipool_address: Option<Address>
 }
 
-type SharedPublicKeys = Vec<Vec<u8>>;
-type EncryptedSecretKeys = Vec<Vec<u8>>;
-type OperatorPublicKeys = Vec<Vec<u8>>;
+pub type SharedPublicKeys = Vec<Vec<u8>>;
+pub type EncryptedSecretKeys = Vec<Vec<u8>>;
+pub type OperatorPublicKeys = Vec<Vec<u8>>;
 
+#[derive(Clone)]
 pub enum ContractCommand {
     StartValidator(Validator, OperatorPublicKeys, SharedPublicKeys, EncryptedSecretKeys),
     StopValidator(Validator),

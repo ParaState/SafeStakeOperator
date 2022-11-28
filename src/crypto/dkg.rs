@@ -139,6 +139,7 @@ mod tests {
     use bls::{Signature, PublicKey};
     use std::net::SocketAddr;
 
+    const t: usize = 3;
     const ids: [u64; 4] = [1, 2, 3, 4];
 
     fn verify_dkg_results(results: Vec<(Keypair, PublicKey)>) {
@@ -171,7 +172,6 @@ mod tests {
 
     #[test]
     fn test_dkg() {
-        let t = 3;
         // Use dkg to generate secret-shared keys
         let io = &Arc::new(MemIOCommittee::new(ids.as_slice()));
         let futs = ids.iter().map(|id| async move {
@@ -189,7 +189,6 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_dkg_net() {
-        let t = 3;
         let ports: Vec<u16> = ids.iter().map(|id| (25000 + *id) as u16).collect();
         let addrs: Vec<SocketAddr> = ports.iter().map(|port| SocketAddr::new("127.0.0.1".parse().unwrap(), *port)).collect();
 

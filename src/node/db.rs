@@ -16,6 +16,7 @@ pub enum DbCommand {
     QueryOperatorById(u32, oneshot::Sender<DbResult<Option<Operator>>>), // query operator by operator id
     QueryValidatorByPublicKey(String, oneshot::Sender<DbResult<Option<Validator>>>),
     QueryOperatorPublicKeyByIds(Vec<u32>, oneshot::Sender<DbResult<Option<Vec<String>>>>),
+    QueryOperatorPublicKeyById(u32, oneshot::Sender<DbResult<Option<String>>>),
     InsertInitializer(Initializer),
     UpdateInitializer(u32, String, String, oneshot::Sender<DbResult<usize>>),
     QueryInitializer(u32, oneshot::Sender<DbResult<Option<Initializer>>>)
@@ -110,6 +111,10 @@ impl Database {
                         let response = query_operators_publick_key_by_ids(&conn, operator_ids);
                         let _ = sender.send(response);
                     },
+                    DbCommand::QueryOperatorPublicKeyById(operator_id, sender) => {
+                        let response = query_operator_public_key_by_id(&conn, operator_id);
+                        let _ = sender.send(response);
+                    }
                     DbCommand::InsertInitializer(initializer) => {
                         insert_initializer(&mut conn, initializer);
                     },
@@ -158,6 +163,14 @@ impl Database {
     pub async fn query_operators_publick_key_by_ids(&self, operator_ids: Vec<u32>) -> DbResult<Option<Vec<String>>> {
         let (sender, receiver) = oneshot::channel();
         if let Err(e) = self.channel.send(DbCommand::QueryOperatorPublicKeyByIds(operator_ids, sender)).await {
+            panic!("Failed to send query operator command to store: {}", e);
+        }
+        receiver.await.expect("Failed to receive reply to query operator command from db")
+    }
+
+    pub async fn query_operator_public_key_by_id(&self, operator_id: u32) -> DbResult<Option<String>> {
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self.channel.send(DbCommand::QueryOperatorPublicKeyById(operator_id, sender)).await {
             panic!("Failed to send query operator command to store: {}", e);
         }
         receiver.await.expect("Failed to receive reply to query operator command from db")
@@ -359,6 +372,24 @@ fn query_operators_publick_key_by_ids(conn: &Connection, operator_ids: Vec<u32>)
     match public_keys.len() {
         0 => Ok(None),
         _ => Ok(Some(public_keys))
+    }
+}
+
+fn query_operator_public_key_by_id(conn: &Connection, operator_id: u32) -> DbResult<Option<String>> {
+    match conn.prepare("SELECT public_key from operators where id = (?)") {
+        Ok(mut stmt) => {
+            let mut rows = stmt.query([operator_id])?;
+            match rows.next()? {
+                Some(row) => {
+                    Ok(Some(row.get(0)?))
+                },
+                None => {Ok(None)}
+            }
+        },
+        Err(e) => {
+            error!("Can't prepare statement {}", e);
+            return Err(e);
+        }
     }
 }
 

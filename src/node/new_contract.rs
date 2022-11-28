@@ -1,18 +1,17 @@
 use serde::{Serialize};
 use serde::de::DeserializeOwned;
 use store::Store;
-use web3::{Web3, transports::WebSocket, types::{Address, H256, FilterBuilder, Log, U64, BlockNumber}};
+use web3::{Web3, transports::WebSocket, types::{Address, H256, U256, FilterBuilder, Log, U64, BlockNumber}, contract::{Contract as EthContract, Options}};
 use web3::ethabi::{Event, EventParam, ParamType, RawLog, Hash, token};
 use log::{info, warn, error};
 use serde_derive::{Deserialize as DeriveDeserialize, Serialize as DeriveSerialize};
 use std::path::{Path, PathBuf};
 use std::fs::File;
 use crate::node::db::Database;
-use crate::utils::error;
 use hscrypto::PublicKey;
 use std::time::Duration;
 use hsutils::monitored_channel::{MonitoredSender};
-
+use serde_json::{Value};
 
 const CONTRACT_CONFIG_FILE: &str = "contract_config/configs.yml";
 const CONTRACT_RECORD_FILE: &str = "contract_record.yml";
@@ -32,7 +31,10 @@ pub enum ContractError{
     LogParseError,
     NoEnoughOperatorError,
     DatabaseError,
-    InvalidArgumentError
+    InvalidArgumentError,
+    FileError,
+    ContractParseError,
+    QueryError
 }
 
 impl ContractError {
@@ -45,7 +47,10 @@ impl ContractError {
             ContractError::LogParseError => "[ERROR]: Can't parse eth log.",
             ContractError::NoEnoughOperatorError => "[ERROR]: There are not enough operators in local database",
             ContractError::DatabaseError => "[ERROR]: Can't get result from local databse",
-            ContractError::InvalidArgumentError => "[ERROR]: Invalid Argument from contract"
+            ContractError::InvalidArgumentError => "[ERROR]: Invalid Argument from contract",
+            ContractError::FileError => "[ERROR]: Error happens when processing file",
+            ContractError::ContractParseError => "[ERROR]: Can't parse contract from abi json",
+            ContractError::QueryError => "[ERROR]: Can't query from contract"
         }
     }
 }
@@ -108,8 +113,6 @@ pub trait ToFile<> {
 pub struct ContractConfig {
     pub validator_registration_topic: String, 
     pub validator_removal_topic: String,
-    pub operator_registration_topic: String, 
-    pub operator_removal_topic: String,
     pub initializer_registration_topic: String,
     pub initializer_minipool_created_topic: String,
     pub initializer_minipool_ready_topic: String,
@@ -170,8 +173,6 @@ impl Contract {
 
         let va_reg_topic = H256::from_slice(&hex::decode(&config.validator_registration_topic).unwrap());
         let va_rm_topic = H256::from_slice(&hex::decode(&config.validator_removal_topic).unwrap());
-        let op_reg_topic = H256::from_slice(&hex::decode(&config.operator_registration_topic).unwrap());
-        let op_rm_topic = H256::from_slice(&hex::decode(&config.operator_removal_topic).unwrap());
         let ini_reg_topic = H256::from_slice(&hex::decode(&config.initializer_registration_topic).unwrap());
         let minipool_created_topic = H256::from_slice(&hex::decode(&config.initializer_minipool_created_topic).unwrap());
         let minipool_ready_topic = H256::from_slice(&hex::decode(&config.initializer_minipool_ready_topic).unwrap());
@@ -188,7 +189,7 @@ impl Contract {
                 let filter = FilterBuilder::default()
                     .address(vec![Address::from_slice(&hex::decode(&config.safestake_network_address).unwrap())])
                     .topics(
-                        Some(vec![va_reg_topic, va_rm_topic, op_reg_topic, op_rm_topic]), 
+                        Some(vec![va_reg_topic, va_rm_topic, ini_reg_topic, minipool_created_topic, minipool_ready_topic]), 
                         None, 
                         None, 
                         None)
@@ -214,7 +215,7 @@ impl Contract {
                                 info!("validator registration event");
                                 match process_validator_registration_log(log, &va_reg_topic) {
                                     Ok(va_log) => {
-                                        let _ = process_validator_registration(va_log, &db, &operator_pk_base64, &sender).await.map_err(|e| {error!("process validator registration event failed {}", e.as_str())});
+                                        let _ = process_validator_registration(va_log, &db, &operator_pk_base64, &config,&sender).await.map_err(|e| {error!("process validator registration event failed {}", e.as_str())});
                                     },
                                     Err(e) => {error!("process validator registration log failed {}", e.as_str()); continue; }
                                 }
@@ -225,22 +226,6 @@ impl Contract {
                                         let _ = process_validator_removal(va_log, &db, &sender).await.map_err(|e| {error!("process validator removal event failed {}", e.as_str())});
                                     },
                                     Err(e) => {error!("process validator removal log failed {}", e.as_str()); continue; }
-                                }
-                            } else if log.topics[0] == op_reg_topic {
-                                info!("operator registration event");
-                                match process_operator_registration_log(log, &op_reg_topic) {
-                                    Ok(op_log) => {
-                                        let _ = process_operator_registration(op_log, &db).await.map_err(|e| {error!("process operator registration event failed {}", e.as_str())});
-                                    },
-                                    Err(e) => {error!("process operator registration log failed {}", e.as_str()); continue; }
-                                }
-                            } else if log.topics[0] == op_rm_topic {
-                                info!("operator removal event");
-                                match process_operator_removal_log(log, &op_rm_topic) {
-                                    Ok(op_log) => {
-                                        let _ = process_operator_removal(op_log, &db).await.map_err(|e| {error!("process operator registration event failed {}", e.as_str())});
-                                    },
-                                    Err(e) => {error!("process operator registration log failed {}", e.as_str()); continue; }
                                 }
                             } else if log.topics[0] == ini_reg_topic {
                                 info!("initializer registration event");
@@ -267,11 +252,9 @@ impl Contract {
                                     Err(e) => {error!("process minipool ready event failed {}", e.as_str()); continue; }
                                 }
                             }
-                            
                             else {
                                 error!("unkown topic");
                             }
-                            
                         }
                     },
                     Err(e) => {
@@ -351,7 +334,7 @@ pub fn process_validator_registration_log(log: Log, topic: &H256) -> Result<web3
     })
 }
 
-pub async fn process_validator_registration(log: web3::ethabi::Log, db: &Database, operator_pk_base64: &String, sender: &MonitoredSender<ContractCommand>) -> Result<(), ContractError> {
+pub async fn process_validator_registration(log: web3::ethabi::Log, db: &Database, operator_pk_base64: &String, config: &ContractConfig, sender: &MonitoredSender<ContractCommand>) -> Result<(), ContractError> {
     let address = log.params[0].value.clone().into_address().ok_or(ContractError::LogParseError)?;
     let va_pk = log.params[1].value.clone().into_bytes().ok_or(ContractError::LogParseError)?;
     let validator_id = convert_va_pk_to_u64(&va_pk);
@@ -361,51 +344,45 @@ pub async fn process_validator_registration(log: web3::ethabi::Log, db: &Databas
         op_id.as_u32()
     }).collect();
 
-    let operator_pks = db.query_operators_publick_key_by_ids(op_ids.clone()).await;
-    match operator_pks {
-        Ok(options) => {
-            let op_pks = options.ok_or(ContractError::NoEnoughOperatorError)?;
-            // check if found enough operators ?
-            if op_pks.len() != op_ids.len() {
-                return Err(ContractError::NoEnoughOperatorError);
-            }
-            if op_pks.contains(operator_pk_base64) {
-                let shared_pks = parse_bytes_token(log.params[3].value.clone())?;
-                let encrypted_sks = parse_bytes_token(log.params[4].value.clone())?;
-                // TODO paid block should store for tokenomics
-                let paid_block_number = log.params[5].value.clone().into_uint().ok_or(ContractError::LogParseError)?.as_u64();
-                // check array length should be same
-                if shared_pks.len() != encrypted_sks.len() {
-                    return Err(ContractError::InvalidArgumentError);
-                }
-                if shared_pks.len() != op_ids.len() {
-                    return Err(ContractError::InvalidArgumentError);
-                }
-                // binary operator publics
-                let op_pk_bn: Vec<Vec<u8>> = op_pks.into_iter().map(|s| {
-                    base64::decode(s).unwrap()
-                }).collect();
-                //send command to node 
-                let validator = Validator {
-                    id: validator_id,
-                    owner_address: address,
-                    public_key: va_pk.try_into().unwrap(),
-                    releated_operators: op_ids
-                };
-                // save validator in local database
-                db.insert_validator(validator.clone()).await;
-                let _ = sender.send(ContractCommand::StartValidator(validator, op_pk_bn, shared_pks, encrypted_sks)).await;
+    let mut operator_pks: Vec<String> = Vec::new();
 
-                Ok(())
-            } else {
-                info!("This node is not included in this event. Continue.");
-                Ok(())
+    for op_id in &op_ids {
+        match db.query_operator_public_key_by_id(*op_id).await.map_err(|e| ContractError::DatabaseError )? {
+            Some(pk_str) => {
+                operator_pks.push(pk_str);
+            },
+            None => {
+                let operator = query_operator_from_contract(config, *op_id).await?;
+                operator_pks.push(base64::encode(&operator.public_key));
+                db.insert_operator(operator).await;
             }
-        },
-        Err(_) => { 
-            Err(ContractError::DatabaseError) 
-        }
+        };
     }
+    if operator_pks.contains(operator_pk_base64) {
+        let shared_pks = parse_bytes_token(log.params[3].value.clone())?;
+        let encrypted_sks = parse_bytes_token(log.params[4].value.clone())?;
+        // TODO paid block should store for tokenomics
+        let paid_block_number = log.params[5].value.clone().into_uint().ok_or(ContractError::LogParseError)?.as_u64();
+        // check array length should be same
+        if shared_pks.len() != encrypted_sks.len() {
+            return Err(ContractError::InvalidArgumentError);
+        }
+        // binary operator publics
+        let op_pk_bn: Vec<Vec<u8>> = operator_pks.into_iter().map(|s| {
+            base64::decode(s).unwrap()
+        }).collect();
+        //send command to node 
+        let validator = Validator {
+            id: validator_id,
+            owner_address: address,
+            public_key: va_pk.try_into().unwrap(),
+            releated_operators: op_ids
+        };
+        // save validator in local database
+        db.insert_validator(validator.clone()).await;
+        let _ = sender.send(ContractCommand::StartValidator(validator, op_pk_bn, shared_pks, encrypted_sks)).await;
+    }
+    Ok(())
 }
 
 pub fn process_validator_removal_log(log: Log, topic: &H256) -> Result<web3::ethabi::Log, ContractError> {
@@ -681,6 +658,25 @@ pub async fn process_minipool_ready(log: web3::ethabi::Log, db: &Database, sende
     }
 }
 
+pub async fn query_operator_from_contract(config: &ContractConfig, id: u32) -> Result<Operator, ContractError> {
+    let web3 = Web3::new(WebSocket::new(&config.transport_url).await.unwrap());
+    let raw_abi = std::fs::read_to_string(&config.safestake_registry_abi_path).or_else(|e| {
+        error!("Can't read from {}", &config.safestake_registry_abi_path);
+        Err(ContractError::FileError)})?;
+    let raw_json : Value = serde_json::from_str(&raw_abi).unwrap();
+    let abi = raw_json["abi"].to_string();
+    let address = Address::from_slice(&hex::decode(&config.safestake_registry_address).unwrap());
+    let contract = EthContract::from_json(web3.eth(), address, abi.as_bytes()).or_else(|e| {
+        error!("Can't create contract from json {}", e);
+        Err(ContractError::ContractParseError)
+    })?;
+    let (name, address, pk, _, _, _, _): (String, Address, Vec<u8>, U256, U256, U256, bool) = contract.query("getOperatorById", (id, ), None, Options::default(), None).await.or_else(|e| {
+        error!("Can't query from contract {}", e);
+        Err(ContractError::QueryError)
+    })?;
+    Ok(Operator { id, name, address, public_key: pk.try_into().unwrap() })
+}
+
 pub fn parse_bytes_token(tk: token::Token) -> Result<Vec<Vec<u8>>, ContractError> {
     let token_arr = tk.into_array().ok_or(ContractError::LogParseError)?;
     let res :Vec<Vec<u8>> = token_arr.into_iter().map(|token| {
@@ -698,4 +694,4 @@ pub fn convert_va_pk_to_u64(pk: &[u8]) -> u64 {
     } 
     let id = u64::from_le_bytes(little_endian);
     id 
-  } 
+} 

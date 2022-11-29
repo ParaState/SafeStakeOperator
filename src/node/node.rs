@@ -14,7 +14,7 @@ use std::net::SocketAddr;
 use tokio::sync::mpsc::{Receiver};
 /// The default channel capacity for this module.
 use crate::node::dvfcore::{ DvfSignatureReceiverHandler};
-use crate::node::config::{NodeConfig, DISCOVERY_PORT_OFFSET, DB_FILENAME};
+use crate::node::config::{NodeConfig, DISCOVERY_PORT_OFFSET, DB_FILENAME, BOOT_ENR};
 use std::path::PathBuf;
 use std::net::IpAddr;
 use std::fs::{remove_file, remove_dir_all};
@@ -115,7 +115,7 @@ impl<T: EthSpec> Node<T> {
             signature_handler_map: Arc::clone(&signature_handler_map),
             validator_store: None
         };
-        Discovery::spawn(self_address, base_port + DISCOVERY_PORT_OFFSET, Arc::clone(&key_ip_map), node.secret.clone(), Some(node.config.boot_enr.to_string()));
+        Discovery::spawn(self_address, base_port + DISCOVERY_PORT_OFFSET, Arc::clone(&key_ip_map), node.secret.clone(), Some(BOOT_ENR.get().unwrap().clone()),);
 
         let contract_config = ContractConfig::default();
         let ethlog_hashset = Arc::new(RwLock::new(HashSet::new()));

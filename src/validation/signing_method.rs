@@ -18,13 +18,13 @@ use types::*;
 use url::Url;
 use web3signer::{ForkInfo, SigningRequest, SigningResponse};
 use crate::node::dvfcore::{DvfSigner, DvfPerformanceRequest};
-use crate::node::config::{API_ADDRESS};
+use crate::node::config::{API_ADDRESS, COLLECT_PERFORMANCE_URL};
+use crate::node::utils::request_to_web_server;
 pub use web3signer::Web3SignerObject;
 use chrono::prelude::*;
 use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
 use std::time::Duration;
 use tokio::time::sleep;
-
 mod web3signer;
 
 #[derive(Debug, PartialEq)]
@@ -337,8 +337,8 @@ impl SigningMethod {
                                             time: Utc::now().signed_duration_since(dt).num_milliseconds()
                                         };
                                         let client = reqwest::Client::new();
-                                        let url = Url::parse(API_ADDRESS.get().unwrap()).map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
-                                        let _ = client.post(url).json(&request_body).send().await.map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
+                                        let url_str = API_ADDRESS.get().unwrap().to_owned() + COLLECT_PERFORMANCE_URL;
+                                        request_to_web_server(request_body, &url_str).await.map_err(|e| Error::Web3SignerRequestFailed(e))?;
                                     }
                                     Ok(signature)
                                 },

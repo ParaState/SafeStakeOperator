@@ -11,12 +11,12 @@ use directory::ensure_dir_exists;
 use eth2::types::Graffiti;
 use sensitive_url::SensitiveUrl;
 use serde_derive::{Deserialize, Serialize};
-use slog::{info, warn, Logger};
+use slog::{info, warn, Logger, error};
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use types::{Address, GRAFFITI_BYTES_LEN};
-use crate::node::config::{NodeConfig,API_ADDRESS};
+use crate::node::config::{NodeConfig,API_ADDRESS, BOOT_ENR};
 use crate::node::contract::{DEFAULT_CONTRACT_ADDRESS, DEFAULT_TRANSPORT_URL};
 
 pub const DEFAULT_BEACON_NODE: &str = "http://localhost:5052/";
@@ -129,9 +129,11 @@ impl Config {
         }
 
         if cli_args.value_of("boot-enr").is_some() {
-            let boot_enr = parse_required(cli_args, "boot-enr")?;
+            let boot_enr: String= parse_required(cli_args, "boot-enr")?;
             info!(log, "read boot enr"; "boot-enr" => &boot_enr);
-            config.dvf_node_config.boot_enr = boot_enr;
+            BOOT_ENR.set(boot_enr).unwrap();
+        } else {
+            error!(log, "can't read boot enr, existing;" );
         }
 
         let mut self_ip : Option<String> = None;

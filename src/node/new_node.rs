@@ -1,14 +1,21 @@
+use crate::crypto::dkg::DKG;
 use crate::crypto::elgamal::{Ciphertext, Elgamal};
-use crate::node::config::{NodeConfig, DB_FILENAME, DISCOVERY_PORT_OFFSET};
+use crate::network::io_committee::IOChannel;
+use crate::network::io_committee::NetIOCommittee;
+use crate::node::config::{
+    NodeConfig, API_ADDRESS, BOOT_ENR, DB_FILENAME, DISCOVERY_PORT_OFFSET, DKG_PORT_OFFSET,
+    PRESTAKE_SIGNATURE_URL, STAKE_SIGNATURE_URL, VALIDATOR_PK_URL,
+};
 use crate::node::contract::{ContractConfig, ListenContract};
-use crate::node::contract::{Operator, Validator, ValidatorCommand};
+use crate::node::contract::{Operator, Validator};
 use crate::node::discovery::Discovery;
 /// The default channel capacity for this module.
 use crate::node::dvfcore::DvfSignatureReceiverHandler;
 use crate::node::new_contract::{
-    ContractCommand, EncryptedSecretKeys, Operator as new_Operator, OperatorPublicKeys,
-    SharedPublicKeys, Validator as new_Validator,
+    ContractCommand, EncryptedSecretKeys, Initializer, OperatorPublicKeys, SharedPublicKeys,
+    Validator as new_Validator, SELF_OPERATOR_ID,
 };
+use crate::node::utils::{get_operator_ips, request_to_web_server, ValidatorPkRequest};
 use crate::validation::account_utils::default_keystore_share_password_path;
 use crate::validation::account_utils::default_keystore_share_path;
 use crate::validation::account_utils::default_operator_committee_definition_path;
@@ -30,10 +37,8 @@ use parking_lot::RwLock as ParkingRwLock;
 use slot_clock::SystemTimeSlotClock;
 use std::collections::{HashMap, HashSet};
 use std::fs::{remove_dir_all, remove_file};
-use std::net::IpAddr;
-use std::net::SocketAddr;
-use std::path::Path;
-use std::path::PathBuf;
+use std::net::{IpAddr, SocketAddr};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
@@ -41,7 +46,6 @@ use tokio::time::{sleep, Duration};
 use types::EthSpec;
 use types::PublicKey;
 use validator_dir::insecure_keys::INSECURE_PASSWORD;
-
 const THRESHOLD: u64 = 3;
 fn with_wildcard_ip(mut addr: SocketAddr) -> SocketAddr {
     addr.set_ip("0.0.0.0".parse().unwrap());
@@ -148,7 +152,7 @@ impl<T: EthSpec> Node<T> {
             base_port + DISCOVERY_PORT_OFFSET,
             Arc::clone(&key_ip_map),
             node.secret.clone(),
-            Some(node.config.boot_enr.to_string()),
+            Some(BOOT_ENR.get().unwrap().clone()),
         );
 
         let contract_config = ContractConfig::default();
@@ -172,13 +176,13 @@ impl<T: EthSpec> Node<T> {
         );
 
         let node = Arc::new(ParkingRwLock::new(node));
-        Node::process_validator_command(
-            Arc::clone(&node),
-            validator_operators_map,
-            Arc::clone(&key_ip_map),
-            rx_validator_command,
-            tx_validator_command,
-        );
+        // Node::process_validator_command(
+        //     Arc::clone(&node),
+        //     validator_operators_map,
+        //     Arc::clone(&key_ip_map),
+        //     rx_validator_command,
+        //     tx_validator_command,
+        // );
 
         Ok(Some(node))
     }
@@ -227,52 +231,41 @@ impl<T: EthSpec> Node<T> {
                                 }
                             }
                         }
-                        _ => {}
-                    },
-                    None => {
-                        error!("channel is closed unexpected");
-                        break;
-                    }
-                }
-            }
-        });
-    }
-
-    pub fn process_validator_command(
-        node: Arc<ParkingRwLock<Node<T>>>,
-        validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>,
-        operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
-        mut rx_validator_command: Receiver<ValidatorCommand>,
-        tx_validator_command: MonitoredSender<ValidatorCommand>,
-    ) {
-        tokio::spawn(async move {
-            loop {
-                match rx_validator_command.recv().await {
-                    Some(validator_command) => match validator_command {
-                        ValidatorCommand::Start(validator) => {
-                            match add_validator(
-                                node.clone(),
-                                validator,
-                                validator_operators_map.clone(),
-                                operator_key_ip_map.clone(),
-                                tx_validator_command.clone(),
-                            )
-                            .await
-                            {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    error!("Failed to add validator: {}", e);
-                                }
-                            }
-                        }
-                        ValidatorCommand::Stop(validator) => {
-                            match stop_validator(node.clone(), validator).await {
+                        ContractCommand::StopValidator(validator) => {
+                            match new_stop_validator(node.clone(), validator).await {
                                 Ok(_) => {}
                                 Err(e) => {
                                     error!("Failed to stop validator: {}", e);
                                 }
                             }
                         }
+                        ContractCommand::StartInitializer(initializer, operator_pks) => {
+                            match start_initializer(
+                                node.clone(),
+                                initializer,
+                                operator_pks,
+                                operator_key_ip_map.clone(),
+                                tx_contract_command.clone(),
+                            )
+                            .await
+                            {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    error!("Failed to stop initializer: {}", e);
+                                }
+                            }
+                        }
+                        ContractCommand::MiniPoolCreated(
+                            initializer_id,
+                            validator_pk,
+                            minipool_address,
+                        ) => {}
+                        ContractCommand::MiniPoolReady(
+                            initializer_id,
+                            validator_pk,
+                            minipool_address,
+                        ) => {}
+                        _ => {}
                     },
                     None => {
                         error!("channel is closed unexpected");
@@ -311,37 +304,26 @@ pub async fn new_add_validator<T: EthSpec>(
         return Err("Validator exists".to_string());
     }
 
-    let key_ip_map = operator_key_ip_map.read().await;
-
-    let operator_base_address: Vec<Option<SocketAddr>> = operator_public_keys
-        .iter()
-        .map(|op_pk| {
-            let op_pk_str = base64::encode(op_pk);
-            let ip = key_ip_map.get(&op_pk_str);
-            match ip {
-                Some(ip) => Some(SocketAddr::new(ip.clone(), base_port)),
-                None => {
-                    error!("can't discover the operator {}", op_pk_str);
-                    None
-                }
+    let operator_base_address =
+        match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
+            Ok(address) => address,
+            Err(e) => {
+                sleep(Duration::from_secs(10)).await;
+                let _ = tx_validator_command
+                    .send(ContractCommand::StartValidator(
+                        validator,
+                        operator_public_keys,
+                        shared_public_keys,
+                        encrypted_secret_keys,
+                    ))
+                    .await;
+                info!("Will process the validator again");
+                cleanup_validator_dir(&validator_dir, &validator_pk, validator_id)?;
+                cleanup_password_dir(&secret_dir, &validator_pk, validator_id)?;
+                return Err(e);
             }
-        })
-        .collect();
-    if operator_base_address.iter().any(|x| x.is_none()) {
-        sleep(Duration::from_secs(10)).await;
-        let _ = tx_validator_command
-            .send(ContractCommand::StartValidator(
-                validator,
-                operator_public_keys,
-                shared_public_keys,
-                encrypted_secret_keys,
-            ))
-            .await;
-        info!("Will process the validator again");
-        cleanup_validator_dir(&validator_dir, &validator_pk, validator_id)?;
-        cleanup_password_dir(&secret_dir, &validator_pk, validator_id)?;
-        return Err("Insufficient operators discovered".to_string());
-    }
+        };
+
     let operator_ids: Vec<u64> = validator
         .releated_operators
         .iter()
@@ -428,10 +410,7 @@ pub async fn new_add_validator<T: EthSpec>(
         operator_ids: operator_ids,
         operator_public_keys: operator_bls_pks,
         node_public_keys: operator_node_pks,
-        base_socket_addresses: operator_base_address
-            .into_iter()
-            .map(|x| x.unwrap())
-            .collect(),
+        base_socket_addresses: operator_base_address,
     };
 
     let committee_def_path =
@@ -480,217 +459,17 @@ pub async fn new_add_validator<T: EthSpec>(
     Ok(())
 }
 
-pub async fn add_validator<T: EthSpec>(
+pub async fn new_stop_validator<T: EthSpec>(
     node: Arc<ParkingRwLock<Node<T>>>,
-    validator: Validator,
-    validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>,
-    operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
-    tx_validator_command: MonitoredSender<ValidatorCommand>,
-) -> Result<(), String> {
-    let node = node.read();
-    let base_port = node.config.base_address.port();
-    let validator_dir = node.config.validator_dir.clone();
-    let secret_dir = node.config.secrets_dir.clone();
-    let secret = node.secret.clone();
-    let sk = &secret.secret;
-    let self_pk = &secret.name;
-    let secret_key = secp256k1::SecretKey::from_slice(&sk.0).expect("Unable to load secret key");
-
-    let validator_id = validator.id;
-    // check validator exists
-    let validator_pk = PublicKey::deserialize(&validator.validator_public_key)
-        .map_err(|e| format!("Unable to deserialize validator public key: {:?}", e))?;
-    info!("[VA {}] adding validator {}", validator_id, validator_pk);
-    let added_validator_dir = validator_dir.join(format!("{}", validator_pk));
-    if added_validator_dir.exists() {
-        return Err("Validator exists".to_string());
-    }
-    let validator_operators = validator_operators_map.read().await;
-    let operators_vec = validator_operators.get(&validator_id);
-    match operators_vec {
-        Some(operators) => {
-            let key_ip_map = operator_key_ip_map.read().await;
-
-            let mut operator_base_address: Vec<SocketAddr> = Vec::default();
-            let mut operator_ids: Vec<u64> = Vec::default();
-            let mut operator_public_keys: Vec<PublicKey> = Vec::default();
-            let mut node_public_keys: Vec<hscrypto::PublicKey> = Vec::default();
-
-            let mut keystore_share: Option<KeystoreShare> = None;
-            for operator in operators {
-                let operator_public_key = base64::encode(operator.node_public_key.clone());
-                let ip = key_ip_map.get(&operator_public_key);
-                // get all ips from
-                match ip {
-                    Some(ip) => {
-                        operator_base_address.push(SocketAddr::new(ip.clone(), base_port));
-                        operator_ids.push(operator.id);
-
-                        let operator_pk = PublicKey::deserialize(&operator.shared_public_key)
-                            .map_err(|e| format!("Unable to deserialize operator pk: {:?}", e))?;
-                        operator_public_keys.push(operator_pk);
-                        let node_pk = hscrypto::PublicKey(
-                            operator.node_public_key.clone().try_into().unwrap(),
-                        );
-
-                        if *self_pk == node_pk {
-                            // decrypt
-                            let rng = rand::thread_rng();
-                            let mut elgamal = Elgamal::new(rng);
-
-                            let ciphertext = Ciphertext::from_bytes(&operator.encrypted_key);
-                            let plain_shared_key =
-                                elgamal.decrypt(&ciphertext, &secret_key).map_err(|_e| {
-                                    format!(
-                                        "Unable to decrypt: ciphertext({:?}), secret_key({})",
-                                        hex::encode(operator.encrypted_key.as_slice()),
-                                        secret_key.display_secret()
-                                    )
-                                })?;
-
-                            let shared_secret_key = BlsSecretKey::deserialize(&plain_shared_key)
-                                .map_err(|e| {
-                                    format!("Unable to deserialize secret key: {:?}", e)
-                                })?;
-
-                            let shared_public_key = shared_secret_key.public_key();
-
-                            let shared_key_pair = BlsKeypair::from_components(
-                                shared_public_key.clone(),
-                                shared_secret_key,
-                            );
-
-                            let keystore = KeystoreBuilder::new(
-                                &shared_key_pair,
-                                INSECURE_PASSWORD,
-                                "".into(),
-                            )
-                            .map_err(|e| format!("Unable to create keystore builder: {:?}", e))?
-                            .kdf(insecure_kdf())
-                            .build()
-                            .map_err(|e| format!("Unable to build keystore: {:?}", e))?;
-
-                            keystore_share = Some(KeystoreShare::new(
-                                keystore,
-                                validator_pk.clone(),
-                                validator_id,
-                                operator.id,
-                            ));
-
-                            match ShareBuilder::new(validator_dir.clone())
-                                .password_dir(secret_dir.clone())
-                                .voting_keystore_share(
-                                    keystore_share.clone().unwrap(),
-                                    INSECURE_PASSWORD,
-                                )
-                                .build()
-                            {
-                                Ok(va_dir) => {
-                                    info!("build validator dir in {:?}", va_dir);
-                                }
-                                Err(e) => {
-                                    return Err(format!("keystore share build failed: {:?}", e));
-                                }
-                            };
-                        }
-
-                        node_public_keys.push(node_pk);
-                    }
-                    None => {
-                        error!("can't discover the operator {}", operator_public_key);
-                        break;
-                    }
-                }
-            }
-            if operator_base_address.len() != operators.len() {
-                sleep(Duration::from_secs(10)).await;
-                let _ = tx_validator_command
-                    .send(ValidatorCommand::Start(validator))
-                    .await;
-                info!("Will process the validator again");
-                cleanup_validator_dir(&validator_dir, &validator_pk, validator_id)?;
-                cleanup_password_dir(&secret_dir, &validator_pk, validator_id)?;
-                return Err("Insufficient operators discovered".to_string());
-            }
-
-            // generate keypair
-            let def = OperatorCommitteeDefinition {
-                total: operators.len() as u64,
-                threshold: THRESHOLD,
-                validator_id: validator_id,
-                validator_public_key: validator_pk.clone(),
-                operator_ids: operator_ids,
-                operator_public_keys: operator_public_keys,
-                node_public_keys: node_public_keys,
-                base_socket_addresses: operator_base_address,
-            };
-
-            let committee_def_path =
-                default_operator_committee_definition_path(&validator_pk, validator_dir.clone());
-            info!("path {:?}, pk {:?}", &committee_def_path, &validator_pk);
-            match def
-                .to_file(committee_def_path.clone())
-                .map_err(|e| format!("Unable to save committee definition: error:{:?}", e))
-            {
-                Ok(_) => {}
-                Err(e) => {
-                    return Err(e.to_string());
-                }
-            }
-
-            let keystore_share = keystore_share.unwrap();
-            let voting_keystore_share_path =
-                default_keystore_share_path(&keystore_share, validator_dir.clone());
-            let voting_keystore_share_password_path =
-                default_keystore_share_password_path(&keystore_share, secret_dir.clone());
-            match &node.validator_store {
-                Some(validator_store) => {
-                    let _ = validator_store
-                        .add_validator_keystore_share(
-                            voting_keystore_share_path,
-                            voting_keystore_share_password_path,
-                            true,
-                            None,
-                            None,
-                            None,
-                            None,
-                            committee_def_path,
-                            keystore_share.master_id,
-                            keystore_share.share_id,
-                        )
-                        .await;
-                    info!("[VA {}] added validator {}", validator_id, validator_pk);
-                }
-                _ => {
-                    error!(
-                        "[VA {}] failed to add validator {}. Error: no validator store is set.",
-                        validator_id, validator_pk
-                    );
-                }
-            }
-        }
-        None => {
-            error!(
-                "[VA {}] can't find validator's releated operators",
-                validator_id
-            );
-        }
-    }
-    Ok(())
-}
-
-pub async fn stop_validator<T: EthSpec>(
-    node: Arc<ParkingRwLock<Node<T>>>,
-    validator: Validator,
+    validator: new_Validator,
 ) -> Result<(), String> {
     let validator_id = validator.id;
-    let validator_pk = PublicKey::deserialize(&validator.validator_public_key)
+    let validator_pk = PublicKey::deserialize(&validator.public_key)
         .map_err(|e| format!("[VA {}] Deserialize error ({:?})", validator_id, e))?;
     info!(
         "[VA {}] stopping validator {}...",
         validator_id, validator_pk
     );
-
     let (validator_dir, secret_dir, validator_store) = {
         let node_ = node.read();
         let validator_dir = node_.config.validator_dir.clone();
@@ -711,6 +490,75 @@ pub async fn stop_validator<T: EthSpec>(
     cleanup_password_dir(&secret_dir, &validator_pk, validator_id)?;
 
     info!("[VA {}] stopped validator {}", validator_id, validator_pk);
+    Ok(())
+}
+
+pub async fn start_initializer<T: EthSpec>(
+    node: Arc<ParkingRwLock<Node<T>>>,
+    initializer: Initializer,
+    operator_public_keys: OperatorPublicKeys,
+    operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
+    tx_contract_command: MonitoredSender<ContractCommand>,
+) -> Result<(), String> {
+    let node = node.read();
+    let base_port = node.config.base_address.port();
+    let operator_ips =
+        match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
+            Ok(ips) => ips,
+            Err(e) => {
+                sleep(Duration::from_secs(10)).await;
+                let _ = tx_contract_command
+                    .send(ContractCommand::StartInitializer(
+                        initializer,
+                        operator_public_keys,
+                    ))
+                    .await;
+                info!("Will process the validator again");
+                return Err(e);
+            }
+        };
+    let self_op_id = *SELF_OPERATOR_ID
+        .get()
+        .ok_or("Self operator has not been set".to_string())?;
+    let op_ids: Vec<u64> = initializer
+        .releated_operators
+        .iter()
+        .map(|x| *x as u64)
+        .collect();
+    let io = Arc::new(
+        NetIOCommittee::new(
+            self_op_id as u64,
+            base_port + DKG_PORT_OFFSET,
+            op_ids.as_slice(),
+            operator_ips.as_slice(),
+        )
+        .await,
+    );
+    let dkg = DKG::new(self_op_id as u64, io, THRESHOLD as usize);
+    // TODO: start consensus
+    let (keypair, va_pk) = dkg
+        .run()
+        .await
+        .map_err(|e| format!("run dkg failed {:?}", e))?;
+    // push va pk to web server
+    let request_body = ValidatorPkRequest {
+        validator_pk: va_pk.as_hex_string(),
+        initializer_id: initializer.id,
+        initializer_address: format!("{0:0x}", initializer.owner_address),
+        operators: op_ids,
+    };
+    let url_str = API_ADDRESS.get().unwrap().to_owned() + VALIDATOR_PK_URL;
+    request_to_web_server(request_body, &url_str).await?;
+    Ok(())
+}
+
+// TODO process minipool created event
+pub async fn minipool_created() -> Result<(), String> {
+    Ok(())
+}
+
+// TODO process minipool ready event
+pub async fn minipool_ready() -> Result<(), String> {
     Ok(())
 }
 

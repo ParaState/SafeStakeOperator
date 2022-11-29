@@ -1,4 +1,7 @@
 use crate::node::db::Database;
+use crate::node::utils::convert_va_pk_to_u64;
+use async_trait::async_trait;
+use futures::TryFutureExt;
 use hscrypto::PublicKey;
 use hsutils::monitored_channel::MonitoredSender;
 use log::{error, info, warn};
@@ -15,16 +18,19 @@ use web3::ethabi::{token, Event, EventParam, Hash, ParamType, RawLog};
 use web3::{
     contract::{Contract as EthContract, Options},
     transports::WebSocket,
-    types::{Address, BlockNumber, FilterBuilder, Log, H256, U256, U64},
+    types::{Address, BlockNumber, Filter, FilterBuilder, Log, H256, U256, U64},
     Web3,
+    futures::{TryStreamExt}
 };
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use std::collections::HashMap;
+
 const CONTRACT_CONFIG_FILE: &str = "contract_config/configs.yml";
 const CONTRACT_RECORD_FILE: &str = "contract_record.yml";
 const CONTRACT_DATABASE_FILE: &str = "contract_database.db";
 const CONTRACT_VA_REG_EVENT_NAME: &str = "ValidatorRegistration";
 const CONTRACT_VA_RM_EVENT_NAME: &str = "ValidatorRemoval";
-const CONTRACT_OP_REG_EVENT_NAME: &str = "OperatorRegistration";
-const CONTRACT_OP_RM_EVENT_NAME: &str = "OperatorRemoval";
 const CONTRACT_INI_REG_EVENT_NAME: &str = "InitializerRegistration";
 const CONTRACT_MINIPOOL_CREATED_EVENT_NAME: &str = "InitializerMiniPoolCreated";
 const CONTRACT_MINIPOOL_READY_EVENT_NAME: &str = "InitializerMiniPoolReady";
@@ -134,6 +140,134 @@ pub trait ToFile {
     }
 }
 
+#[async_trait]
+pub trait TopicHandler: Send + Sync + 'static {
+    async fn process(
+        &self, 
+        log: Log,
+        topic: H256,
+        db: &Database,
+        operator_pk_base64: &String,
+        config: &ContractConfig,
+        sender: &MonitoredSender<ContractCommand>,
+    ) -> Result<(), ContractError>;
+}
+
+#[derive(Clone)]
+pub struct ValidatorRegistrationHandler {}
+
+#[async_trait]
+impl TopicHandler for ValidatorRegistrationHandler {
+    async fn process(
+        &self, 
+        log: Log,
+        topic: H256,
+        db: &Database,
+        operator_pk_base64: &String,
+        config: &ContractConfig,
+        sender: &MonitoredSender<ContractCommand>,
+    ) -> Result<(), ContractError> {
+        process_validator_registration(log, topic, db, operator_pk_base64, config, sender)
+            .await
+            .map_err(|e| {
+                error!("error happens when process validator registration");
+                e
+            })
+    }
+}
+
+#[derive(Clone)]
+pub struct ValidatorRemovalHandler {}
+#[async_trait]
+impl TopicHandler for ValidatorRemovalHandler {
+    async fn process(
+        &self, 
+        log: Log,
+        topic: H256,
+        db: &Database,
+        operator_pk_base64: &String,
+        config: &ContractConfig,
+        sender: &MonitoredSender<ContractCommand>,
+    ) -> Result<(), ContractError> {
+        process_validator_removal(log, topic, db, operator_pk_base64, config, sender)
+            .await
+            .map_err(|e| {
+                error!("error happens when process validator removal");
+                e
+            })
+    }
+}
+
+#[derive(Clone)]
+pub struct InitializerRegistrationHandler {}
+
+#[async_trait]
+impl TopicHandler for InitializerRegistrationHandler {
+    async fn process(
+        &self, 
+        log: Log,
+        topic: H256,
+        db: &Database,
+        operator_pk_base64: &String,
+        config: &ContractConfig,
+        sender: &MonitoredSender<ContractCommand>,
+    ) -> Result<(), ContractError> {
+        process_initializer_registration(log, topic, db, operator_pk_base64, config, sender)
+            .await
+            .map_err(|e| {
+                error!("error happens when process initializer registration");
+                e
+            })
+    }
+}
+
+#[derive(Clone)]
+pub struct MinipoolCreatedHandler {}
+
+#[async_trait]
+impl TopicHandler for MinipoolCreatedHandler {
+    async fn process(
+        &self, 
+        log: Log,
+        topic: H256,
+        db: &Database,
+        operator_pk_base64: &String,
+        config: &ContractConfig,
+        sender: &MonitoredSender<ContractCommand>,
+    ) -> Result<(), ContractError> {
+        process_minipool_created(log, topic, db, operator_pk_base64, config, sender)
+            .await
+            .map_err(|e| {
+                error!("error happens when process initializer registration");
+                e
+            })
+    }
+}
+
+#[derive(Clone)]
+pub struct MinipoolReadyHandler {}
+
+#[async_trait]
+impl TopicHandler for MinipoolReadyHandler {
+    async fn process(
+        &self, 
+        log: Log,
+        topic: H256,
+        db: &Database,
+        operator_pk_base64: &String,
+        config: &ContractConfig,
+        sender: &MonitoredSender<ContractCommand>,
+    ) -> Result<(), ContractError> {
+        process_minipool_ready(log, topic, db, operator_pk_base64, config, sender)
+            .await
+            .map_err(|e| {
+                error!("error happens when process initializer registration");
+                e
+            })
+    }
+}
+
+
 #[derive(Debug, DeriveSerialize, DeriveDeserialize, Clone)]
 pub struct ContractConfig {
     pub validator_registration_topic: String,
@@ -165,6 +299,8 @@ pub struct Contract {
     pub operator_pk: PublicKey,
     pub store: Store,
     pub base_dir: PathBuf,
+    pub handlers: Arc<RwLock<HashMap<H256, Box<dyn TopicHandler>>>>,
+    pub filter_builder: Option<FilterBuilder>
 }
 
 impl Contract {
@@ -190,7 +326,47 @@ impl Contract {
             operator_pk,
             store,
             base_dir: base_dir.as_ref().to_path_buf(),
+            handlers: Arc::new(RwLock::new(HashMap::new())),
+            filter_builder: None
         })
+    }
+
+    async fn construct_filter(
+        &mut self,
+        config: &ContractConfig
+    )  {
+        let va_reg_topic =
+            H256::from_slice(&hex::decode(&config.validator_registration_topic).unwrap());
+        let va_rm_topic = H256::from_slice(&hex::decode(&config.validator_removal_topic).unwrap());
+        let ini_reg_topic =
+            H256::from_slice(&hex::decode(&config.initializer_registration_topic).unwrap());
+        let minipool_created_topic =
+            H256::from_slice(&hex::decode(&config.initializer_minipool_created_topic).unwrap());
+        let minipool_ready_topic =
+            H256::from_slice(&hex::decode(&config.initializer_minipool_ready_topic).unwrap());
+        let filter_builder = FilterBuilder::default()
+            .address(vec![Address::from_slice(
+                &hex::decode(&config.safestake_network_address).unwrap(),
+            )])
+            .topics(
+                Some(vec![
+                    va_reg_topic,
+                    va_rm_topic,
+                    ini_reg_topic,
+                    minipool_created_topic,
+                    minipool_ready_topic,
+                ]),
+                None,
+                None,
+                None,
+            );
+        self.filter_builder = Some(filter_builder);
+        let mut handlers = self.handlers.write().await;
+        handlers.insert(va_reg_topic, Box::new(ValidatorRegistrationHandler{}));
+        handlers.insert(va_rm_topic, Box::new(ValidatorRemovalHandler{}));
+        handlers.insert(ini_reg_topic, Box::new(InitializerRegistrationHandler{}));
+        handlers.insert(minipool_created_topic, Box::new(MinipoolCreatedHandler{}));
+        handlers.insert(minipool_ready_topic, Box::new(MinipoolReadyHandler{}));
     }
 
     pub fn get_logs_from_contract(&mut self, sender: MonitoredSender<ContractCommand>) {
@@ -201,44 +377,17 @@ impl Contract {
         let db = self.db.clone();
         let operator_pk = self.operator_pk.clone();
         let operator_pk_base64 = base64::encode(&operator_pk);
-
-        let va_reg_topic =
-            H256::from_slice(&hex::decode(&config.validator_registration_topic).unwrap());
-        let va_rm_topic = H256::from_slice(&hex::decode(&config.validator_removal_topic).unwrap());
-        let ini_reg_topic =
-            H256::from_slice(&hex::decode(&config.initializer_registration_topic).unwrap());
-        let minipool_created_topic =
-            H256::from_slice(&hex::decode(&config.initializer_minipool_created_topic).unwrap());
-        let minipool_ready_topic =
-            H256::from_slice(&hex::decode(&config.initializer_minipool_ready_topic).unwrap());
-
+        let filter_builder = self.filter_builder.as_ref().unwrap().clone();
+        let handlers = self.handlers.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(60 * 3)).await;
             if record.block_num == 0 {
                 get_block_number(&mut record, &config).await;
-                update_record_file(&record, record_path);
+                update_record_file(&record, &record_path);
             }
-
             loop {
                 let web3 = Web3::new(WebSocket::new(&config.transport_url).await.unwrap());
-                let filter = FilterBuilder::default()
-                    .address(vec![Address::from_slice(
-                        &hex::decode(&config.safestake_network_address).unwrap(),
-                    )])
-                    .topics(
-                        Some(vec![
-                            va_reg_topic,
-                            va_rm_topic,
-                            ini_reg_topic,
-                            minipool_created_topic,
-                            minipool_ready_topic,
-                        ]),
-                        None,
-                        None,
-                        None,
-                    )
-                    .from_block(BlockNumber::Number(U64::from(record.block_num)))
-                    .build();
+                let filter = filter_builder.clone().from_block(BlockNumber::Number(U64::from(record.block_num))).build();
                 match web3.eth().logs(filter).await {
                     Ok(logs) => {
                         info!("Get {} logs.", &logs.len());
@@ -255,131 +404,65 @@ impl Contract {
                                 info!("This log has been lestened, continue");
                                 continue;
                             }
-                            if log.topics[0] == va_reg_topic {
-                                info!("validator registration event");
-                                match process_validator_registration_log(log, &va_reg_topic) {
-                                    Ok(va_log) => {
-                                        let _ = process_validator_registration(
-                                            va_log,
-                                            &db,
-                                            &operator_pk_base64,
-                                            &config,
-                                            &sender,
-                                        )
-                                        .await
-                                        .map_err(|e| {
-                                            error!(
-                                                "process validator registration event failed {}",
-                                                e.as_str()
-                                            )
-                                        });
+                            let topic = log.topics[0].clone();
+                            match handlers.read().await.get(&topic) {
+                                Some(handler) => {
+                                    match handler.process(log, topic, &db, &operator_pk_base64, &config, &sender).await {
+                                        Ok(_) => {},
+                                        Err(e) => { error!("error hapens, reason: {}", e.as_str()); }
                                     }
-                                    Err(e) => {
-                                        error!(
-                                            "process validator registration log failed {}",
-                                            e.as_str()
-                                        );
-                                        continue;
-                                    }
-                                }
-                            } else if log.topics[0] == va_rm_topic {
-                                info!("validator removal event");
-                                match process_validator_removal_log(log, &va_rm_topic) {
-                                    Ok(va_log) => {
-                                        let _ = process_validator_removal(va_log, &db, &sender)
-                                            .await
-                                            .map_err(|e| {
-                                                error!(
-                                                    "process validator removal event failed {}",
-                                                    e.as_str()
-                                                )
-                                            });
-                                    }
-                                    Err(e) => {
-                                        error!(
-                                            "process validator removal log failed {}",
-                                            e.as_str()
-                                        );
-                                        continue;
-                                    }
-                                }
-                            } else if log.topics[0] == ini_reg_topic {
-                                info!("initializer registration event");
-                                match process_initializer_registration_log(log, &ini_reg_topic) {
-                                    Ok(ini_log) => {
-                                        let _ = process_initializer_registration(
-                                            ini_log,
-                                            &db,
-                                            &operator_pk_base64,
-                                            &config,
-                                            &sender,
-                                        )
-                                        .await
-                                        .map_err(|e| {
-                                            error!(
-                                                "process initializer registration event failed {}",
-                                                e.as_str()
-                                            )
-                                        });
-                                    }
-                                    Err(e) => {
-                                        error!(
-                                            "process initializer registration log failed {}",
-                                            e.as_str()
-                                        );
-                                        continue;
-                                    }
-                                }
-                            } else if log.topics[0] == minipool_created_topic {
-                                info!("minipool created event");
-                                match process_minipool_created_log(log, &minipool_created_topic) {
-                                    Ok(pool_log) => {
-                                        let _ = process_minipool_created(pool_log, &db, &sender)
-                                            .await
-                                            .map_err(|e| {
-                                                error!(
-                                                    "process minipool created event failed {}",
-                                                    e.as_str()
-                                                )
-                                            });
-                                    }
-                                    Err(e) => {
-                                        error!(
-                                            "process minipool created event failed {}",
-                                            e.as_str()
-                                        );
-                                        continue;
-                                    }
-                                }
-                            } else if log.topics[0] == minipool_ready_topic {
-                                info!("minipool ready event");
-                                match process_minipool_ready_log(log, &minipool_ready_topic) {
-                                    Ok(pool_log) => {
-                                        let _ = process_minipool_ready(pool_log, &db, &sender)
-                                            .await
-                                            .map_err(|e| {
-                                                error!(
-                                                    "process minipool ready event failed {}",
-                                                    e.as_str()
-                                                )
-                                            });
-                                    }
-                                    Err(e) => {
-                                        error!(
-                                            "process minipool ready event failed {}",
-                                            e.as_str()
-                                        );
-                                        continue;
-                                    }
-                                }
-                            } else {
-                                error!("unkown topic");
-                            }
+                                },
+                                None => { error!("Can't find handler"); }
+                            };
                         }
                     }
                     Err(e) => {
                         error!("{}, {}", ContractError::LogError.as_str(), e);
                         continue;
+                    }
+                }
+                update_record_file(&record, &record_path);
+            }
+        });
+    }
+
+    pub fn listen_logs(&self, sender: MonitoredSender<ContractCommand>) {
+        let config = self.config.clone();
+        let store = self.store.clone();
+        let db = self.db.clone();
+        let operator_pk = self.operator_pk.clone();
+        let operator_pk_base64 = base64::encode(&operator_pk);
+        let filter_builder = self.filter_builder.as_ref().unwrap().clone();
+        let filter = filter_builder.clone().build();
+        let handlers = self.handlers.clone();
+        tokio::spawn(async move {
+            loop {
+                let web3 = Web3::new(WebSocket::new(&config.transport_url).await.unwrap());
+                let mut sub = web3.eth_subscribe().subscribe_logs(filter.clone()).await.unwrap();
+                loop {
+                    match sub.try_next().await.unwrap() {
+                        Some(log) => {
+                            // store hash to local database
+                            match log.transaction_hash {
+                                Some(hash) => store.write(hash.as_bytes().to_vec(), vec![0]).await,
+                                None => {},
+                            };
+                            let topic = log.topics[0].clone();
+                            match handlers.read().await.get(&topic) {
+                                Some(handler) => {
+                                    match handler.process(log, topic, &db, &operator_pk_base64, &config, &sender).await {
+                                        Ok(_) => {},
+                                        Err(e) => { error!("error hapens, reason: {}", e.as_str()); }
+                                    }
+                                },
+                                None => { error!("Can't find handler"); }
+                            };
+                            
+                        },
+                        None => {
+                            error!("none event"); 
+                            break;
+                        }
                     }
                 }
             }
@@ -418,10 +501,14 @@ pub async fn log_listened(store: &Store, log_hash: &H256) -> bool {
     }
 }
 
-pub fn process_validator_registration_log(
-    log: Log,
-    topic: &H256,
-) -> Result<web3::ethabi::Log, ContractError> {
+pub async fn process_validator_registration(
+    raw_log: Log,
+    topic: H256,
+    db: &Database,
+    operator_pk_base64: &String,
+    config: &ContractConfig,
+    sender: &MonitoredSender<ContractCommand>,
+) -> Result<(), ContractError> {
     let validator_reg_event = Event {
         name: CONTRACT_VA_REG_EVENT_NAME.to_string(),
         inputs: vec![
@@ -458,21 +545,12 @@ pub fn process_validator_registration_log(
         ],
         anonymous: false,
     };
-    validator_reg_event
+    let log = validator_reg_event
         .parse_log(RawLog {
             topics: vec![Hash::from_slice(&topic.0)],
-            data: log.data.0,
+            data: raw_log.data.0,
         })
-        .map_err(|_| ContractError::LogParseError)
-}
-
-pub async fn process_validator_registration(
-    log: web3::ethabi::Log,
-    db: &Database,
-    operator_pk_base64: &String,
-    config: &ContractConfig,
-    sender: &MonitoredSender<ContractCommand>,
-) -> Result<(), ContractError> {
+        .map_err(|_| ContractError::LogParseError)?;
     let address = log.params[0]
         .value
         .clone()
@@ -556,10 +634,14 @@ pub async fn process_validator_registration(
     Ok(())
 }
 
-pub fn process_validator_removal_log(
-    log: Log,
-    topic: &H256,
-) -> Result<web3::ethabi::Log, ContractError> {
+pub async fn process_validator_removal(
+    raw_log: Log,
+    topic: H256,
+    db: &Database,
+    _operator_pk_base64: &String,
+    _config: &ContractConfig,
+    sender: &MonitoredSender<ContractCommand>,
+) -> Result<(), ContractError> {
     let validator_rm_event = Event {
         name: CONTRACT_VA_RM_EVENT_NAME.to_string(),
         inputs: vec![
@@ -576,19 +658,12 @@ pub fn process_validator_removal_log(
         ],
         anonymous: false,
     };
-    validator_rm_event
+    let log = validator_rm_event
         .parse_log(RawLog {
             topics: vec![Hash::from_slice(&topic.0)],
-            data: log.data.0,
+            data: raw_log.data.0,
         })
-        .map_err(|_| ContractError::LogParseError)
-}
-
-pub async fn process_validator_removal(
-    log: web3::ethabi::Log,
-    db: &Database,
-    sender: &MonitoredSender<ContractCommand>,
-) -> Result<(), ContractError> {
+        .map_err(|_| ContractError::LogParseError)?;
     let owner_address = log.params[0]
         .value
         .clone()
@@ -616,125 +691,14 @@ pub async fn process_validator_removal(
     Ok(())
 }
 
-pub fn process_operator_registration_log(
-    log: Log,
-    topic: &H256,
-) -> Result<web3::ethabi::Log, ContractError> {
-    let op_reg_event = Event {
-        name: CONTRACT_OP_REG_EVENT_NAME.to_string(),
-        inputs: vec![
-            EventParam {
-                name: "id".to_string(),
-                kind: ParamType::Uint(32),
-                indexed: true,
-            },
-            EventParam {
-                name: "name".to_string(),
-                kind: ParamType::String,
-                indexed: false,
-            },
-            EventParam {
-                name: "ownerAddress".to_string(),
-                kind: ParamType::Address,
-                indexed: true,
-            },
-            EventParam {
-                name: "publicKey".to_string(),
-                kind: ParamType::Bytes,
-                indexed: false,
-            },
-        ],
-        anonymous: false,
-    };
-    op_reg_event
-        .parse_log(RawLog {
-            topics: vec![Hash::from_slice(&topic.0)],
-            data: log.data.0,
-        })
-        .map_err(|_| ContractError::LogParseError)
-}
-
-pub async fn process_operator_registration(
-    log: web3::ethabi::Log,
+pub async fn process_initializer_registration(
+    raw_log: Log,
+    topic: H256,
     db: &Database,
+    operator_pk_base64: &String,
+    config: &ContractConfig,
+    sender: &MonitoredSender<ContractCommand>,
 ) -> Result<(), ContractError> {
-    let id = log.params[0]
-        .value
-        .clone()
-        .into_uint()
-        .ok_or(ContractError::LogParseError)?
-        .as_u32();
-    let name = log.params[1]
-        .value
-        .clone()
-        .into_string()
-        .ok_or(ContractError::LogParseError)?;
-    let address = log.params[2]
-        .value
-        .clone()
-        .into_address()
-        .ok_or(ContractError::LogParseError)?;
-    let pk = log.params[3]
-        .value
-        .clone()
-        .into_bytes()
-        .ok_or(ContractError::LogParseError)?;
-    let operator = Operator {
-        id,
-        name,
-        address,
-        public_key: pk.try_into().unwrap(),
-    };
-    db.insert_operator(operator).await;
-    Ok(())
-}
-
-pub fn process_operator_removal_log(
-    log: Log,
-    topic: &H256,
-) -> Result<web3::ethabi::Log, ContractError> {
-    let op_rm_event = Event {
-        name: CONTRACT_OP_RM_EVENT_NAME.to_string(),
-        inputs: vec![
-            EventParam {
-                name: "operatorId".to_string(),
-                kind: ParamType::Uint(32),
-                indexed: true,
-            },
-            EventParam {
-                name: "address".to_string(),
-                kind: ParamType::String,
-                indexed: false,
-            },
-        ],
-        anonymous: false,
-    };
-    op_rm_event
-        .parse_log(RawLog {
-            topics: vec![Hash::from_slice(&topic.0)],
-            data: log.data.0,
-        })
-        .map_err(|_| ContractError::LogParseError)
-}
-
-pub async fn process_operator_removal(
-    log: web3::ethabi::Log,
-    db: &Database,
-) -> Result<(), ContractError> {
-    let id = log.params[0]
-        .value
-        .clone()
-        .into_uint()
-        .ok_or(ContractError::LogParseError)?
-        .as_u32();
-    db.delete_operator(id).await;
-    Ok(())
-}
-
-pub fn process_initializer_registration_log(
-    log: Log,
-    topic: &H256,
-) -> Result<web3::ethabi::Log, ContractError> {
     let ini_reg_event = Event {
         name: CONTRACT_INI_REG_EVENT_NAME.to_string(),
         inputs: vec![
@@ -756,21 +720,12 @@ pub fn process_initializer_registration_log(
         ],
         anonymous: false,
     };
-    ini_reg_event
+    let log = ini_reg_event
         .parse_log(RawLog {
             topics: vec![Hash::from_slice(&topic.0)],
-            data: log.data.0,
+            data: raw_log.data.0,
         })
-        .map_err(|_| ContractError::LogParseError)
-}
-
-pub async fn process_initializer_registration(
-    log: web3::ethabi::Log,
-    db: &Database,
-    operator_pk_base64: &String,
-    config: &ContractConfig,
-    sender: &MonitoredSender<ContractCommand>,
-) -> Result<(), ContractError> {
+    .map_err(|_| ContractError::LogParseError)?;
     let id = log.params[0]
         .value
         .clone()
@@ -795,7 +750,6 @@ pub async fn process_initializer_registration(
         })
         .collect();
 
-    let operator_pks = db.query_operators_publick_key_by_ids(op_ids.clone()).await;
     let mut operator_pks: Vec<String> = Vec::new();
 
     for op_id in &op_ids {
@@ -835,10 +789,14 @@ pub async fn process_initializer_registration(
     Ok(())
 }
 
-pub fn process_minipool_created_log(
-    log: Log,
-    topic: &H256,
-) -> Result<web3::ethabi::Log, ContractError> {
+pub async fn process_minipool_created(
+    raw_log: Log,
+    topic: H256,
+    db: &Database,
+    _operator_pk_base64: &String,
+    _config: &ContractConfig,
+    sender: &MonitoredSender<ContractCommand>,
+) -> Result<(), ContractError> {
     let minipool_created_event = Event {
         name: CONTRACT_MINIPOOL_CREATED_EVENT_NAME.to_string(),
         inputs: vec![
@@ -860,19 +818,12 @@ pub fn process_minipool_created_log(
         ],
         anonymous: false,
     };
-    minipool_created_event
+    let log = minipool_created_event
         .parse_log(RawLog {
             topics: vec![Hash::from_slice(&topic.0)],
-            data: log.data.0,
+            data: raw_log.data.0,
         })
-        .map_err(|_| ContractError::LogParseError)
-}
-
-pub async fn process_minipool_created(
-    log: web3::ethabi::Log,
-    db: &Database,
-    sender: &MonitoredSender<ContractCommand>,
-) -> Result<(), ContractError> {
+        .map_err(|_| ContractError::LogParseError)?;
     let id = log.params[0]
         .value
         .clone()
@@ -911,10 +862,14 @@ pub async fn process_minipool_created(
     }
 }
 
-pub fn process_minipool_ready_log(
-    log: Log,
-    topic: &H256,
-) -> Result<web3::ethabi::Log, ContractError> {
+pub async fn process_minipool_ready(
+    raw_log: Log,
+    topic: H256,
+    db: &Database,
+    _operator_pk_base64: &String,
+    _config: &ContractConfig,
+    sender: &MonitoredSender<ContractCommand>,
+) -> Result<(), ContractError> {
     let minipool_ready_event = Event {
         name: CONTRACT_MINIPOOL_READY_EVENT_NAME.to_string(),
         inputs: vec![EventParam {
@@ -924,19 +879,12 @@ pub fn process_minipool_ready_log(
         }],
         anonymous: false,
     };
-    minipool_ready_event
+    let log = minipool_ready_event
         .parse_log(RawLog {
             topics: vec![Hash::from_slice(&topic.0)],
-            data: log.data.0,
+            data: raw_log.data.0,
         })
-        .map_err(|_| ContractError::LogParseError)
-}
-
-pub async fn process_minipool_ready(
-    log: web3::ethabi::Log,
-    db: &Database,
-    sender: &MonitoredSender<ContractCommand>,
-) -> Result<(), ContractError> {
+        .map_err(|_| ContractError::LogParseError)?;
     let id = log.params[0]
         .value
         .clone()
@@ -971,7 +919,7 @@ pub async fn query_operator_from_contract(
 ) -> Result<Operator, ContractError> {
     let web3 = Web3::new(WebSocket::new(&config.transport_url).await.unwrap());
     let raw_abi = std::fs::read_to_string(&config.safestake_registry_abi_path).or_else(|e| {
-        error!("Can't read from {}", &config.safestake_registry_abi_path);
+        error!("Can't read from {} {}", &config.safestake_registry_abi_path, e);
         Err(ContractError::FileError)
     })?;
     let raw_json: Value = serde_json::from_str(&raw_abi).unwrap();
@@ -1004,17 +952,6 @@ pub fn parse_bytes_token(tk: token::Token) -> Result<Vec<Vec<u8>>, ContractError
         .map(|token| token.into_bytes().unwrap())
         .collect();
     Ok(res)
-}
-
-pub fn convert_va_pk_to_u64(pk: &[u8]) -> u64 {
-    let mut little_endian: [u8; 8] = [0; 8];
-    let mut i = 0;
-    for elem in little_endian.iter_mut() {
-        *elem = pk[i];
-        i = i + 1;
-    }
-    let id = u64::from_le_bytes(little_endian);
-    id
 }
 
 // only call once

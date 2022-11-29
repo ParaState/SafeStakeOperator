@@ -7,7 +7,6 @@ use std::sync::Arc;
 use crate::node::new_contract::OperatorPublicKeys;
 use log::error;
 use std::collections::HashMap;
-
 // all binary data is encoded in hex
 #[derive(Debug, Serialize)]
 pub struct ValidatorPkRequest {
@@ -54,4 +53,15 @@ pub async fn get_operator_ips(
         .into_iter()
         .map(|x| SocketAddr::new(x.unwrap(), base_port))
         .collect())
+}
+
+pub fn convert_va_pk_to_u64(pk: &[u8]) -> u64 {
+    let mut little_endian: [u8; 8] = [0; 8];
+    let mut i = 0;
+    for elem in little_endian.iter_mut() {
+        *elem = pk[i];
+        i = i + 1;
+    }
+    let id = u64::from_le_bytes(little_endian);
+    id
 }

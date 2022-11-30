@@ -111,7 +111,6 @@ impl ConnectionManager {
                     notifications.insert(peer, notify);
                 }
             }
-            drop(listener);
         });
 
         Self {

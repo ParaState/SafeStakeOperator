@@ -4,23 +4,23 @@ use async_trait::async_trait;
 use hscrypto::PublicKey;
 use hsutils::monitored_channel::MonitoredSender;
 use log::{error, info, warn};
+use parking_lot::RwLock;
 use serde_derive::{Deserialize as DeriveDeserialize, Serialize as DeriveSerialize};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 use store::Store;
 use tokio::sync::OnceCell;
 use web3::ethabi::{token, Event, EventParam, Hash, ParamType, RawLog};
 use web3::{
     contract::{Contract as EthContract, Options},
+    futures::TryStreamExt,
     transports::WebSocket,
     types::{Address, BlockNumber, FilterBuilder, Log, H256, U256, U64},
     Web3,
-    futures::{TryStreamExt}
 };
-use std::sync::Arc;
-use parking_lot::RwLock;
-use std::collections::HashMap;
 
 const CONTRACT_CONFIG_FILE: &str = "contract_config/configs.yml";
 const CONTRACT_RECORD_FILE: &str = "contract_record.yml";
@@ -68,7 +68,6 @@ impl ContractError {
 
 type ValidatorPublicKey = [u8; 48];
 type OperatorPublicKey = [u8; 33];
-
 #[derive(Clone, Debug)]
 pub struct Operator {
     pub id: u32,
@@ -97,7 +96,7 @@ pub struct Initializer {
 pub type SharedPublicKeys = Vec<Vec<u8>>;
 pub type EncryptedSecretKeys = Vec<Vec<u8>>;
 pub type OperatorPublicKeys = Vec<Vec<u8>>;
-
+pub type OperatorIds = Vec<u32>;
 #[derive(Clone)]
 pub enum ContractCommand {
     StartValidator(
@@ -108,14 +107,14 @@ pub enum ContractCommand {
     ),
     StopValidator(Validator),
     StartInitializer(Initializer, OperatorPublicKeys),
-    MiniPoolCreated(u32, ValidatorPublicKey, Address),
-    MiniPoolReady(u32, ValidatorPublicKey, Address),
+    MiniPoolCreated(u32, ValidatorPublicKey, OperatorPublicKeys, OperatorIds, Address),
+    MiniPoolReady(u32, ValidatorPublicKey, OperatorPublicKeys, OperatorIds, Address),
 }
 
 #[async_trait]
 pub trait TopicHandler: Send + Sync + 'static {
     async fn process(
-        &self, 
+        &self,
         log: Log,
         topic: H256,
         db: &Database,
@@ -131,7 +130,7 @@ pub struct ValidatorRegistrationHandler {}
 #[async_trait]
 impl TopicHandler for ValidatorRegistrationHandler {
     async fn process(
-        &self, 
+        &self,
         log: Log,
         topic: H256,
         db: &Database,
@@ -153,7 +152,7 @@ pub struct ValidatorRemovalHandler {}
 #[async_trait]
 impl TopicHandler for ValidatorRemovalHandler {
     async fn process(
-        &self, 
+        &self,
         log: Log,
         topic: H256,
         db: &Database,
@@ -176,7 +175,7 @@ pub struct InitializerRegistrationHandler {}
 #[async_trait]
 impl TopicHandler for InitializerRegistrationHandler {
     async fn process(
-        &self, 
+        &self,
         log: Log,
         topic: H256,
         db: &Database,
@@ -199,7 +198,7 @@ pub struct MinipoolCreatedHandler {}
 #[async_trait]
 impl TopicHandler for MinipoolCreatedHandler {
     async fn process(
-        &self, 
+        &self,
         log: Log,
         topic: H256,
         db: &Database,
@@ -222,7 +221,7 @@ pub struct MinipoolReadyHandler {}
 #[async_trait]
 impl TopicHandler for MinipoolReadyHandler {
     async fn process(
-        &self, 
+        &self,
         log: Log,
         topic: H256,
         db: &Database,
@@ -238,7 +237,6 @@ impl TopicHandler for MinipoolReadyHandler {
             })
     }
 }
-
 
 #[derive(Debug, DeriveSerialize, DeriveDeserialize, Clone)]
 pub struct ContractConfig {
@@ -272,14 +270,11 @@ pub struct Contract {
     pub store: Store,
     pub base_dir: PathBuf,
     pub handlers: Arc<RwLock<HashMap<H256, Box<dyn TopicHandler>>>>,
-    pub filter_builder: Option<FilterBuilder>
+    pub filter_builder: Option<FilterBuilder>,
 }
 
 impl Contract {
-    pub fn new<P: AsRef<Path>>(
-        base_dir: P,
-        operator_pk: PublicKey
-    ) -> Result<Self, String> {
+    pub fn new<P: AsRef<Path>>(base_dir: P, operator_pk: PublicKey) -> Result<Self, String> {
         let config = ContractConfig::from_file(CONTRACT_CONFIG_FILE)?;
         let record = match ContractRecord::from_file(base_dir.as_ref().join(CONTRACT_RECORD_FILE)) {
             Ok(record) => record,
@@ -288,10 +283,14 @@ impl Contract {
                 ContractRecord { block_num: 0 }
             }
         };
-        let contract_store_path = base_dir.as_ref().join(CONTRACT_STORE_FILE).to_str().ok_or(("Can't get contract store path").to_string())?.to_owned();
-        let store = Store::new(&contract_store_path).map_err(|e| {
-            format!("Can't create contract store")
-        })?;
+        let contract_store_path = base_dir
+            .as_ref()
+            .join(CONTRACT_STORE_FILE)
+            .to_str()
+            .ok_or(("Can't get contract store path").to_string())?
+            .to_owned();
+        let store =
+            Store::new(&contract_store_path).map_err(|e| format!("Can't create contract store"))?;
         let db = Database::new(base_dir.as_ref().join(CONTRACT_DATABASE_FILE))
             .map_err(|e| format!("can't create contract database {:?}", e))?;
         Ok(Self {
@@ -302,25 +301,24 @@ impl Contract {
             store,
             base_dir: base_dir.as_ref().to_path_buf(),
             handlers: Arc::new(RwLock::new(HashMap::new())),
-            filter_builder: None
+            filter_builder: None,
         })
     }
 
-    pub fn spawn (base_dir: PathBuf,
-        operator_pk: PublicKey, tx: MonitoredSender<ContractCommand>) {
-        tokio::spawn( async move {
-            let mut contract = Contract::new(base_dir, operator_pk).map_err(|e| {
-                error!("contract error: {}", e);
-            }).unwrap();
+    pub fn spawn(base_dir: PathBuf, operator_pk: PublicKey, tx: MonitoredSender<ContractCommand>) {
+        tokio::spawn(async move {
+            let mut contract = Contract::new(base_dir, operator_pk)
+                .map_err(|e| {
+                    error!("contract error: {}", e);
+                })
+                .unwrap();
             contract.construct_filter();
             contract.get_logs_from_contract(tx.clone());
             contract.listen_logs(tx);
         });
     }
 
-    pub fn construct_filter(
-        &mut self
-    )  {
+    pub fn construct_filter(&mut self) {
         let config = &self.config;
         let va_reg_topic =
             H256::from_slice(&hex::decode(&config.validator_registration_topic).unwrap());
@@ -349,11 +347,11 @@ impl Contract {
             );
         self.filter_builder = Some(filter_builder);
         let mut handlers = self.handlers.write();
-        handlers.insert(va_reg_topic, Box::new(ValidatorRegistrationHandler{}));
-        handlers.insert(va_rm_topic, Box::new(ValidatorRemovalHandler{}));
-        handlers.insert(ini_reg_topic, Box::new(InitializerRegistrationHandler{}));
-        handlers.insert(minipool_created_topic, Box::new(MinipoolCreatedHandler{}));
-        handlers.insert(minipool_ready_topic, Box::new(MinipoolReadyHandler{}));
+        handlers.insert(va_reg_topic, Box::new(ValidatorRegistrationHandler {}));
+        handlers.insert(va_rm_topic, Box::new(ValidatorRemovalHandler {}));
+        handlers.insert(ini_reg_topic, Box::new(InitializerRegistrationHandler {}));
+        handlers.insert(minipool_created_topic, Box::new(MinipoolCreatedHandler {}));
+        handlers.insert(minipool_ready_topic, Box::new(MinipoolReadyHandler {}));
     }
 
     pub fn get_logs_from_contract(&mut self, sender: MonitoredSender<ContractCommand>) {
@@ -374,7 +372,10 @@ impl Contract {
             }
             loop {
                 let web3 = Web3::new(WebSocket::new(&config.transport_url).await.unwrap());
-                let filter = filter_builder.clone().from_block(BlockNumber::Number(U64::from(record.block_num))).build();
+                let filter = filter_builder
+                    .clone()
+                    .from_block(BlockNumber::Number(U64::from(record.block_num)))
+                    .build();
                 match web3.eth().logs(filter).await {
                     Ok(logs) => {
                         info!("Get {} logs.", &logs.len());
@@ -394,12 +395,26 @@ impl Contract {
                             let topic = log.topics[0].clone();
                             match handlers.read().get(&topic) {
                                 Some(handler) => {
-                                    match handler.process(log, topic, &db, &operator_pk_base64, &config, &sender).await {
-                                        Ok(_) => {},
-                                        Err(e) => { error!("error hapens, reason: {}", e.as_str()); }
+                                    match handler
+                                        .process(
+                                            log,
+                                            topic,
+                                            &db,
+                                            &operator_pk_base64,
+                                            &config,
+                                            &sender,
+                                        )
+                                        .await
+                                    {
+                                        Ok(_) => {}
+                                        Err(e) => {
+                                            error!("error hapens, reason: {}", e.as_str());
+                                        }
                                     }
-                                },
-                                None => { error!("Can't find handler"); }
+                                }
+                                None => {
+                                    error!("Can't find handler");
+                                }
                             };
                         }
                     }
@@ -425,29 +440,46 @@ impl Contract {
         tokio::spawn(async move {
             loop {
                 let web3 = Web3::new(WebSocket::new(&config.transport_url).await.unwrap());
-                let mut sub = web3.eth_subscribe().subscribe_logs(filter.clone()).await.unwrap();
+                let mut sub = web3
+                    .eth_subscribe()
+                    .subscribe_logs(filter.clone())
+                    .await
+                    .unwrap();
                 loop {
                     match sub.try_next().await.unwrap() {
                         Some(log) => {
                             // store hash to local database
                             match log.transaction_hash {
                                 Some(hash) => store.write(hash.as_bytes().to_vec(), vec![0]).await,
-                                None => {},
+                                None => {}
                             };
                             let topic = log.topics[0].clone();
                             match handlers.read().get(&topic) {
                                 Some(handler) => {
-                                    match handler.process(log, topic, &db, &operator_pk_base64, &config, &sender).await {
-                                        Ok(_) => {},
-                                        Err(e) => { error!("error hapens, reason: {}", e.as_str()); }
+                                    match handler
+                                        .process(
+                                            log,
+                                            topic,
+                                            &db,
+                                            &operator_pk_base64,
+                                            &config,
+                                            &sender,
+                                        )
+                                        .await
+                                    {
+                                        Ok(_) => {}
+                                        Err(e) => {
+                                            error!("error hapens, reason: {}", e.as_str());
+                                        }
                                     }
-                                },
-                                None => { error!("Can't find handler"); }
+                                }
+                                None => {
+                                    error!("Can't find handler");
+                                }
                             };
-                            
-                        },
+                        }
                         None => {
-                            error!("none event"); 
+                            error!("none event");
                             break;
                         }
                     }
@@ -712,7 +744,7 @@ pub async fn process_initializer_registration(
             topics: vec![Hash::from_slice(&topic.0)],
             data: raw_log.data.0,
         })
-    .map_err(|_| ContractError::LogParseError)?;
+        .map_err(|_| ContractError::LogParseError)?;
     let id = log.params[0]
         .value
         .clone()
@@ -834,16 +866,28 @@ pub async fn process_minipool_created(
     {
         Ok(updated) => {
             if updated != 0 {
+                let (op_pks, op_ids) = db
+                    .query_initializer_releated_op_pks(id)
+                    .await
+                    .map_err(|_| {
+                        error!("Can't query initializer releated op pks");
+                        ContractError::DatabaseError
+                    })?;
+                let op_pk_bns = op_pks.into_iter()
+                    .map(|s| base64::decode(s).unwrap())
+                    .collect();
                 let _ = sender.send(ContractCommand::MiniPoolCreated(
                     id,
                     va_pk.try_into().unwrap(),
+                    op_pk_bns,
+                    op_ids,
                     minipool_address,
                 ));
             }
             Ok(())
         }
         Err(e) => {
-            error!("Can't update initializer");
+            error!("Can't update initializer {}", e);
             Err(ContractError::DatabaseError)
         }
     }
@@ -887,9 +931,22 @@ pub async fn process_minipool_ready(
                 let _ = initializer
                     .minipool_address
                     .ok_or(ContractError::DatabaseError)?;
+                let (op_pks, op_ids) = db
+                    .query_initializer_releated_op_pks(id)
+                    .await
+                    .map_err(|_| {
+                        error!("Can't query initializer releated op pks");
+                        ContractError::DatabaseError
+                    })?;
+                
+                let op_pks_bn = op_pks.into_iter()
+                    .map(|s| base64::decode(s).unwrap())
+                    .collect();
                 let _ = sender.send(ContractCommand::MiniPoolReady(
                     id,
                     initializer.validator_pk.unwrap(),
+                    op_pks_bn,
+                    op_ids,
                     initializer.minipool_address.unwrap(),
                 ));
                 Ok(())
@@ -906,7 +963,10 @@ pub async fn query_operator_from_contract(
 ) -> Result<Operator, ContractError> {
     let web3 = Web3::new(WebSocket::new(&config.transport_url).await.unwrap());
     let raw_abi = std::fs::read_to_string(&config.safestake_registry_abi_path).or_else(|e| {
-        error!("Can't read from {} {}", &config.safestake_registry_abi_path, e);
+        error!(
+            "Can't read from {} {}",
+            &config.safestake_registry_abi_path, e
+        );
         Err(ContractError::FileError)
     })?;
     let raw_json: Value = serde_json::from_str(&raw_abi).unwrap();

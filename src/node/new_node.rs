@@ -1,6 +1,7 @@
-use crate::crypto::dkg::DKG;
+use crate::crypto::dkg::{DKG, SimpleDistributedSigner};
 use crate::crypto::elgamal::{Ciphertext, Elgamal};
-use crate::network::io_committee::NetIOCommittee;
+use crate::deposit::get_distributed_deposit;
+use crate::network::io_committee::{NetIOCommittee, NetIOChannel};
 use crate::node::config::{
     NodeConfig, API_ADDRESS, BOOT_ENR, DB_FILENAME, DISCOVERY_PORT_OFFSET, DKG_PORT_OFFSET,
     PRESTAKE_SIGNATURE_URL, STAKE_SIGNATURE_URL, VALIDATOR_PK_URL,
@@ -9,10 +10,10 @@ use crate::node::discovery::Discovery;
 /// The default channel capacity for this module.
 use crate::node::dvfcore::DvfSignatureReceiverHandler;
 use crate::node::new_contract::{
-    ContractCommand, EncryptedSecretKeys, Initializer, OperatorPublicKeys, SharedPublicKeys,
-    Validator, SELF_OPERATOR_ID, Contract,
+    Contract, ContractCommand, EncryptedSecretKeys, Initializer, OperatorPublicKeys,
+    SharedPublicKeys, Validator, SELF_OPERATOR_ID, OperatorIds
 };
-use crate::node::utils::{get_operator_ips, request_to_web_server, ValidatorPkRequest};
+use crate::node::utils::{get_operator_ips, request_to_web_server, convert_address_to_withdraw_crendentials, ValidatorPkRequest, DepositRequest};
 use crate::validation::account_utils::default_keystore_share_password_path;
 use crate::validation::account_utils::default_keystore_share_path;
 use crate::validation::account_utils::default_operator_committee_definition_path;
@@ -21,7 +22,7 @@ use crate::validation::operator_committee_definitions::OperatorCommitteeDefiniti
 use crate::validation::validator_dir::share_builder::{insecure_kdf, ShareBuilder};
 use crate::validation::validator_store::ValidatorStore;
 use crate::DEFAULT_CHANNEL_CAPACITY;
-use bls::{Keypair as BlsKeypair, SecretKey as BlsSecretKey};
+use bls::{Keypair as BlsKeypair, PublicKey as BlsPublicKey, SecretKey as BlsSecretKey};
 use consensus::ConsensusReceiverHandler;
 use eth2_keystore::KeystoreBuilder;
 use hsconfig::Export as _;
@@ -32,7 +33,7 @@ use mempool::{MempoolReceiverHandler, TxReceiverHandler};
 use network::{Receiver as NetworkReceiver, VERSION};
 use parking_lot::RwLock as ParkingRwLock;
 use slot_clock::SystemTimeSlotClock;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs::{remove_dir_all, remove_file};
 use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
@@ -43,7 +44,12 @@ use tokio::time::{sleep, Duration};
 use types::EthSpec;
 use types::PublicKey;
 use validator_dir::insecure_keys::INSECURE_PASSWORD;
+use web3::types::H160;
 const THRESHOLD: u64 = 3;
+
+type InitializerStore =
+    Arc<RwLock<HashMap<u32, (BlsKeypair, BlsPublicKey, HashMap<u64, BlsPublicKey>)>>>;
+
 fn with_wildcard_ip(mut addr: SocketAddr) -> SocketAddr {
     addr.set_ip("0.0.0.0".parse().unwrap());
     addr
@@ -57,7 +63,7 @@ pub struct Node<T: EthSpec> {
     pub mempool_handler_map: Arc<RwLock<HashMap<u64, MempoolReceiverHandler>>>,
     pub consensus_handler_map: Arc<RwLock<HashMap<u64, ConsensusReceiverHandler>>>,
     pub signature_handler_map: Arc<RwLock<HashMap<u64, DvfSignatureReceiverHandler>>>,
-    pub validator_store: Option<Arc<ValidatorStore<SystemTimeSlotClock, T>>>, 
+    pub validator_store: Option<Arc<ValidatorStore<SystemTimeSlotClock, T>>>,
 }
 // impl Send for Node{}
 impl<T: EthSpec> Node<T> {
@@ -146,14 +152,19 @@ impl<T: EthSpec> Node<T> {
             Some(BOOT_ENR.get().unwrap().clone()),
         );
 
-        Contract::spawn(secret_dir.parent().unwrap().to_path_buf(), secret.name, tx_validator_command.clone());
+        Contract::spawn(
+            secret_dir.parent().unwrap().to_path_buf(),
+            secret.name,
+            tx_validator_command.clone(),
+        );
         let node = Arc::new(ParkingRwLock::new(node));
-
+        let initializer_store = Arc::new(RwLock::new(HashMap::new()));
         Node::process_contract_command(
             Arc::clone(&node),
             Arc::clone(&key_ip_map),
             rx_validator_command,
             tx_validator_command,
+            initializer_store,
         );
 
         Ok(Some(node))
@@ -175,6 +186,7 @@ impl<T: EthSpec> Node<T> {
         operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
         mut rx_contract_command: Receiver<ContractCommand>,
         tx_contract_command: MonitoredSender<ContractCommand>,
+        initializer_store: InitializerStore,
     ) {
         tokio::spawn(async move {
             loop {
@@ -217,6 +229,7 @@ impl<T: EthSpec> Node<T> {
                                 initializer,
                                 operator_pks,
                                 operator_key_ip_map.clone(),
+                                initializer_store.clone(),
                                 tx_contract_command.clone(),
                             )
                             .await
@@ -230,14 +243,55 @@ impl<T: EthSpec> Node<T> {
                         ContractCommand::MiniPoolCreated(
                             initializer_id,
                             validator_pk,
+                            op_pks,
+                            op_ids,
                             minipool_address,
-                        ) => {}
+                        ) => {
+                            match minipool_deposit(
+                                node.clone(),
+                                initializer_id,
+                                validator_pk,
+                                op_pks,
+                                op_ids,
+                                operator_key_ip_map.clone(),
+                                minipool_address,
+                                initializer_store.clone(),
+                                8
+                            )
+                            .await
+                            {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    error!("Failed to process minpool created: {}", e);
+                                }
+                            }
+                        }
                         ContractCommand::MiniPoolReady(
                             initializer_id,
                             validator_pk,
+                            op_pks,
+                            op_ids,
                             minipool_address,
-                        ) => {}
-                        _ => {}
+                        ) => {
+                            match minipool_deposit(
+                                node.clone(),
+                                initializer_id,
+                                validator_pk,
+                                op_pks,
+                                op_ids,
+                                operator_key_ip_map.clone(),
+                                minipool_address,
+                                initializer_store.clone(),
+                                24
+                            )
+                            .await
+                            {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    error!("Failed to process minpool created: {}", e);
+                                }
+                            }
+                        }
                     },
                     None => {
                         error!("channel is closed unexpected");
@@ -470,6 +524,9 @@ pub async fn start_initializer<T: EthSpec>(
     initializer: Initializer,
     operator_public_keys: OperatorPublicKeys,
     operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
+    initializer_store: Arc<
+        RwLock<HashMap<u32, (BlsKeypair, BlsPublicKey, HashMap<u64, BlsPublicKey>)>>,
+    >,
     tx_contract_command: MonitoredSender<ContractCommand>,
 ) -> Result<(), String> {
     let node = node.read();
@@ -507,11 +564,11 @@ pub async fn start_initializer<T: EthSpec>(
         .await,
     );
     let dkg = DKG::new(self_op_id as u64, io, THRESHOLD as usize);
-    // TODO: start consensus
     let (keypair, va_pk, shared_pks) = dkg
         .run()
         .await
         .map_err(|e| format!("run dkg failed {:?}", e))?;
+
     // push va pk to web server
     let request_body = ValidatorPkRequest {
         validator_pk: va_pk.as_hex_string(),
@@ -521,16 +578,59 @@ pub async fn start_initializer<T: EthSpec>(
     };
     let url_str = API_ADDRESS.get().unwrap().to_owned() + VALIDATOR_PK_URL;
     request_to_web_server(request_body, &url_str).await?;
+    // save to local storage
+    initializer_store
+        .write()
+        .await
+        .insert(initializer.id, (keypair, va_pk, shared_pks));
     Ok(())
 }
 
 // TODO process minipool created event
-pub async fn minipool_created() -> Result<(), String> {
-    Ok(())
-}
-
-// TODO process minipool ready event
-pub async fn minipool_ready() -> Result<(), String> {
+pub async fn minipool_deposit<T: EthSpec>(
+    node: Arc<ParkingRwLock<Node<T>>>,
+    initializer_id: u32,
+    validator_pk: [u8; 48],
+    operator_public_keys: OperatorPublicKeys,
+    operator_ids: OperatorIds,
+    operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
+    minipool_address: H160,
+    initializer_store: InitializerStore,
+    amount: u64
+) -> Result<(), String> {
+    let node = node.read();
+    let base_port = node.config.base_address.port();
+    let operator_ips = match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
+        Ok(ips) => ips,
+        Err(e) => {
+            error!("Some operators are not online, it's critical error, minipool exiting");
+            initializer_store.write().await.remove(&initializer_id).ok_or(format!("can't remove initializer store id: {}", initializer_id))?;
+            return Err(e);
+        }
+    };
+    let op_ids: Vec<u64> = operator_ids.into_iter().map(|x| x as u64).collect();
+    let self_op_id = *SELF_OPERATOR_ID
+        .get()
+        .ok_or("Self operator has not been set".to_string())?;
+    let store = initializer_store.read().await;
+    let (keypair, va_pk, op_bls_pks) = store.get(&initializer_id).ok_or(format!("can't get initializer store id: {}", initializer_id))?;
+    let io_committee = Arc::new(NetIOCommittee::new(self_op_id as u64, base_port, &op_ids, &operator_ips).await);
+    let signer = SimpleDistributedSigner::new(self_op_id as u64, keypair.clone(), va_pk.clone(), op_bls_pks.clone(), io_committee, THRESHOLD as usize);
+    let mpk = BlsPublicKey::deserialize(&validator_pk).map_err(|e| format!("Can't deserilize bls pk {:?}", e))?;
+    if mpk != *va_pk {
+        return Err(format!("validator pks don't match, local stored: {:?}, received {:?}", va_pk, mpk));
+    } 
+    let withdraw_cret = convert_address_to_withdraw_crendentials(minipool_address);
+    let deposit_data = get_distributed_deposit::<NetIOCommittee, NetIOChannel, T>(&signer, &withdraw_cret, amount).await.map_err(|e| {
+        format!("Can't get distributed deposit data {:?}", e)
+    })?;
+    let request_body = DepositRequest::convert(deposit_data);
+    let url = match amount {
+        8 => PRESTAKE_SIGNATURE_URL,
+        24 => STAKE_SIGNATURE_URL,
+        _ => { error!("invalid amount"); "error url"}
+    };
+    request_to_web_server(request_body, url).await.map_err(|e| format!("can't send request to server {:?}, url: {}", e, url))?;
     Ok(())
 }
 

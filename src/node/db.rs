@@ -19,7 +19,8 @@ pub enum DbCommand {
     QueryOperatorPublicKeyById(u32, oneshot::Sender<DbResult<Option<String>>>),
     InsertInitializer(Initializer),
     UpdateInitializer(u32, String, String, oneshot::Sender<DbResult<usize>>),
-    QueryInitializer(u32, oneshot::Sender<DbResult<Option<Initializer>>>)
+    QueryInitializer(u32, oneshot::Sender<DbResult<Option<Initializer>>>),
+    QueryInitializerReleaterOpPk(u32, oneshot::Sender<DbResult<(Vec<String>, Vec<u32>)>>)
 }
 
 #[derive(Clone)]
@@ -125,6 +126,10 @@ impl Database {
                     DbCommand::QueryInitializer(id, sender) => {
                         let response = query_initializer(&conn, id);
                         let _ = sender.send(response);
+                    },
+                    DbCommand::QueryInitializerReleaterOpPk(initializer_id, sender) => {
+                        let response = query_initializer_releated_operator_pks(&conn, initializer_id);
+                        let _ = sender.send(response);
                     }
                 }
             }
@@ -134,20 +139,20 @@ impl Database {
 
     pub async fn insert_operator(&self, operator: Operator) {
         if let Err(e) = self.channel.send(DbCommand::InsertOperator(operator)).await {
-            panic!("Failed to send Insert operator command to store: {}", e);
+            panic!("Failed to send command to store: {}", e);
         }
     }
 
     pub async fn insert_validator(&self, validator: Validator) {
         if let Err(e) = self.channel.send(DbCommand::InsertValidator(validator)).await {
-            panic!("Failed to send Insert validator command to store: {}", e);
+            panic!("Failed to send command to store: {}", e);
         }
     }
 
     pub async fn query_operator_by_id(&self, operator_id: u32) -> DbResult<Option<Operator>> {
         let (sender, receiver) = oneshot::channel();
         if let Err(e) = self.channel.send(DbCommand::QueryOperatorById(operator_id, sender)).await {
-            panic!("Failed to send query operator command to store: {}", e);
+            panic!("Failed to send command to store: {}", e);
         }
         receiver.await.expect("Failed to receive reply to query operator command from db")
     }
@@ -155,15 +160,15 @@ impl Database {
     pub async fn query_validator_by_public_key(&self, public_key: String) -> DbResult<Option<Validator>> {
         let (sender, receiver) = oneshot::channel();
         if let Err(e) = self.channel.send(DbCommand::QueryValidatorByPublicKey(public_key, sender)).await {
-            panic!("Failed to send query operator command to store: {}", e);
+            panic!("Failed to send command to store: {}", e);
         }
-        receiver.await.expect("Failed to receive reply to query operator command from db")
+        receiver.await.expect("Failed to receive reply to query validator command from db")
     }
 
     pub async fn query_operators_publick_key_by_ids(&self, operator_ids: Vec<u32>) -> DbResult<Option<Vec<String>>> {
         let (sender, receiver) = oneshot::channel();
         if let Err(e) = self.channel.send(DbCommand::QueryOperatorPublicKeyByIds(operator_ids, sender)).await {
-            panic!("Failed to send query operator command to store: {}", e);
+            panic!("Failed to send command to store: {}", e);
         }
         receiver.await.expect("Failed to receive reply to query operator command from db")
     }
@@ -171,43 +176,51 @@ impl Database {
     pub async fn query_operator_public_key_by_id(&self, operator_id: u32) -> DbResult<Option<String>> {
         let (sender, receiver) = oneshot::channel();
         if let Err(e) = self.channel.send(DbCommand::QueryOperatorPublicKeyById(operator_id, sender)).await {
-            panic!("Failed to send query operator command to store: {}", e);
+            panic!("Failed to send command to store: {}", e);
         }
-        receiver.await.expect("Failed to receive reply to query operator command from db")
+        receiver.await.expect("Failed to receive reply to query operator pk command from db")
     }
 
     pub async fn delete_validator(&self, validator_pk: String) {
         if let Err(e) = self.channel.send(DbCommand::DeleteValidator(validator_pk)).await {
-            panic!("Failed to send query operator command to store: {}", e);
+            panic!("Failed to send command to store: {}", e);
         }
     }
 
     pub async fn delete_operator(&self, operator_id: u32) {
         if let Err(e) = self.channel.send(DbCommand::DeleteOperator(operator_id)).await {
-            panic!("Failed to send query operator command to store: {}", e);
+            panic!("Failed to send delete operator command to store: {}", e);
         }
     }
 
     pub async fn insert_initializer(&self, initializer: Initializer) {
         if let Err(e) = self.channel.send(DbCommand::InsertInitializer(initializer)).await {
-            panic!("Failed to send query operator command to store: {}", e);
+            panic!("Failed to insert insert initializer command to store: {}", e);
         }
     }
 
     pub async fn update_initializer(&self, id: u32, va_pk: String, minipool_address: String) -> DbResult<usize> {
         let (sender, receiver) = oneshot::channel();
         if let Err(e) = self.channel.send(DbCommand::UpdateInitializer(id, va_pk, minipool_address, sender)).await {
-            panic!("Failed to send query operator command to store: {}", e);
+            panic!("Failed to send update initializer command to store: {}", e);
         }
-        receiver.await.expect("Failed to receive reply to query operator command from db")
+        receiver.await.expect("Failed to receive reply to update initializer command from db")
     }
 
     pub async fn query_initializer(&self, id: u32) -> DbResult<Option<Initializer>> {
         let (sender, receiver) = oneshot::channel();
         if let Err(e) = self.channel.send(DbCommand::QueryInitializer(id, sender)).await {
-            panic!("Failed to send query operator command to store: {}", e);
+            panic!("Failed to send query initializer command to store: {}", e);
         }
-        receiver.await.expect("Failed to receive reply to query operator command from db")
+        receiver.await.expect("Failed to receive reply to query initializer command from db")
+    }
+
+    pub async fn query_initializer_releated_op_pks(&self, id: u32) -> DbResult<(Vec<String>, Vec<u32>)> {
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self.channel.send(DbCommand::QueryInitializerReleaterOpPk(id, sender)).await {
+            panic!("Failed to send query initializer command to store: {}", e);
+        }
+        receiver.await.expect("Failed to receive reply to query initializer command from db")
     }
 
 }
@@ -420,7 +433,25 @@ fn query_initializer(conn: &Connection, id: u32) -> DbResult<Option<Initializer>
                 None => { Ok(None) }
             }
         },
-        Err(e) => { error!("Can't prepare statement {}", e); return Err(e);
-        }
+        Err(e) => { error!("Can't prepare statement {}", e); return Err(e); }
     }
+}
+
+fn query_initializer_releated_operator_pks(conn: &Connection, id: u32) -> DbResult<(Vec<String>, Vec<u32>) > {
+    let mut op_pks = Vec::new();
+    let mut op_ids: Vec<u32> = Vec::new();
+    match conn.prepare("select publick_key, id from operators where id in (select operator_id from initializer_operators_mapping where initializer_id = (?))") {
+        Ok(mut stmt) => {
+            let mut rows = stmt.query([id])?;
+            match rows.next()? {
+                Some(row) => {
+                    op_pks.push(row.get(0)?);
+                    op_ids.push(row.get(1)?);
+                },  
+                None => { }
+            }
+        },
+        Err(e) => { error!("Can't prepare statement {}", e); return Err(e); }
+    };
+    Ok((op_pks,op_ids))
 }

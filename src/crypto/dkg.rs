@@ -1,6 +1,5 @@
 use crate::crypto::ThresholdSignature;
 use crate::crypto::define::{MODULUS};
-use lazy_static::lazy_static;
 use std::ptr;
 use bls::{Hash256, Signature, SecretKey, PublicKey, Keypair, PUBLIC_KEY_BYTES_LEN, SECRET_KEY_BYTES_LEN};
 use num_bigint::{BigInt, Sign};
@@ -121,9 +120,10 @@ where
         let kp = Keypair::from_components(gsk.public_key(), gsk);
 
         // 2. Construct master public key
-        let pks = results.iter().map(|(_, _, x)| ptr::addr_of!(*x)).collect::<Vec<*const blst_p1_affine>>();
+        
         let mut mpk_bytes: [u8; PUBLIC_KEY_BYTES_LEN] = [0; PUBLIC_KEY_BYTES_LEN];
         unsafe {
+            let pks = results.iter().map(|(_, _, x)| ptr::addr_of!(*x)).collect::<Vec<*const blst_p1_affine>>();
             let mut mpk: blst_p1 = Default::default();
             blst::blst_p1s_add(&mut mpk, pks.as_ptr(), pks.len());
             blst::blst_p1_compress(mpk_bytes.as_mut_ptr(), &mpk);

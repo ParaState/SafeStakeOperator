@@ -10,6 +10,8 @@ use std::collections::HashMap;
 use serde::de::DeserializeOwned;
 use std::fs::File;
 use std::path::Path;
+use web3::types::H160;
+use types::DepositData;
 pub trait FromFile<T: DeserializeOwned> {
     fn from_file<P: AsRef<Path>>(path: P) -> Result<T, String> {
         let file = File::options()
@@ -45,6 +47,27 @@ pub struct ValidatorPkRequest {
     #[serde(rename = "initializerAddress")]
     pub initializer_address: String,
     pub operators: Vec<u64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DepositRequest {
+    #[serde(rename = "validatorPk")]
+    pub validator_pk: String,
+    #[serde(rename = "withdrawalCredentials")]
+    pub withdrawal_credentials: String,
+    pub amount: u32,
+    pub signature: String
+}
+
+impl DepositRequest {
+    pub fn convert(deposit: DepositData) -> Self{
+        Self {
+            validator_pk: deposit.pubkey.as_hex_string(),
+            withdrawal_credentials: format!("{0:0x}", deposit.withdrawal_credentials),
+            amount: deposit.amount as u32,
+            signature: hex::encode(deposit.signature.serialize())
+        }
+    }
 }
 
 pub async fn request_to_web_server<T: Serialize>(body: T, url_str: &str) -> Result<(), String> {
@@ -92,4 +115,14 @@ pub fn convert_va_pk_to_u64(pk: &[u8]) -> u64 {
     }
     let id = u64::from_le_bytes(little_endian);
     id
+}
+
+pub fn convert_address_to_withdraw_crendentials (address: H160) -> [u8;32] {
+    let mut credentials = [0;32];
+    credentials[0] = 0x01;
+    let address_bytes = address.as_bytes();
+    for i in 12..32 {
+        credentials[i] = address_bytes[i-12];
+    } 
+    credentials
 }

@@ -185,6 +185,10 @@ where
         }
     }
 
+    pub fn mpk(&self) -> &PublicKey {
+        &self.mpk
+    }
+
     pub async fn sign(&self, msg: Hash256) -> Result<Signature, DvfError>{
         let ids = self.io.ids();
 

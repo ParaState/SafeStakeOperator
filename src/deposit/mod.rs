@@ -28,5 +28,3 @@ pub async fn get_distributed_deposit<T: IOCommittee<U>, U: IOChannel, E: EthSpec
 
     Ok(deposit_data)
 }
-
-/// Example: check SimpleDistributedSigner for its construction

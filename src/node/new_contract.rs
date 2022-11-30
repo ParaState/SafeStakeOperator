@@ -1,15 +1,11 @@
-use crate::node::db::Database;
-use crate::node::utils::convert_va_pk_to_u64;
+use super::db::Database;
+use super::utils::{convert_va_pk_to_u64, FromFile, ToFile};
 use async_trait::async_trait;
-use futures::TryFutureExt;
 use hscrypto::PublicKey;
 use hsutils::monitored_channel::MonitoredSender;
 use log::{error, info, warn};
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 use serde_derive::{Deserialize as DeriveDeserialize, Serialize as DeriveSerialize};
 use serde_json::Value;
-use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use store::Store;
@@ -114,31 +110,6 @@ pub enum ContractCommand {
     StartInitializer(Initializer, OperatorPublicKeys),
     MiniPoolCreated(u32, ValidatorPublicKey, Address),
     MiniPoolReady(u32, ValidatorPublicKey, Address),
-}
-
-pub trait FromFile<T: DeserializeOwned> {
-    fn from_file<P: AsRef<Path>>(path: P) -> Result<T, String> {
-        let file = File::options()
-            .read(true)
-            .open(path)
-            .map_err(|e| format!("can't open file {:?}", e))?;
-        serde_yaml::from_reader(file).map_err(|e| format!("can't deserialize file {:?}", e))
-    }
-}
-
-pub trait ToFile {
-    fn to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), String>
-    where
-        Self: Serialize,
-    {
-        let file = File::options()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(path)
-            .map_err(|e| format!("can't open file {:?}", e))?;
-        serde_yaml::to_writer(file, self).map_err(|e| format!("can't serialize to file {:?}", e))
-    }
 }
 
 #[async_trait]

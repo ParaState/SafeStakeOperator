@@ -508,7 +508,7 @@ pub async fn start_initializer<T: EthSpec>(
     );
     let dkg = DKG::new(self_op_id as u64, io, THRESHOLD as usize);
     // TODO: start consensus
-    let (keypair, va_pk) = dkg
+    let (keypair, va_pk, shared_pks) = dkg
         .run()
         .await
         .map_err(|e| format!("run dkg failed {:?}", e))?;

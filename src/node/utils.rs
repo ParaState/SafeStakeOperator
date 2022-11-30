@@ -1,12 +1,40 @@
 use reqwest::Client;
 use url::Url;
-use serde::{Serialize};
+use serde::Serialize;
 use tokio::sync::RwLock;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use crate::node::new_contract::OperatorPublicKeys;
 use log::error;
 use std::collections::HashMap;
+use serde::de::DeserializeOwned;
+use std::fs::File;
+use std::path::Path;
+pub trait FromFile<T: DeserializeOwned> {
+    fn from_file<P: AsRef<Path>>(path: P) -> Result<T, String> {
+        let file = File::options()
+            .read(true)
+            .open(path)
+            .map_err(|e| format!("can't open file {:?}", e))?;
+        serde_yaml::from_reader(file).map_err(|e| format!("can't deserialize file {:?}", e))
+    }
+}
+
+pub trait ToFile {
+    fn to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), String>
+    where
+        Self: Serialize,
+    {
+        let file = File::options()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)
+            .map_err(|e| format!("can't open file {:?}", e))?;
+        serde_yaml::to_writer(file, self).map_err(|e| format!("can't serialize to file {:?}", e))
+    }
+}
+
 // all binary data is encoded in hex
 #[derive(Debug, Serialize)]
 pub struct ValidatorPkRequest {

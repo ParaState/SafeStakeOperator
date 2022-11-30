@@ -2,7 +2,7 @@ use crate::crypto::ThresholdSignature;
 use crate::crypto::define::{MODULUS};
 use lazy_static::lazy_static;
 use std::ptr;
-use bls::{SecretKey, PublicKey, Keypair, PUBLIC_KEY_BYTES_LEN, SECRET_KEY_BYTES_LEN};
+use bls::{Hash256, Signature, SecretKey, PublicKey, Keypair, PUBLIC_KEY_BYTES_LEN, SECRET_KEY_BYTES_LEN};
 use num_bigint::{BigInt, Sign};
 use num_bigint::ToBigInt;
 use crate::math::bigint_ext::Ring;
@@ -155,6 +155,49 @@ where
 
         Ok((kp, mpk, pks))
     }
+
+    pub async fn sign(&self, msg: Hash256, kp: Keypair, pks: HashMap<u64, PublicKey>) -> Result<Signature, DvfError>{
+        let ids = self.io.ids();
+
+        let my_sig = kp.sk.sign(msg);
+
+        let kp_ref = &kp;
+        let my_sig_ref = &my_sig;
+        let pks_ref = &pks;
+        let futs = ids.iter().map(|id| async move {
+            let (id, pk, sig) = {
+                if *id == self.party {
+                    (*id, kp_ref.pk.clone(), my_sig_ref.clone())
+                }
+                else {
+                    let send_channel = self.io.channel(self.party, *id);
+                    let recv_channel = self.io.channel(*id, self.party);
+                    let sig_bytes = Bytes::copy_from_slice(my_sig_ref.serialize().as_slice());
+                    // Send my sig to party `id`
+                    send_channel.send(sig_bytes).await;
+                    // Recv sig of party `id`
+                    let sig_bytes = recv_channel.recv().await;
+                    let sig = Signature::deserialize(sig_bytes.as_ref()).unwrap();
+                    (*id, pks_ref.get(id).unwrap().clone(), sig)
+                }
+            };
+
+            Ok::<(u64, PublicKey, Signature), DvfError>((id, pk, sig))
+        });
+
+        let results = join_all(futs)
+            .await
+            .into_iter()
+            .flatten()
+            .collect::<Vec<(u64, PublicKey, Signature)>>();
+
+        let ids = results.iter().map(|x| x.0).collect::<Vec<u64>>();
+        let pks = results.iter().map(|x| &x.1).collect::<Vec<&PublicKey>>();
+        let sigs = results.iter().map(|x| &x.2).collect::<Vec<&Signature>>();
+
+        let threshold_sig = ThresholdSignature::new(self.threshold);
+        threshold_sig.threshold_aggregate(&sigs[..], &pks[..], &ids[..], msg)
+    }
 }
 
 
@@ -240,6 +283,40 @@ mod tests {
             .collect::<Vec<(Keypair, PublicKey, HashMap<u64, PublicKey>)>>();
         
         verify_dkg_results(results);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_dkg_sig_net() {
+        let ports: Vec<u16> = ids.iter().map(|id| (25000 + *id) as u16).collect();
+        let addrs: Vec<SocketAddr> = ports.iter().map(|port| SocketAddr::new("127.0.0.1".parse().unwrap(), *port)).collect();
+
+        let message = "hello world";
+        let mut context = Context::new();
+        context.update(message.as_bytes());
+        let message = Hash256::from_slice(&context.finalize());
+
+        let ports_ref = &ports;
+        let addrs_ref = &addrs;
+        // Use dkg to generate secret-shared keys
+        let futs = (0..ids.len()).map(|i| async move {
+            let io = &Arc::new(NetIOCommittee::new(ids[i], ports_ref[i], ids.as_slice(), addrs_ref.as_slice()).await);
+            let mut dkg = DKG::new(ids[i], io.clone(), t);
+            let (kp, mpk, pks) = dkg.run().await?;
+
+            // Sign with dkg result
+            let sig = dkg.sign(message, kp, pks).await?;
+            Ok::<(PublicKey, Signature), DvfError>((mpk, sig))
+        });
+
+        let results = join_all(futs)
+            .await
+            .into_iter()
+            .flatten()
+            .collect::<Vec<(PublicKey, Signature)>>();
+
+        for i in 0..results.len() {
+            assert!(results[i].1.verify(&results[i].0, message), "Signature verification failed");
+        }
     }
 
 }

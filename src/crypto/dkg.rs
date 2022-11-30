@@ -156,14 +156,43 @@ where
         Ok((kp, mpk, pks))
     }
 
-    pub async fn sign(&self, msg: Hash256, kp: Keypair, pks: HashMap<u64, PublicKey>) -> Result<Signature, DvfError>{
+}
+
+pub struct SimpleDistributedSigner<T, U> {
+    party: u64,  // self id
+    kp: Keypair,  // individual shared private key
+    mpk: PublicKey,  // master public key
+    pks: HashMap<u64, PublicKey>,  // id --> invidividual shared public key
+    io: Arc<T>,
+    threshold: usize,
+    _phantom: PhantomData<U>,
+}
+
+impl<T, U> SimpleDistributedSigner<T, U> 
+where 
+    U: IOChannel,
+    T: IOCommittee<U> {
+
+    pub fn new(party: u64, kp: Keypair, mpk: PublicKey, pks: HashMap<u64, PublicKey>, io: Arc<T>, threshold: usize) -> Self {
+        Self {
+            party,
+            kp,
+            mpk,
+            pks,
+            io,
+            threshold,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub async fn sign(&self, msg: Hash256) -> Result<Signature, DvfError>{
         let ids = self.io.ids();
 
-        let my_sig = kp.sk.sign(msg);
+        let my_sig = self.kp.sk.sign(msg);
 
-        let kp_ref = &kp;
+        let kp_ref = &self.kp;
         let my_sig_ref = &my_sig;
-        let pks_ref = &pks;
+        let pks_ref = &self.pks;
         let futs = ids.iter().map(|id| async move {
             let (id, pk, sig) = {
                 if *id == self.party {
@@ -304,7 +333,8 @@ mod tests {
             let (kp, mpk, pks) = dkg.run().await?;
 
             // Sign with dkg result
-            let sig = dkg.sign(message, kp, pks).await?;
+            let signer = SimpleDistributedSigner::new(ids[i], kp, mpk.clone(), pks, io.clone(), t);
+            let sig = signer.sign(message).await?;
             Ok::<(PublicKey, Signature), DvfError>((mpk, sig))
         });
 

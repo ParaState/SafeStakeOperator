@@ -1,19 +1,16 @@
 use crate::crypto::dkg::DKG;
 use crate::crypto::elgamal::{Ciphertext, Elgamal};
-use crate::network::io_committee::IOChannel;
 use crate::network::io_committee::NetIOCommittee;
 use crate::node::config::{
     NodeConfig, API_ADDRESS, BOOT_ENR, DB_FILENAME, DISCOVERY_PORT_OFFSET, DKG_PORT_OFFSET,
     PRESTAKE_SIGNATURE_URL, STAKE_SIGNATURE_URL, VALIDATOR_PK_URL,
 };
-use crate::node::contract::{ContractConfig, ListenContract};
-use crate::node::contract::{Operator, Validator};
 use crate::node::discovery::Discovery;
 /// The default channel capacity for this module.
 use crate::node::dvfcore::DvfSignatureReceiverHandler;
 use crate::node::new_contract::{
     ContractCommand, EncryptedSecretKeys, Initializer, OperatorPublicKeys, SharedPublicKeys,
-    Validator as new_Validator, SELF_OPERATOR_ID,
+    Validator, SELF_OPERATOR_ID, Contract,
 };
 use crate::node::utils::{get_operator_ips, request_to_web_server, ValidatorPkRequest};
 use crate::validation::account_utils::default_keystore_share_password_path;
@@ -60,9 +57,7 @@ pub struct Node<T: EthSpec> {
     pub mempool_handler_map: Arc<RwLock<HashMap<u64, MempoolReceiverHandler>>>,
     pub consensus_handler_map: Arc<RwLock<HashMap<u64, ConsensusReceiverHandler>>>,
     pub signature_handler_map: Arc<RwLock<HashMap<u64, DvfSignatureReceiverHandler>>>,
-    pub validator_store: Option<Arc<ValidatorStore<SystemTimeSlotClock, T>>>, // pub key_ip_map: Arc<RwLock<HashMap<String, Ipv4Addr>>>,
-                                                                              // pub validators_map: Arc<RwLock<HashMap<u64, Validator>>>,
-                                                                              // pub validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>
+    pub validator_store: Option<Arc<ValidatorStore<SystemTimeSlotClock, T>>>, 
 }
 // impl Send for Node{}
 impl<T: EthSpec> Node<T> {
@@ -84,10 +79,6 @@ impl<T: EthSpec> Node<T> {
                 base64::encode(&secret.name),
                 config.base_address.ip().clone(),
             )])));
-        let validators_map: Arc<RwLock<HashMap<u64, Validator>>> =
-            Arc::new(RwLock::new(HashMap::new()));
-        let validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>> =
-            Arc::new(RwLock::new(HashMap::new()));
 
         let transaction_address = with_wildcard_ip(config.transaction_address.clone());
         NetworkReceiver::spawn(
@@ -139,7 +130,7 @@ impl<T: EthSpec> Node<T> {
         let base_port = config.base_address.port();
         let node = Self {
             config,
-            secret,
+            secret: secret.clone(),
             //rx_dvfinfo,
             tx_handler_map: Arc::clone(&tx_handler_map),
             mempool_handler_map: Arc::clone(&mempool_handler_map),
@@ -155,34 +146,15 @@ impl<T: EthSpec> Node<T> {
             Some(BOOT_ENR.get().unwrap().clone()),
         );
 
-        let contract_config = ContractConfig::default();
-        let ethlog_hashset = Arc::new(RwLock::new(HashSet::new()));
-        ListenContract::spawn(
-            contract_config.clone(),
-            node.secret.name.0.to_vec(),
-            tx_validator_command.clone(),
-            validators_map.clone(),
-            validator_operators_map.clone(),
-            ethlog_hashset.clone(),
-        );
-        ListenContract::pull_from_contract(
-            contract_config,
-            node.secret.name.0.to_vec(),
-            tx_validator_command.clone(),
-            validators_map.clone(),
-            validator_operators_map.clone(),
-            secret_dir.parent().unwrap().to_path_buf(),
-            ethlog_hashset,
-        );
-
+        Contract::spawn(secret_dir.parent().unwrap().to_path_buf(), secret.name, tx_validator_command.clone());
         let node = Arc::new(ParkingRwLock::new(node));
-        // Node::process_validator_command(
-        //     Arc::clone(&node),
-        //     validator_operators_map,
-        //     Arc::clone(&key_ip_map),
-        //     rx_validator_command,
-        //     tx_validator_command,
-        // );
+
+        Node::process_contract_command(
+            Arc::clone(&node),
+            Arc::clone(&key_ip_map),
+            rx_validator_command,
+            tx_validator_command,
+        );
 
         Ok(Some(node))
     }
@@ -279,7 +251,7 @@ impl<T: EthSpec> Node<T> {
 
 pub async fn new_add_validator<T: EthSpec>(
     node: Arc<ParkingRwLock<Node<T>>>,
-    validator: new_Validator,
+    validator: Validator,
     operator_public_keys: OperatorPublicKeys,
     shared_public_keys: SharedPublicKeys,
     encrypted_secret_keys: EncryptedSecretKeys,
@@ -461,7 +433,7 @@ pub async fn new_add_validator<T: EthSpec>(
 
 pub async fn new_stop_validator<T: EthSpec>(
     node: Arc<ParkingRwLock<Node<T>>>,
-    validator: new_Validator,
+    validator: Validator,
 ) -> Result<(), String> {
     let validator_id = validator.id;
     let validator_pk = PublicKey::deserialize(&validator.public_key)

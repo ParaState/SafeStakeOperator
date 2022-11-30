@@ -18,16 +18,17 @@ use web3::ethabi::{token, Event, EventParam, Hash, ParamType, RawLog};
 use web3::{
     contract::{Contract as EthContract, Options},
     transports::WebSocket,
-    types::{Address, BlockNumber, Filter, FilterBuilder, Log, H256, U256, U64},
+    types::{Address, BlockNumber, FilterBuilder, Log, H256, U256, U64},
     Web3,
     futures::{TryStreamExt}
 };
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use parking_lot::RwLock;
 use std::collections::HashMap;
 
 const CONTRACT_CONFIG_FILE: &str = "contract_config/configs.yml";
 const CONTRACT_RECORD_FILE: &str = "contract_record.yml";
+const CONTRACT_STORE_FILE: &str = "contract_store";
 const CONTRACT_DATABASE_FILE: &str = "contract_database.db";
 const CONTRACT_VA_REG_EVENT_NAME: &str = "ValidatorRegistration";
 const CONTRACT_VA_RM_EVENT_NAME: &str = "ValidatorRemoval";
@@ -306,8 +307,7 @@ pub struct Contract {
 impl Contract {
     pub fn new<P: AsRef<Path>>(
         base_dir: P,
-        operator_pk: PublicKey,
-        store: Store,
+        operator_pk: PublicKey
     ) -> Result<Self, String> {
         let config = ContractConfig::from_file(CONTRACT_CONFIG_FILE)?;
         let record = match ContractRecord::from_file(base_dir.as_ref().join(CONTRACT_RECORD_FILE)) {
@@ -317,6 +317,10 @@ impl Contract {
                 ContractRecord { block_num: 0 }
             }
         };
+        let contract_store_path = base_dir.as_ref().join(CONTRACT_STORE_FILE).to_str().ok_or(("Can't get contract store path").to_string())?.to_owned();
+        let store = Store::new(&contract_store_path).map_err(|e| {
+            format!("Can't create contract store")
+        })?;
         let db = Database::new(base_dir.as_ref().join(CONTRACT_DATABASE_FILE))
             .map_err(|e| format!("can't create contract database {:?}", e))?;
         Ok(Self {
@@ -331,10 +335,22 @@ impl Contract {
         })
     }
 
-    async fn construct_filter(
-        &mut self,
-        config: &ContractConfig
+    pub fn spawn (base_dir: PathBuf,
+        operator_pk: PublicKey, tx: MonitoredSender<ContractCommand>) {
+        tokio::spawn( async move {
+            let mut contract = Contract::new(base_dir, operator_pk).map_err(|e| {
+                error!("contract error: {}", e);
+            }).unwrap();
+            contract.construct_filter();
+            contract.get_logs_from_contract(tx.clone());
+            contract.listen_logs(tx);
+        });
+    }
+
+    pub fn construct_filter(
+        &mut self
     )  {
+        let config = &self.config;
         let va_reg_topic =
             H256::from_slice(&hex::decode(&config.validator_registration_topic).unwrap());
         let va_rm_topic = H256::from_slice(&hex::decode(&config.validator_removal_topic).unwrap());
@@ -361,7 +377,7 @@ impl Contract {
                 None,
             );
         self.filter_builder = Some(filter_builder);
-        let mut handlers = self.handlers.write().await;
+        let mut handlers = self.handlers.write();
         handlers.insert(va_reg_topic, Box::new(ValidatorRegistrationHandler{}));
         handlers.insert(va_rm_topic, Box::new(ValidatorRemovalHandler{}));
         handlers.insert(ini_reg_topic, Box::new(InitializerRegistrationHandler{}));
@@ -405,7 +421,7 @@ impl Contract {
                                 continue;
                             }
                             let topic = log.topics[0].clone();
-                            match handlers.read().await.get(&topic) {
+                            match handlers.read().get(&topic) {
                                 Some(handler) => {
                                     match handler.process(log, topic, &db, &operator_pk_base64, &config, &sender).await {
                                         Ok(_) => {},
@@ -448,7 +464,7 @@ impl Contract {
                                 None => {},
                             };
                             let topic = log.topics[0].clone();
-                            match handlers.read().await.get(&topic) {
+                            match handlers.read().get(&topic) {
                                 Some(handler) => {
                                     match handler.process(log, topic, &db, &operator_pk_base64, &config, &sender).await {
                                         Ok(_) => {},

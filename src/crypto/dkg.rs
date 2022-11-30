@@ -61,6 +61,10 @@ where
         }
     }
 
+    /// Returns:
+    /// 1. Self's key pair
+    /// 2. Master public key
+    /// 3. A hashmap from a party's ID to its shared public key
     pub async fn run(&self) -> Result<(Keypair, PublicKey, HashMap<u64, PublicKey>), DvfError> {
         let mut threshold_sig = ThresholdSignature::new(self.threshold);
         let ids = self.io.ids();

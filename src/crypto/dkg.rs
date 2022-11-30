@@ -13,6 +13,7 @@ use futures::future::join_all;
 use bytes::Bytes;
 use crate::utils::error::DvfError;
 use std::marker::PhantomData;
+use std::collections::HashMap;
 
 /// Distributed key generation.
 /// NOTE: DKG and the corresponding IO committee are not thread-safe if multiple instances for
@@ -60,7 +61,7 @@ where
         }
     }
 
-    pub async fn run(&self) -> Result<(Keypair, PublicKey), DvfError> {
+    pub async fn run(&self) -> Result<(Keypair, PublicKey, HashMap<u64, PublicKey>), DvfError> {
         let mut threshold_sig = ThresholdSignature::new(self.threshold);
         let ids = self.io.ids();
         let (kp, kps) = threshold_sig.key_gen(ids)?;
@@ -75,8 +76,8 @@ where
                     (s_ij, pk_i)
                 }
                 else {
-                    let mut send_channel = self.io.channel(self.party, *id);
-                    let mut recv_channel = self.io.channel(*id, self.party);
+                    let send_channel = self.io.channel(self.party, *id);
+                    let recv_channel = self.io.channel(*id, self.party);
                     // Send a share of my secret to party `id`
                     send_channel.send(s_ij).await;
                     // Recv a share of party `id`'s secret
@@ -101,6 +102,8 @@ where
             .await
             .into_iter()
             .collect::<Vec<(u64, BigInt, blst_p1_affine)>>();
+        
+        // 1. Construct self's individual group key pair
         let mut gsk = 0.to_bigint().unwrap();
         for (id, s, _) in results.iter() {
             gsk += s;
@@ -113,6 +116,7 @@ where
         let gsk = SecretKey::deserialize(&gsk_bytes[..]).unwrap();
         let kp = Keypair::from_components(gsk.public_key(), gsk);
 
+        // 2. Construct master public key
         let pks = results.iter().map(|(_, _, x)| ptr::addr_of!(*x)).collect::<Vec<*const blst_p1_affine>>();
         let mut mpk_bytes: [u8; PUBLIC_KEY_BYTES_LEN] = [0; PUBLIC_KEY_BYTES_LEN];
         unsafe {
@@ -122,7 +126,34 @@ where
         };
         let mpk = PublicKey::deserialize(&mpk_bytes).unwrap();
 
-        Ok((kp, mpk))
+        // 3. Exchange individual group public key
+        let kp_ref = &kp;
+        let futs = ids.iter().map(|id| async move {
+            let pk_bytes = Bytes::copy_from_slice(kp_ref.pk.serialize().as_slice());
+            let (id, pk) = {
+                if *id == self.party {
+                    (*id, kp_ref.pk.clone())
+                }
+                else {
+                    let send_channel = self.io.channel(self.party, *id);
+                    let recv_channel = self.io.channel(*id, self.party);
+                    // Send my pk to party `id`
+                    send_channel.send(pk_bytes).await;
+                    // Recv pk of party `id`
+                    let pk_bytes = recv_channel.recv().await;
+                    let pk = PublicKey::deserialize(pk_bytes.as_ref()).unwrap();
+                    (*id, pk)
+                }
+            };
+
+            (id, pk)
+        });
+        let pks = join_all(futs)
+            .await
+            .into_iter()
+            .collect::<HashMap<u64, PublicKey>>();
+
+        Ok((kp, mpk, pks))
     }
 }
 
@@ -138,18 +169,19 @@ mod tests {
     use futures::executor::block_on;
     use bls::{Signature, PublicKey};
     use std::net::SocketAddr;
+    use std::collections::HashMap;
 
     const t: usize = 3;
     const ids: [u64; 4] = [1, 2, 3, 4];
 
-    fn verify_dkg_results(results: Vec<(Keypair, PublicKey)>) {
+    fn verify_dkg_results(results: Vec<(Keypair, PublicKey, HashMap<u64, PublicKey>)>) {
         // Verify master public keys
         for i in 1..results.len() {
             assert_eq!(results[i].1, results[i-1].1, "Master public keys are not the same");
         }
 
         // Sign something with the shared keys
-        let kps: Vec<Keypair> = results.iter().map(|(kp, _)| kp.clone()).collect();
+        let kps: Vec<Keypair> = results.iter().map(|(kp, _, _)| kp.clone()).collect();
         let pks: Vec<&PublicKey> = kps.iter().map(|kp| &kp.pk).collect();
         let message = "hello world";
         let mut context = Context::new();
@@ -182,7 +214,7 @@ mod tests {
         let results = block_on(join_all(futs))
             .into_iter()
             .flatten()
-            .collect::<Vec<(Keypair, PublicKey)>>();
+            .collect::<Vec<(Keypair, PublicKey, HashMap<u64, PublicKey>)>>();
         
         verify_dkg_results(results);
     }
@@ -205,7 +237,7 @@ mod tests {
             .await
             .into_iter()
             .flatten()
-            .collect::<Vec<(Keypair, PublicKey)>>();
+            .collect::<Vec<(Keypair, PublicKey, HashMap<u64, PublicKey>)>>();
         
         verify_dkg_results(results);
     }

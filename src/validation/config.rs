@@ -17,8 +17,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use types::{Address, GRAFFITI_BYTES_LEN};
 use crate::node::config::{NodeConfig,API_ADDRESS, BOOT_ENR};
-use crate::node::contract::{DEFAULT_CONTRACT_ADDRESS, DEFAULT_TRANSPORT_URL};
-
+use crate::node::contract:: DEFAULT_TRANSPORT_URL;
 pub const DEFAULT_BEACON_NODE: &str = "http://localhost:5052/";
 
 /// Stores the core configuration for this validator instance.
@@ -160,20 +159,6 @@ impl Config {
             let api_str: String = parse_required(cli_args, "api")?;
             info!(log, "read api address"; "api" => &api_str);
             API_ADDRESS.set(api_str).unwrap();
-            
-        }
-
-        if cli_args.value_of("contract-address").is_some() {
-            let contract_address_str: String = parse_required(cli_args, "contract-address")?;
-            info!(log, "read contract-address"; "contract-address" => &contract_address_str);
-            // check contract address 
-            if contract_address_str.starts_with("0x") {
-                let address = &contract_address_str[2..contract_address_str.len()];
-                DEFAULT_CONTRACT_ADDRESS.set(address.to_string()).unwrap();
-            } else {
-                DEFAULT_CONTRACT_ADDRESS.set(contract_address_str).unwrap();
-            }
-            
         }
 
         if cli_args.value_of("ws-url").is_some() {

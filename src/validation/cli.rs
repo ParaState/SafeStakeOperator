@@ -79,11 +79,13 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 ).takes_value(true)
         )
         .arg(
-            Arg::with_name("contract-address")
-            .long("contract-address")
-            .value_name("CONTRACT_ADDRESS")
-            .help("The contract address")
-            .takes_value(true)
+            Arg::with_name("base-port")
+                .long("base-port")
+                .value_name("BASE_PORT")
+                .help(
+                    "This node's BASE_PORT"
+                )
+                .takes_value(true)
         )
         .arg(
             Arg::with_name("ws-url")
@@ -92,15 +94,6 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
             .help("web socket url of infura to listen contract event")
             .takes_value(true)
         )
-        // .arg(
-        //     Arg::with_name("base-port")
-        //         .long("base-port")
-        //         .value_name("BASE_PORT")
-        //         .help(
-        //             "This node's BASE_PORT"
-        //         )
-        //         .takes_value(true)
-        // )
         .arg(
             Arg::with_name("boot-enr")
                 .long("boot-enr")

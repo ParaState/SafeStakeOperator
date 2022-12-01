@@ -4,7 +4,7 @@ use serde::Serialize;
 use tokio::sync::RwLock;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use crate::node::new_contract::OperatorPublicKeys;
+use crate::node::contract::OperatorPublicKeys;
 use log::error;
 use std::collections::HashMap;
 use serde::de::DeserializeOwned;

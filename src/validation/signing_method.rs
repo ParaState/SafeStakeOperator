@@ -336,7 +336,6 @@ impl SigningMethod {
                                             duty: duty.to_string(),
                                             time: Utc::now().signed_duration_since(dt).num_milliseconds()
                                         };
-                                        let client = reqwest::Client::new();
                                         let url_str = API_ADDRESS.get().unwrap().to_owned() + COLLECT_PERFORMANCE_URL;
                                         request_to_web_server(request_body, &url_str).await.map_err(|e| Error::Web3SignerRequestFailed(e))?;
                                     }

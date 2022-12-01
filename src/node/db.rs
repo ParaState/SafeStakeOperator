@@ -2,7 +2,7 @@ use rusqlite::{params, Connection, Result, OpenFlags, DropBehavior};
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::oneshot;
 use log::{error};
-use crate::node::new_contract::{Operator, Validator, Initializer};
+use crate::node::contract::{Operator, Validator, Initializer};
 use web3::types::Address;
 use std::path::{Path};
 pub type DbError = rusqlite::Error;

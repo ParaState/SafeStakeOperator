@@ -39,7 +39,7 @@ impl Database {
             id INTEGER PRIMARY KEY, 
             name TEXT NOT NULL, 
             address CHARACTER(40) NOT NULL, 
-            publick_key VARCHAR(100) NOT NULL
+            public_key VARCHAR(100) NOT NULL
         )";
 
         // public key is in hex
@@ -51,11 +51,9 @@ impl Database {
         )";
 
         let create_releation_sql = "CREATE TABLE IF NOT EXISTS validator_operators_mapping(
-            id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            id INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
             validator_pk CHARACTER(96) NOT NULL, 
             operator_id INTEGER NOT NULL,
-            KEY validator_pk(validator_pk),
-            KEY operator_id(operator_id),
             CONSTRAINT validator_select_operators_1 FOREIGN KEY (validator_pk) REFERENCES validators(public_key) ON DELETE CASCADE,
             CONSTRAINT validator_select_operators_2 FOREIGN KEY (operator_id) REFERENCES operators(id) ON DELETE CASCADE
         )";
@@ -68,11 +66,9 @@ impl Database {
         )";
 
         let create_initializer_releation_sql = "CREATE TABLE IF NOT EXISTS initializer_operators_mapping(
-            id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
             initializer_id INTEGER NOT NULL,
             operator_id INTEGER NOT NULL,
-            KEY initializer_id(initializer_id),
-            KEY operator_id(operator_id),
             CONSTRAINT initializer_select_operators_1 FOREIGN KEY (initializer_id) REFERENCES initializers(id) ON DELETE CASCADE,
             CONSTRAINT initializer_select_operators_2 FOREIGN KEY (operator_id) REFERENCES operators(id) ON DELETE CASCADE
         )";
@@ -109,7 +105,7 @@ impl Database {
                         let _ = sender.send(response);
                     },
                     DbCommand::QueryOperatorPublicKeyByIds(operator_ids, sender) => {
-                        let response = query_operators_publick_key_by_ids(&conn, operator_ids);
+                        let response = query_operators_public_key_by_ids(&conn, operator_ids);
                         let _ = sender.send(response);
                     },
                     DbCommand::QueryOperatorPublicKeyById(operator_id, sender) => {
@@ -165,7 +161,7 @@ impl Database {
         receiver.await.expect("Failed to receive reply to query validator command from db")
     }
 
-    pub async fn query_operators_publick_key_by_ids(&self, operator_ids: Vec<u32>) -> DbResult<Option<Vec<String>>> {
+    pub async fn query_operators_public_key_by_ids(&self, operator_ids: Vec<u32>) -> DbResult<Option<Vec<String>>> {
         let (sender, receiver) = oneshot::channel();
         if let Err(e) = self.channel.send(DbCommand::QueryOperatorPublicKeyByIds(operator_ids, sender)).await {
             panic!("Failed to send command to store: {}", e);
@@ -362,7 +358,7 @@ fn query_validator_by_public_key(conn: &Connection, validator_pk: &str) -> DbRes
     }
 }
 
-fn query_operators_publick_key_by_ids(conn: &Connection, operator_ids: Vec<u32>) -> DbResult<Option<Vec<String>>> {
+fn query_operators_public_key_by_ids(conn: &Connection, operator_ids: Vec<u32>) -> DbResult<Option<Vec<String>>> {
     let mut public_keys: Vec<String> = Vec::new();
     assert_ne!(operator_ids.len(), 0);
     for operator_id in operator_ids {
@@ -440,7 +436,7 @@ fn query_initializer(conn: &Connection, id: u32) -> DbResult<Option<Initializer>
 fn query_initializer_releated_operator_pks(conn: &Connection, id: u32) -> DbResult<(Vec<String>, Vec<u32>) > {
     let mut op_pks = Vec::new();
     let mut op_ids: Vec<u32> = Vec::new();
-    match conn.prepare("select publick_key, id from operators where id in (select operator_id from initializer_operators_mapping where initializer_id = (?))") {
+    match conn.prepare("select public_key, id from operators where id in (select operator_id from initializer_operators_mapping where initializer_id = (?))") {
         Ok(mut stmt) => {
             let mut rows = stmt.query([id])?;
             match rows.next()? {

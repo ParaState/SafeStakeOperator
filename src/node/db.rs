@@ -31,7 +31,7 @@ pub struct Database {
 
 impl Database {
     pub fn new<P: AsRef<Path>>(path: P) -> DbResult<Self> {
-        let mut conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_CREATE)?;
+        let mut conn = Connection::open(path)?;
 
         // public_key is base64 encoded
         // address is in hex

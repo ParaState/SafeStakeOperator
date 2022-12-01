@@ -82,7 +82,7 @@ services:
       - -c
       - |
         node_ip=$$(curl -s ifconfig.me) 
-        dvf validator_client --debug-level=info --network=${OPERATOR_NETWORK} --beacon-nodes=http://127.0.0.1:5052 --api=${API_SERVER} --ws-url=${WS_URL}  --ip=$$node_ip --boot-enr=${ENR} 2>&1
+        dvf validator_client --debug-level=info --network=${OPERATOR_NETWORK} --beacon-nodes=http://127.0.0.1:5052 --api=${API_SERVER} --ws-url=${WS_URL}  --ip=$$node_ip --boot-enr=${ENR} --base-port=26000 2>&1
     expose:
       - "26000"
       - "26001"

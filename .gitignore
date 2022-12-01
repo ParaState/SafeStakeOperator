@@ -117,4 +117,3 @@ committee.json
 node_*.json
 db_*
 node_copy
-.env

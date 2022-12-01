@@ -1,81 +1,10 @@
 version: '3'
 services:
-  geth:
-    image: ethereum/client-go:v1.10.25
-    pull_policy: always
-    network_mode: "host"
-    volumes:
-      - jwt-data:/data/jwt
-      - geth-data:/data/geth
-    command: [
-      "--${GETH_NETWORK}",
-      "--syncmode=full",
-      "--http",
-      "--http.addr=0.0.0.0",
-      "--http.vhosts=*",
-      "--http.port=8545",
-      "--authrpc.addr=0.0.0.0",
-      "--authrpc.vhosts=*",
-      "--authrpc.port=8551",
-      "--discovery.port=30303",
-      "--port=30303",
-      "--datadir=/data/geth",
-      "--pprof",
-      "--pprof.addr=0.0.0.0",
-      "--http.api=engine,eth,web3,net,debug",
-      "--http.corsdomain=*",
-      "--authrpc.jwtsecret=/data/jwt/jwtsecret",
-      "--override.terminaltotaldifficulty=${TTD}"
-    ]
-    expose:
-      - "8545"
-      - "8546"
-      - "8547"
-      - "8551"
-      - "30303"
-  lighthouse:
-    network_mode: "host"
-    image: sigp/lighthouse:v3.1.0
-    pull_policy: always
-    volumes:
-      - geth-data:/data/geth
-      - jwt-data:/data/jwt
-      - lighthouse-data:/data/lighthouse
-    command:
-      [
-        "lighthouse",
-        "bn",
-        "--network=${LIGHTHOUSE_NETWORK}",
-        "--datadir=/data/lighthouse",
-        # "--jwt-secrets=/data/jwt/jwtsecret",
-        "--execution-jwt=/data/jwt/jwtsecret",
-        "--http",
-        "--listen-address=0.0.0.0",
-        "--http-address=0.0.0.0",
-        "--http-port=5052",
-        "--staking",
-        "--http-allow-sync-stalled",
-        "--merge",
-        "--execution-endpoint=http://127.0.0.1:8551",
-        # "--eth1-endpoints=http://127.0.0.1:8545",
-        "--metrics",
-        "--subscribe-all-subnets",
-        "--import-all-attestations",
-        "--validator-monitor-auto",
-        "--checkpoint-sync-url=https://goerli.checkpoint-sync.ethpandaops.io",
-        "--terminal-total-difficulty-override=${TTD}"
-      ]
-    expose:
-      - "5052"
-      - "9000"
-    depends_on:
-      geth:
-        condition: service_started
-  operator:
+  operator-stage2:
     network_mode: "host"
     volumes:
       - operator-data:/root/.lighthouse
-    image: parastate/dvf-operator:${IMAGE_TAG}
+    image: parastate/dvf-operator:dev-stage2
     pull_policy: always
     command:
       - /bin/sh
@@ -94,29 +23,8 @@ services:
       resources:
         limits:
           memory: 5G
-    depends_on:
-      lighthouse:
-        condition: service_started
     
 volumes:
-  geth-data:
-    driver: local
-    driver_opts:
-      o: bind
-      type: none
-      device: /data/geth
-  lighthouse-data:
-    driver: local
-    driver_opts:
-      o: bind
-      type: none
-      device: /data/lighthouse
-  jwt-data:
-    driver: local
-    driver_opts:
-      o: bind
-      type: none
-      device: /data/jwt
   operator-data:
     driver: local
     driver_opts:

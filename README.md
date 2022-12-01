@@ -70,6 +70,22 @@ cp .env.example .env
   
   - Copy your WS_URL
 
+### Or get your alchemy ws_url
+
+  - Follow the document [https://docs.alchemy.com/reference/api-overview](https://docs.alchemy.com/reference/api-overview)
+  - Regiter a alchemy account
+  - Create new app
+  
+   > ![alchemy step1](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/alchemy-step1.png?raw=true)
+  - Select Goerli network
+  
+  > ![alchemy step2](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/alchemy-step2.png?raw=true)
+  - Select your app and view key
+
+  > ![alchemy step3](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/alchemy-step3.png?raw=true)
+  - Select WEBSOCKS and copy
+
+  > ![alchemy step4](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/alchemy-step4.png?raw=true)
   
   
 ### Use your own configuration

@@ -122,4 +122,4 @@ volumes:
     driver_opts:
       o: bind
       type: none
-      device: /data/operator
+      device: /home/ubuntu/stage2/data/

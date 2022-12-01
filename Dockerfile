@@ -19,7 +19,7 @@ COPY ./src ./src
 
 # build for release
 ARG CPU_NUM=8
-RUN cargo build -j $CPU_NUM --release
+RUN cargo build -j $CPU_NUM
 
 FROM ubuntu:22.04
 RUN apt-get update && apt-get -y upgrade && apt-get install -y --no-install-recommends \

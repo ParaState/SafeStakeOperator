@@ -1,16 +1,16 @@
 version: '3'
 services:
-  operator-stage2:
+  stage2-op:
     network_mode: "host"
     volumes:
-      - operator-data:/root/.lighthouse
+      - stage2-data:/root/.lighthouse
     image: parastate/dvf-operator:dev-stage2
     pull_policy: always
     command:
       - /bin/sh
       - -c
       - |
-        node_ip=$$(curl -s ifconfig.me) 
+        node_ip=$$(curl -s ifconfig.me)
         dvf validator_client --debug-level=info --network=${OPERATOR_NETWORK} --beacon-nodes=http://127.0.0.1:5052 --api=${API_SERVER} --ws-url=${WS_URL}  --ip=$$node_ip --boot-enr=${ENR} --base-port=26000 2>&1
     expose:
       - "26000"
@@ -23,9 +23,9 @@ services:
       resources:
         limits:
           memory: 5G
-    
+
 volumes:
-  operator-data:
+  stage2-data:
     driver: local
     driver_opts:
       o: bind

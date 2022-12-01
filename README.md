@@ -83,7 +83,7 @@ cp .env.example .env
   - Select your app and view key
 
   > ![alchemy step3](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/alchemy-step3.png?raw=true)
-  - Select WEBSOCKS and copy
+  - Select WEBSOCKETS and copy
 
   > ![alchemy step4](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/alchemy-step4.png?raw=true)
   

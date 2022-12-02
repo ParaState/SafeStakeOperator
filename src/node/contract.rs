@@ -373,60 +373,63 @@ impl Contract {
             }
             let mut query_interval = tokio::time::interval(Duration::from_secs(60 * 5));
             loop {
-                let _ = query_interval.tick();
-                let web3 = Web3::new(WebSocket::new(transport_url).await.unwrap());
-                let filter = filter_builder
-                    .clone()
-                    .from_block(BlockNumber::Number(U64::from(record.block_num)))
-                    .build();
-                match web3.eth().logs(filter).await {
-                    Ok(logs) => {
-                        info!("Get {} logs.", &logs.len());
-                        for log in logs {
-                            record.block_num = log
-                                .block_number
-                                .map_or_else(|| record.block_num, |bn| bn.as_u64());
+                tokio::select! {
+                    _ = query_interval.tick() => {
+                        let web3 = Web3::new(WebSocket::new(transport_url).await.unwrap());
+                        let filter = filter_builder
+                            .clone()
+                            .from_block(BlockNumber::Number(U64::from(record.block_num)))
+                            .build();
+                        match web3.eth().logs(filter).await {
+                            Ok(logs) => {
+                                info!("Get {} logs.", &logs.len());
+                                for log in logs {
+                                    record.block_num = log
+                                        .block_number
+                                        .map_or_else(|| record.block_num, |bn| bn.as_u64());
 
-                            let listened = match log.transaction_hash {
-                                Some(hash) => log_listened(&store, &hash).await,
-                                None => false,
-                            };
-                            if listened {
-                                info!("This log has been lestened, continue");
+                                    let listened = match log.transaction_hash {
+                                        Some(hash) => log_listened(&store, &hash).await,
+                                        None => false,
+                                    };
+                                    if listened {
+                                        info!("This log has been lestened, continue");
+                                        continue;
+                                    }
+                                    let topic = log.topics[0].clone();
+                                    match handlers.read().get(&topic) {
+                                        Some(handler) => {
+                                            match handler
+                                                .process(
+                                                    log,
+                                                    topic,
+                                                    &db,
+                                                    &operator_pk_base64,
+                                                    &config,
+                                                    &sender,
+                                                )
+                                                .await
+                                            {
+                                                Ok(_) => {}
+                                                Err(e) => {
+                                                    error!("error hapens, reason: {}", e.as_str());
+                                                }
+                                            }
+                                        }
+                                        None => {
+                                            error!("Can't find handler");
+                                        }
+                                    };
+                                }
+                            }
+                            Err(e) => {
+                                error!("{}, {}", ContractError::LogError.as_str(), e);
                                 continue;
                             }
-                            let topic = log.topics[0].clone();
-                            match handlers.read().get(&topic) {
-                                Some(handler) => {
-                                    match handler
-                                        .process(
-                                            log,
-                                            topic,
-                                            &db,
-                                            &operator_pk_base64,
-                                            &config,
-                                            &sender,
-                                        )
-                                        .await
-                                    {
-                                        Ok(_) => {}
-                                        Err(e) => {
-                                            error!("error hapens, reason: {}", e.as_str());
-                                        }
-                                    }
-                                }
-                                None => {
-                                    error!("Can't find handler");
-                                }
-                            };
                         }
-                    }
-                    Err(e) => {
-                        error!("{}, {}", ContractError::LogError.as_str(), e);
-                        continue;
+                        update_record_file(&record, &record_path);
                     }
                 }
-                update_record_file(&record, &record_path);
             }
         });
     }

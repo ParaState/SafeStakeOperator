@@ -279,7 +279,7 @@ impl Contract {
         let record = match ContractRecord::from_file(base_dir.as_ref().join(CONTRACT_RECORD_FILE)) {
             Ok(record) => record,
             Err(err_str) => {
-                warn!("Can't recover from contract record file {}", err_str);
+                warn!("Can't recover from contract record file {}, get current block number from contract", err_str);
                 ContractRecord { block_num: 0 }
             }
         };
@@ -510,7 +510,7 @@ pub fn update_record_file<P: AsRef<Path>>(record: &ContractRecord, path: P) {
         .map_err(|e| {
             error!("{} error: {}", ContractError::RecordFileError.as_str(), e);
         })
-        .unwrap_err();
+        .unwrap();
 }
 
 pub async fn log_listened(store: &Store, log_hash: &H256) -> bool {

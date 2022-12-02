@@ -371,7 +371,9 @@ impl Contract {
                 get_block_number(&mut record).await;
                 update_record_file(&record, &record_path);
             }
+            let mut query_interval = tokio::time::interval(Duration::from_secs(60 * 5));
             loop {
+                let _ = query_interval.tick();
                 let web3 = Web3::new(WebSocket::new(transport_url).await.unwrap());
                 let filter = filter_builder
                     .clone()

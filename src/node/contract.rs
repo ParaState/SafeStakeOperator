@@ -809,7 +809,7 @@ pub async fn process_initializer_registration(
             .map(|s| base64::decode(s).unwrap())
             .collect();
         db.insert_initializer(initializer.clone()).await;
-        let _ = sender.send(ContractCommand::StartInitializer(initializer, op_pk_bn));
+        let _ = sender.send(ContractCommand::StartInitializer(initializer, op_pk_bn)).await;
     } else {
         info!("This node is not included in this initializer registration event. Continue.");
     }
@@ -890,7 +890,7 @@ pub async fn process_minipool_created(
                     op_pk_bns,
                     op_ids,
                     minipool_address,
-                ));
+                )).await;
             }
             Ok(())
         }
@@ -956,7 +956,7 @@ pub async fn process_minipool_ready(
                     op_pks_bn,
                     op_ids,
                     initializer.minipool_address.unwrap(),
-                ));
+                )).await;
                 Ok(())
             }
             None => Ok(()),

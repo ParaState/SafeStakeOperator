@@ -239,7 +239,7 @@ impl<T: EthSpec> Node<T> {
                             {
                                 Ok(_) => {}
                                 Err(e) => {
-                                    error!("Failed to stop initializer: {}", e);
+                                    error!("Failed to start initializer: {}", e);
                                 }
                             }
                         }
@@ -536,7 +536,7 @@ pub async fn start_initializer<T: EthSpec>(
 ) -> Result<(), String> {
     let node = node.read();
     let base_port = node.config.base_address.port();
-    let operator_ips =
+    let mut operator_ips =
         match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
             Ok(ips) => ips,
             Err(e) => {
@@ -551,6 +551,9 @@ pub async fn start_initializer<T: EthSpec>(
                 return Err(e);
             }
         };
+    for x in operator_ips.iter_mut() {
+        (*x).set_port(base_port + DKG_PORT_OFFSET);
+    }
     let self_op_id = *SELF_OPERATOR_ID
         .get()
         .ok_or("Self operator has not been set".to_string())?;

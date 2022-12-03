@@ -198,6 +198,7 @@ impl<T: EthSpec> Node<T> {
                             shared_pks,
                             encrypted_sks,
                         ) => {
+                            info!("StartValidator");
                             match new_add_validator(
                                 node.clone(),
                                 validator,
@@ -216,6 +217,7 @@ impl<T: EthSpec> Node<T> {
                             }
                         }
                         ContractCommand::StopValidator(validator) => {
+                            info!("StopValidator");
                             match new_stop_validator(node.clone(), validator).await {
                                 Ok(_) => {}
                                 Err(e) => {
@@ -224,6 +226,7 @@ impl<T: EthSpec> Node<T> {
                             }
                         }
                         ContractCommand::StartInitializer(initializer, operator_pks) => {
+                            info!("StartInitializer");
                             match start_initializer(
                                 node.clone(),
                                 initializer,
@@ -247,6 +250,7 @@ impl<T: EthSpec> Node<T> {
                             op_ids,
                             minipool_address,
                         ) => {
+                            info!("MiniPoolCreated");
                             match minipool_deposit(
                                 node.clone(),
                                 initializer_id,
@@ -273,6 +277,7 @@ impl<T: EthSpec> Node<T> {
                             op_ids,
                             minipool_address,
                         ) => {
+                            info!("MiniPoolReady");
                             match minipool_deposit(
                                 node.clone(),
                                 initializer_id,
@@ -583,6 +588,7 @@ pub async fn start_initializer<T: EthSpec>(
         .write()
         .await
         .insert(initializer.id, (keypair, va_pk, shared_pks));
+    info!("dkg success!");
     Ok(())
 }
 

@@ -379,14 +379,18 @@ impl Contract {
                         let filter = filter_builder
                             .clone()
                             .from_block(BlockNumber::Number(U64::from(record.block_num)))
+                            .limit(20)
                             .build();
                         match web3.eth().logs(filter).await {
                             Ok(logs) => {
                                 info!("Get {} logs.", &logs.len());
+                                if logs.len() == 0 {
+                                    get_block_number(&mut record).await;
+                                }
                                 for log in logs {
                                     record.block_num = log
                                         .block_number
-                                        .map_or_else(|| record.block_num, |bn| bn.as_u64());
+                                        .map_or_else(|| record.block_num, |bn| bn.as_u64()) + 1;
 
                                     let listened = match log.transaction_hash {
                                         Some(hash) => log_listened(&store, &hash).await,
@@ -421,6 +425,7 @@ impl Contract {
                                         }
                                     };
                                 }
+                                
                             }
                             Err(e) => {
                                 error!("{}, {}", ContractError::LogError.as_str(), e);

@@ -14,6 +14,8 @@ use std::net::{SocketAddr};
 use log::{info, warn};
 use tokio::task::JoinHandle;
 use tokio::sync::{Notify};
+use tokio::time::{sleep, Duration};
+use std::cmp::min;
 
 
 #[async_trait]
@@ -124,15 +126,23 @@ impl ConnectionManager {
     /// Connect from `party` to a peer with `peer_address`.
     /// The `party` id is sent to the peer right after connection to identify itself.
     pub async fn connect(party: u64, peer_address: SocketAddr) -> Option<NetIOChannel> {
-        match TcpStream::connect(peer_address).await {
-            Ok(stream) => {
-                let channel = NetIOChannel::new(stream);
-                channel.send(Bytes::from(bincode::serialize(&party).unwrap())).await;
-                Some(channel)
-            },
-            Err(_e) => {
-                warn!("Failed to connect to {}", peer_address);
-                None
+        let mut delay = 200;
+        let mut retry = 0;
+        loop {
+            match TcpStream::connect(peer_address).await {
+                Ok(stream) => {
+                    let channel = NetIOChannel::new(stream);
+                    channel.send(Bytes::from(bincode::serialize(&party).unwrap())).await;
+                    return Some(channel);
+                },
+                Err(_e) => {
+                    warn!("connection-manager: Failed to connect to {}. Try({}).", peer_address, retry);
+                    sleep(Duration::from_millis(delay)).await;
+
+                    // Wait an increasing delay before attempting to reconnect.
+                    delay = min(2*delay, 60_000);
+                    retry +=1;
+                }
             }
         }
     }

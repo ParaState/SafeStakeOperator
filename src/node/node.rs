@@ -609,7 +609,7 @@ pub async fn minipool_deposit<T: EthSpec>(
 ) -> Result<(), String> {
     let node = node.read();
     let base_port = node.config.base_address.port();
-    let operator_ips = match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
+    let mut operator_ips = match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
         Ok(ips) => ips,
         Err(e) => {
             error!("Some operators are not online, it's critical error, minipool exiting");
@@ -617,6 +617,9 @@ pub async fn minipool_deposit<T: EthSpec>(
             return Err(e);
         }
     };
+    for x in operator_ips.iter_mut() {
+        (*x).set_port(base_port + DKG_PORT_OFFSET);
+    }
     let op_ids: Vec<u64> = operator_ids.into_iter().map(|x| x as u64).collect();
     let self_op_id = *SELF_OPERATOR_ID
         .get()

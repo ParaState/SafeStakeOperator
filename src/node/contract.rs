@@ -375,7 +375,16 @@ impl Contract {
             loop {
                 tokio::select! {
                     _ = query_interval.tick() => {
-                        let web3 = Web3::new(WebSocket::new(transport_url).await.unwrap());
+                        let transport = WebSocket::new(transport_url).await;
+                        match &transport {
+                            Ok(_) => {},
+                            Err(e) => {
+                                warn!("can't connect to websocket {}", e);
+                                tokio::time::sleep(Duration::from_secs(60 * 3)).await;
+                                continue;
+                            }
+                        }
+                        let web3 = Web3::new(transport.unwrap());
                         let filter = filter_builder
                             .clone()
                             .from_block(BlockNumber::Number(U64::from(record.block_num)))
@@ -451,7 +460,16 @@ impl Contract {
         let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
         tokio::spawn(async move {
             loop {
-                let web3 = Web3::new(WebSocket::new(transport_url).await.unwrap());
+                let transport = WebSocket::new(transport_url).await;
+                match &transport {
+                    Ok(_) => {},
+                    Err(e) => {
+                        warn!("can't connect to websocket {}", e);
+                        tokio::time::sleep(Duration::from_secs(60 * 3)).await;
+                        continue;
+                    }
+                }
+                let web3 = Web3::new(transport.unwrap());
                 let mut sub = web3
                     .eth_subscribe()
                     .subscribe_logs(filter.clone())

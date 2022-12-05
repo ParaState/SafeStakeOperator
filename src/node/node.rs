@@ -296,6 +296,7 @@ impl<T: EthSpec> Node<T> {
                                     error!("Failed to process minpool created: {}", e);
                                 }
                             }
+                            let _ = initializer_store.write().await.remove(&initializer_id);
                         }
                     },
                     None => {

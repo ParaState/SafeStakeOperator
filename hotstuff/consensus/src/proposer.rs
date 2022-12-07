@@ -62,7 +62,7 @@ impl Proposer {
     }
 
     /// Helper function. It waits for a future to complete and then delivers a value.
-    async fn waiter(wait_for: CancelHandler, deliver: Stake) -> Stake {
+    async fn _waiter(wait_for: CancelHandler, deliver: Stake) -> Stake {
         let result = wait_for.await;
         if let Ok(ack) = result {
             if ack == "Ack" {

@@ -6,8 +6,8 @@ use log::{info, debug};
 #[derive(Clone)]
 pub struct MonitoredSender<T> {
     pub inner: Sender<T>,
-    tag: String,
-    level: String,
+    _tag: String,
+    _level: String,
 }
 
 impl <T> MonitoredSender<T> 
@@ -26,8 +26,8 @@ where T: Send + 'static {
 
         Self {
             inner: sender.clone(),
-            tag,
-            level,
+            _tag: tag,
+            _level: level,
         }
     }
 

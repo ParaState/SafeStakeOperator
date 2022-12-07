@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, Result, OpenFlags, DropBehavior};
+use rusqlite::{params, Connection, Result, DropBehavior};
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::oneshot;
 use log::{error};

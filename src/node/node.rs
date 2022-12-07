@@ -628,7 +628,7 @@ pub async fn minipool_deposit<T: EthSpec>(
         .ok_or("Self operator has not been set".to_string())?;
     let store = initializer_store.read().await;
     let (keypair, va_pk, op_bls_pks) = store.get(&initializer_id).ok_or(format!("can't get initializer store id: {}", initializer_id))?;
-    let io_committee = Arc::new(NetIOCommittee::new(self_op_id as u64, base_port, &op_ids, &operator_ips).await);
+    let io_committee = Arc::new(NetIOCommittee::new(self_op_id as u64, base_port + DKG_PORT_OFFSET, &op_ids, &operator_ips).await);
     let signer = SimpleDistributedSigner::new(self_op_id as u64, keypair.clone(), va_pk.clone(), op_bls_pks.clone(), io_committee, THRESHOLD as usize);
     let mpk = BlsPublicKey::deserialize(&validator_pk).map_err(|e| format!("Can't deserilize bls pk {:?}", e))?;
     if mpk != *va_pk {

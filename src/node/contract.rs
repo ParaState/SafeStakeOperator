@@ -648,7 +648,7 @@ pub async fn process_validator_registration(
         let shared_pks = parse_bytes_token(log.params[3].value.clone())?;
         let encrypted_sks = parse_bytes_token(log.params[4].value.clone())?;
         // TODO paid block should store for tokenomics
-        let paid_block_number = log.params[5]
+        let _paid_block_number = log.params[5]
             .value
             .clone()
             .into_uint()

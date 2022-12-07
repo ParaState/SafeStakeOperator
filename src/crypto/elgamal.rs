@@ -84,7 +84,7 @@ where R: Rng {
         self.rng.fill(&mut nonce_bytes[..]);
         let nonce = Nonce::from_slice(nonce_bytes.as_slice());
 
-        let mut aes_ct = cipher.encrypt(nonce, msg)?;
+        let aes_ct = cipher.encrypt(nonce, msg)?;
 
         let _ = cipher.decrypt(nonce, aes_ct.as_slice());
 

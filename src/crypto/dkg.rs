@@ -30,7 +30,7 @@ pub struct DKG<T, U> {
     party: u64,
     io: Arc<T>,
     threshold: usize,
-    h: blst_p1,
+    _h: blst_p1,
     _phantom: PhantomData<U>,
 }
 
@@ -55,7 +55,7 @@ where
             party,
             io,
             threshold,
-            h,
+            _h: h,
             _phantom: PhantomData,
         }
     }
@@ -108,7 +108,7 @@ where
         
         // 1. Construct self's individual group key pair
         let mut gsk = 0.to_bigint().unwrap();
-        for (id, s, _) in results.iter() {
+        for (_id, s, _) in results.iter() {
             gsk += s;
         }
         gsk = gsk.reduce(&MODULUS);

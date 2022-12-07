@@ -265,7 +265,6 @@ impl SigningMethod {
                         SignableMessage::SignedContributionAndProof(_) => {
                             (Slot::new(0 as u64), "CONTRIB")
                         }
-                        _ => { (Slot::new(0 as u64), "ERROR") }
                     };
 
                     log::info!("[Dvf {}/{}] Signing\t-\tSlot: {}.\tEpoch: {}.\tType: {}.\tRoot: {:?}.", 

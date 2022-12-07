@@ -129,7 +129,7 @@ impl Core {
         }
     }
 
-    pub async fn get_ancestors(
+    pub async fn _get_ancestors(
         &mut self,
         block: &Block,
     ) -> Option<(Block, Block)> {

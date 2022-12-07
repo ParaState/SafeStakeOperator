@@ -73,7 +73,7 @@ impl DepositRequest {
 
 pub async fn request_to_web_server<T: Serialize>(body: T, url_str: &str) -> Result<(), String> {
     let client = Client::new();
-    let url = Url::parse(url_str).map_err(|e| format!("Can't parse url {}", url_str))?;
+    let url = Url::parse(url_str).map_err(|_e| format!("Can't parse url {}", url_str))?;
     match client.post(url).json(&body).send().await {
         Ok(_) => {},
         Err(e) => {

@@ -60,7 +60,7 @@ impl IOChannel for MemIOChannel {
 
 pub struct ConnectionManager {
     /// Address to listen to.
-    address: SocketAddr,
+    _address: SocketAddr,
     /// Struct responsible to define how to handle received messages.
     connections: Arc<RwLock<HashMap<u64, NetIOChannel>>>,
     notifications: Arc<RwLock<HashMap<u64, Arc<Notify>>>>,
@@ -92,7 +92,7 @@ impl ConnectionManager {
 
             info!("Listening on {}. [DKG]", address_clone);
             loop {
-                let (socket, peer) = match listener.accept().await {
+                let (socket, _peer) = match listener.accept().await {
                     Ok(value) => value,
                     Err(e) => {
                         warn!("Failed to accept connection: {}", e);
@@ -116,7 +116,7 @@ impl ConnectionManager {
         });
 
         Self {
-            address,
+            _address: address,
             connections,
             notifications,
             thread_handle,

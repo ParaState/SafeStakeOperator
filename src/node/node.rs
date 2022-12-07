@@ -578,9 +578,10 @@ pub async fn start_initializer<T: EthSpec>(
         .await
         .map_err(|e| format!("run dkg failed {:?}", e))?;
 
+    let pk_str: String = va_pk.as_hex_string()[2..].to_string();
     // push va pk to web server
     let request_body = ValidatorPkRequest {
-        validator_pk: va_pk.as_hex_string(),
+        validator_pk: pk_str,
         initializer_id: initializer.id,
         initializer_address: format!("{0:0x}", initializer.owner_address),
         operators: op_ids,

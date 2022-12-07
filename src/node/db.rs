@@ -439,13 +439,10 @@ fn query_initializer_releated_operator_pks(conn: &Connection, id: u32) -> DbResu
     match conn.prepare("select public_key, id from operators where id in (select operator_id from initializer_operators_mapping where initializer_id = (?))") {
         Ok(mut stmt) => {
             let mut rows = stmt.query([id])?;
-            match rows.next()? {
-                Some(row) => {
-                    op_pks.push(row.get(0)?);
-                    op_ids.push(row.get(1)?);
-                },  
-                None => { }
-            }
+            while let Some(row) = rows.next()? {
+                op_pks.push(row.get(0)?);
+                op_ids.push(row.get(1)?);
+            } 
         },
         Err(e) => { error!("Can't prepare statement {}", e); return Err(e); }
     };

@@ -1,114 +1,48 @@
-# Project SafeStake Operator Node
+# SafeStake: A trust-minimized middle layer for secure, decentralized ETH staking
 
-**Description**:  
-SafeStake is a decentralized validation framework for performing ETH2 duties and its backend is designed on top of Lighthouse (ETH2 consensus client) and Hotstuff (a BFT consensus library).
+## What is SafeStake? <img src=".gitbook/assets/image (4).png" alt="" data-size="line">
 
-## Dependencies
-### Server 
+`SafeStake` is a decentralized staking framework and protocol that maximizes staker rewards by keeping validators secure and online to perform Ethereum Proof-of-Stake consensus (ETH2) duties. It splits a validator key into shares and distributes them over several nodes run by independent operators to achieve high levels of security and fault tolerance. Written in Rust, SafeStake runs on top of the ETH2/consensus client [Lighthouse](https://github.com/sigp/lighthouse) and uses [Hotstuff](https://github.com/asonnino/hotstuff) (a BFT consensus library) for consensus.
 
- * Public Static Network IP 
- * Hardware(recommend)
-   * CPU: 16
-   * Memory: 32G
-   * Disk: 600GB
- * OS
-   * Unix
- * Software
-   * Docker
-   * Docker Compose 
+<figure><img src=".gitbook/assets/image (2).png" alt=""><figcaption><p>SafeStake Network Architecture</p></figcaption></figure>
 
-### Set firewall rule
-![firewall rule](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/firewall_rule.png?raw=true)
+### SafeStake makes earning staking rewards safe and easy for all ETH holders.&#x20;
 
-## Installation
+* `Deposit 32 ETH` and choose a group of four operators to manage your validator.
+* `Deposit ≥ 0.1 ETH but < 32 ETH` to participate in running a 'Pooled Validator.' Stake ETH in the SafeStake pool and get `sfETH` tokens in return. Your share of the pooled validator's rewards will be accrued automatically to your sfETH token balance and are completely liquid, allowing you the freedom to trade, buy, or sell your tokens any time you want.
 
-### Login your server([jumpserver](https://www.jumpserver.org/) recommand)
-### Install Docker and Docker compose
-* [install docker engine](https://docs.docker.com/engine/install/)
-* [install docker compose](https://docs.docker.com/compose/install/)
+{% hint style="info" %}
+**SafeStake is the first ETH staking pool to implement distributed validator technology (DVT) for increased decentralization, security, and reliability.**
+{% endhint %}
 
-### Enable docker service and start it immediately.
-```
- sudo systemctl enable docker
-```
+### Test Drive SafeStake
 
-### Create local volume directory
+You can join the SafeStake testnet by running a **Validator** or an **Operator Node**.
 
-```
- sudo mkdir -p /data/geth
- sudo mkdir -p /data/lighthouse
- sudo mkdir -p /data/jwt
- sudo mkdir -p /data/operator
-```
-### Generate your jwt secret to jwt dirctory
+<figure><img src=".gitbook/assets/image (1).png" alt="Test SafeStake"><figcaption><p>Join the SafeStake Network</p></figcaption></figure>
 
-```
-openssl rand -hex 32 | tr -d "\n" | sudo tee /data/jwt/jwtsecret
-```
-### Clone operator code from github
+### Run a SafeStake Validator
 
-```
-git clone --recurse-submodules https://github.com/ParaState/SafeStakeOperator.git dvf
-```
-```
-cd dvf
-cp .env.example .env
-```
-### Get your infura ws_url
-  - Follow the document [https://docs.infura.io/infura/](https://docs.infura.io/infura/)
-  - Regiter a infura account
-  - Create new key
-  
-  > ![infura step1](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/infura-step1.png?raw=true)
-  - Select goerli network
-  
-  > ![infura step1](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/infura-step2.png?raw=true)
-  
-  - Select Websocks
-  
-  > ![infura step1](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/infura-step3.png?raw=true)
-  
-  - Copy your WS_URL
+In the SafeStake ecosystem, there is no need for stakers to deploy validators as they delegate those duties to operators. A deposit of as little as .01 ETH up to 32 ETH is all a user needs to join the network as a validator. Just connect your wallet and follow the instructions to get started.
 
-### Or get your alchemy ws_url
+### Run a SafeStake Operator Node
 
-  - Follow the document [https://docs.alchemy.com/reference/api-overview](https://docs.alchemy.com/reference/api-overview)
-  - Regiter a alchemy account
-  - Create new app
-  
-   > ![alchemy step1](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/alchemy-step1.png?raw=true)
-  - Select Goerli network
-  
-  > ![alchemy step2](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/alchemy-step2.png?raw=true)
-  - Select your app and view key
+Please refer to the step-by-step instructions [here](safestake-running-an-operator-node-on-going.md).
 
-  > ![alchemy step3](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/alchemy-step3.png?raw=true)
-  - Select WEBSOCKETS and copy
+## SafeStake White Paper
 
-  > ![alchemy step4](https://github.com/ParaState/SafeStakeOperator/blob/main/imgs/alchemy-step4.png?raw=true)
-  
-  
-### Use your own configuration
-```
-vim .env
-```
-Fill your WS_URL
+Read the SafeStake [white paper](https://docsend.com/view/22tth6krr9mnfhre?lt\_utm\_source=lt\_share\_link).
 
-## Run
-### Run your operator
-```
-sudo docker compose -f  docker-compose-operator.yml up -d
-```
-### Get your operator public key
-```
-sudo docker compose -f docker-compose-operator.yml logs -f operator | grep "node public key"
-```
-output
-> dvf-operator-1  | [2022-08-13T16:01:33.814Z INFO  dvf::node::node] node public key Al0wMNz3JpkYDH7HVp93dZfLMt1GJHypLfhwOWS0NwC/
+## Additional Information
 
-### Back up your operator private key file
-path
+Check out [our website](https://www.parastate.io/safestake/) for more about SafeStake.
 
-```
-/data/operator/prater/node_key.json
-```
+[Help test](https://testnet.safestake.xyz/) the SafeStake network!
+
+Twitter: [https://twitter.com/parastateio](https://twitter.com/parastateio)&#x20;
+
+Join our [Discord](http://discord.gg/zFS3Mnfpwj) chat channel!&#x20;
+
+## Beta Advisory
+
+Currently, the SafeStake project is in beta and is mainly for proof-of-concept, benchmarking, and evaluation purposes. It is still in active testing and not yet ready for production use. In addition, all possible implementations of SafeStake have not been fully reviewed and vetted.

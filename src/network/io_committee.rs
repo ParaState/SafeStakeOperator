@@ -11,7 +11,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use futures::SinkExt;
 use std::net::{SocketAddr};
-use log::{info, warn};
+use log::{info, warn, error};
 use tokio::task::JoinHandle;
 use tokio::sync::{Notify};
 use tokio::time::{sleep, Duration};
@@ -266,6 +266,8 @@ impl NetIOCommittee {
     /// Construct a network IO committee for `party` who is listening on `port`.
     /// The committee is identified by the id set `ids` and the address set `addresses`.
     pub async fn new(party: u64, port: u16, ids: &[u64], addresses: &[SocketAddr]) -> NetIOCommittee {
+        error!("{:?}", ids);
+        error!("{:?}", addresses);
         let mut connection_manager = ConnectionManager::new(SocketAddr::new("0.0.0.0".parse().unwrap(), port));
         let mut channels: HashMap<u64, NetIOChannel> = Default::default();
         let n = ids.len();
@@ -283,6 +285,7 @@ impl NetIOCommittee {
             };
             channels.insert(ids[i], channel);
         }
+        info!("net success");
         Self {
             party,
             ids: ids.to_vec(),

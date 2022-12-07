@@ -73,7 +73,12 @@ impl DepositRequest {
 pub async fn request_to_web_server<T: Serialize>(body: T, url_str: &str) -> Result<(), String> {
     let client = Client::new();
     let url = Url::parse(url_str).map_err(|e| format!("Can't parse url {}", url_str))?;
-    let _ = client.post(url).json(&body).send().await.map_err(|e|"Can't send request".to_string())?;
+    match client.post(url).json(&body).send().await {
+        Ok(_) => {},
+        Err(e) => {
+            error!("Can't send request: {}", e);
+        }
+    };
     Ok(())
 }
 

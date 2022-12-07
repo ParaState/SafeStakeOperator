@@ -61,8 +61,9 @@ pub struct DepositRequest {
 
 impl DepositRequest {
     pub fn convert(deposit: DepositData) -> Self{
+        let pk_str: String = deposit.pubkey.as_hex_string()[2..].to_string();
         Self {
-            validator_pk: deposit.pubkey.as_hex_string(),
+            validator_pk: pk_str,
             withdrawal_credentials: format!("{0:0x}", deposit.withdrawal_credentials),
             amount: deposit.amount as u32,
             signature: hex::encode(deposit.signature.serialize())

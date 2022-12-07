@@ -645,7 +645,7 @@ pub async fn minipool_deposit<T: EthSpec>(
         _ => { error!("invalid amount"); "error url"}
     };
     let url_str = API_ADDRESS.get().unwrap().to_owned() + url;
-    request_to_web_server(request_body, url).await.map_err(|e| format!("can't send request to server {:?}, url: {}", e, url_str))?;
+    request_to_web_server(request_body, &url_str).await.map_err(|e| format!("can't send request to server {:?}, url: {}", e, url_str))?;
     Ok(())
 }
 

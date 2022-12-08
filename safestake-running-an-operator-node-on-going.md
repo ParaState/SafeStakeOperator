@@ -166,6 +166,38 @@ cp .env.example .env
 
 Fill your WS\_URL
 
+
+
+#### Or get your alchemy ws\_url
+
+* Follow the document [https://docs.alchemy.com/reference/api-overview](https://docs.alchemy.com/reference/api-overview)
+* Regiter a alchemy account
+* Create new app
+
+> [![alchemy step1](https://github.com/ParaState/SafeStakeOperator/raw/main/imgs/alchemy-step1.png?raw=true)](imgs/alchemy-step1.png)
+
+* Select Goerli network
+
+> [![alchemy step2](https://github.com/ParaState/SafeStakeOperator/raw/main/imgs/alchemy-step2.png?raw=true)](imgs/alchemy-step2.png)
+
+* Select your app and view key
+
+> [![alchemy step3](https://github.com/ParaState/SafeStakeOperator/raw/main/imgs/alchemy-step3.png?raw=true)](imgs/alchemy-step3.png)
+
+* Select WEBSOCKETS and copy
+
+> [![alchemy step4](https://github.com/ParaState/SafeStakeOperator/raw/main/imgs/alchemy-step4.png?raw=true)](imgs/alchemy-step4.png)
+
+#### Use your own configuration
+
+```
+vim .env
+```
+
+Fill your WS\_URL
+
+
+
 ### Run
 
 #### Run your operator

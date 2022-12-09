@@ -55,7 +55,7 @@ Install Docker and Docker Compose
 Build root node:
 
 ```
-sudo docker compose build -f docker-compose-boot.yml build
+sudo docker compose -f docker-compose-boot.yml build
 ```
 
 **Start Service**
@@ -63,7 +63,7 @@ sudo docker compose build -f docker-compose-boot.yml build
 Run the following to start the root node service:
 
 ```
-sudo docker compose build -f docker-compose-boot.yml up -d
+sudo docker compose -f docker-compose-boot.yml up -d
 ```
 
 Get root node enr

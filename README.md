@@ -13,7 +13,7 @@
 * `Stage 3 - Deposit ≥ 0.1 ETH but < 32 ETH` to participate in running a 'Pooled Validator.' Stake ETH in the SafeStake pool and get `sfETH` tokens in return. Your share of the pooled validator's rewards will be accrued automatically to your sfETH token balance and are completely liquid, allowing you the freedom to trade, buy, or sell your tokens any time you want.
 
 {% hint style="info" %}
-**SafeStake is the first ETH staking pool to implement distributed validator technology (DVT) for increased decentralization, security, and reliability.**
+**SafeStake is the first ETH staking pool to implement distributed validator technology (DVT) written in Rust for increased decentralization, security, and reliability.**
 {% endhint %}
 
 ### Test Drive SafeStake

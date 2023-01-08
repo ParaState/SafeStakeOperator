@@ -597,7 +597,7 @@ pub async fn process_validator_registration(
     };
     let log = validator_reg_event
         .parse_log(RawLog {
-            topics: vec![Hash::from_slice(&topic.0), Hash::from_slice(config.validator_registration_topic[1].as_bytes())],
+            topics: vec![Hash::from_slice(&topic.0), Hash::from_slice(&hex::decode(&config.validator_registration_topic[1]).unwrap())],
             data: raw_log.data.0,
         })
         .map_err(|_| ContractError::LogParseError)?;

@@ -601,22 +601,27 @@ pub async fn process_validator_registration(
             data: raw_log.data.0,
         })
         .map_err(|_| ContractError::LogParseError)?;
+    info!("log");
     let address = log.params[0]
         .value
         .clone()
         .into_address()
         .ok_or(ContractError::LogParseError)?;
+    info!("address");
     let va_pk = log.params[1]
         .value
         .clone()
         .into_bytes()
         .ok_or(ContractError::LogParseError)?;
+    info!("va_pk");
     let validator_id = convert_va_pk_to_u64(&va_pk);
+    info!("validator_id");
     let operator_tokens = log.params[2]
         .value
         .clone()
         .into_array()
         .ok_or(ContractError::LogParseError)?;
+    info!("operator_tokens");
     let op_ids: Vec<u32> = operator_tokens
         .into_iter()
         .map(|token| {
@@ -624,7 +629,7 @@ pub async fn process_validator_registration(
             op_id.as_u32()
         })
         .collect();
-
+    info!("op_ids");
     let mut operator_pks: Vec<String> = Vec::new();
     // query local database first, if not existing, query from contract
     for op_id in &op_ids {

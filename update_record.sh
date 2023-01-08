@@ -1,1 +1,1 @@
-echo "---\nblock_num: 8276340" > ../data/prater/contract_record.yml
+echo "---\nblock_num: 8276040" > ../data/prater/contract_record.yml

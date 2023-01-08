@@ -243,7 +243,7 @@ impl TopicHandler for MinipoolReadyHandler {
 pub struct ContractConfig {
     pub safestake_network_address: String,
     pub safestake_registry_address: String,
-    pub validator_registration_topic: String,
+    pub validator_registration_topic: Vec<String>,
     pub validator_removal_topic: String,
     pub initializer_registration_topic: String,
     pub initializer_minipool_created_topic: String,
@@ -321,7 +321,7 @@ impl Contract {
     pub fn construct_filter(&mut self) {
         let config = &self.config;
         let va_reg_topic =
-            H256::from_slice(&hex::decode(&config.validator_registration_topic).unwrap());
+            H256::from_slice(&hex::decode(&config.validator_registration_topic[0]).unwrap());
         let va_rm_topic = H256::from_slice(&hex::decode(&config.validator_removal_topic).unwrap());
         let ini_reg_topic =
             H256::from_slice(&hex::decode(&config.initializer_registration_topic).unwrap());
@@ -597,7 +597,7 @@ pub async fn process_validator_registration(
     };
     let log = validator_reg_event
         .parse_log(RawLog {
-            topics: vec![Hash::from_slice(&topic.0)],
+            topics: vec![Hash::from_slice(&topic.0), Hash::from_slice(config.validator_registration_topic[1].as_bytes())],
             data: raw_log.data.0,
         })
         .map_err(|_| ContractError::LogParseError)?;

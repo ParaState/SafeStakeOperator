@@ -23,6 +23,21 @@ services:
       resources:
         limits:
           memory: 5G
+  dvf_key_tool:
+    network_mode: "host"
+    volumes:
+      - stage2-data:/root/.lighthouse
+    image: parastate/dvf-operator:dev-stage2
+    pull_policy: always
+    command:
+      - /bin/sh
+      - -c
+      - |
+        dvf_key_tool ${OPERATOR_NETWORK}
+    deploy:
+      resources:
+        limits:
+          memory: 5G
 
 volumes:
   stage2-data:

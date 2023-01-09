@@ -71,6 +71,15 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 .takes_value(true)
         )
         .arg(
+            Arg::with_name("id")
+            .long("id")
+            .value_name("NODE_ID")
+            .help(
+                "This node's id in smart contract"
+            )
+            .takes_value(true)
+        )
+        .arg(
             Arg::with_name("api")
                 .long("api")
                 .value_name("API")

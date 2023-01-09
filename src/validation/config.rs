@@ -17,7 +17,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use types::{Address, GRAFFITI_BYTES_LEN};
 use crate::node::config::{NodeConfig,API_ADDRESS, BOOT_ENR};
-use crate::node::contract:: DEFAULT_TRANSPORT_URL;
+use crate::node::contract::{DEFAULT_TRANSPORT_URL, SELF_OPERATOR_ID};
 pub const DEFAULT_BEACON_NODE: &str = "http://localhost:5052/";
 
 /// Stores the core configuration for this validator instance.
@@ -165,6 +165,12 @@ impl Config {
             let ws_transport_url_str: String = parse_required(cli_args, "ws-url")?;
             info!(log, "read ws-url"; "ws-url" => &ws_transport_url_str);
             DEFAULT_TRANSPORT_URL.set(ws_transport_url_str).unwrap();
+        }
+
+        if cli_args.value_of("id").is_some() {
+            let operator_id : u32 = parse_required(cli_args, "id")?;
+            info!(log, "read operator id"; "operator id" => &operator_id);
+            SELF_OPERATOR_ID.set(operator_id).unwrap();
         }
 
         match base_port {

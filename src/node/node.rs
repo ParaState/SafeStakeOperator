@@ -361,7 +361,7 @@ pub async fn new_add_validator<T: EthSpec>(
         .iter()
         .map(|x| *x as u64)
         .collect();
-    let operator_bls_pks: Vec<Result<PublicKey, String>> = operator_public_keys
+    let operator_bls_pks: Vec<Result<PublicKey, String>> = shared_public_keys
         .iter()
         .map(|pk| {
             Ok(PublicKey::deserialize(&pk).map_err(|e| {
@@ -374,7 +374,7 @@ pub async fn new_add_validator<T: EthSpec>(
         return Err("Some operators pk can't be deserialized!".to_string());
     }
     let operator_bls_pks = operator_bls_pks.into_iter().map(|x| x.unwrap()).collect();
-    let operator_node_pks: Vec<hscrypto::PublicKey> = shared_public_keys
+    let operator_node_pks: Vec<hscrypto::PublicKey> = operator_public_keys
         .into_iter()
         .map(|shared_pk| hscrypto::PublicKey(shared_pk.try_into().unwrap()))
         .collect();

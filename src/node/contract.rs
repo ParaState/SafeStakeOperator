@@ -630,6 +630,7 @@ pub async fn process_validator_registration(
         })
         .collect();
     info!("op_ids");
+    info!("operator ids {:?}", op_ids);
     let mut operator_pks: Vec<String> = Vec::new();
     // query local database first, if not existing, query from contract
     for op_id in &op_ids {
@@ -806,7 +807,7 @@ pub async fn process_initializer_registration(
         .collect();
 
     let mut operator_pks: Vec<String> = Vec::new();
-
+    println!("operator ids {:?}", op_ids);
     for op_id in &op_ids {
         match db
             .query_operator_public_key_by_id(*op_id)

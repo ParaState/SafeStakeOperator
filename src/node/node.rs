@@ -325,6 +325,7 @@ pub async fn new_add_validator<T: EthSpec>(
     let secret = node.secret.clone();
     let sk = &secret.secret;
     let self_pk = &secret.name;
+    let total = operator_public_keys.len();
     let secret_key = secp256k1::SecretKey::from_slice(&sk.0).expect("Unable to load secret key");
 
     let validator_id = validator.id;
@@ -435,7 +436,7 @@ pub async fn new_add_validator<T: EthSpec>(
 
     // generate keypair
     let def = OperatorCommitteeDefinition {
-        total: operator_public_keys.len() as u64,
+        total: total as u64,
         threshold: THRESHOLD,
         validator_id: validator_id,
         validator_public_key: validator_pk.clone(),

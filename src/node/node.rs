@@ -341,7 +341,7 @@ pub async fn new_add_validator<T: EthSpec>(
         match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
             Ok(address) => address,
             Err(e) => {
-                sleep(Duration::from_secs(10)).await;
+                sleep(Duration::from_secs(60)).await;
                 let _ = tx_validator_command
                     .send(ContractCommand::StartValidator(
                         validator,

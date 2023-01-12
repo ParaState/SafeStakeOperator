@@ -41,16 +41,17 @@ use discv5::{
   enr::{k256, CombinedKey},
   Discv5, Discv5ConfigBuilder,
 };
+use std::path::PathBuf;
 use std::{
   net::{Ipv4Addr, SocketAddr},
   time::Duration,
 };
 use store::Store;
-
+pub const DEFAULT_ROOT_DIR: &str = ".lighthouse";
 #[tokio::main]
 async fn main() {
-
-  let store = Store::new("~/.lighthouse/root_node.db").unwrap();
+  let base_dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")).join(DEFAULT_ROOT_DIR).join("boot_node");
+  let store = Store::new(base_dir.to_str().unwrap()).unwrap();
   let filter_layer = tracing_subscriber::EnvFilter::try_from_default_env()
       .or_else(|_| tracing_subscriber::EnvFilter::try_new("info"))
       .unwrap();

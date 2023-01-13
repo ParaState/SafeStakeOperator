@@ -5,7 +5,7 @@ use tokio::sync::RwLock;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use crate::node::contract::OperatorPublicKeys;
-use log::error;
+use log::{error, info};
 use std::collections::HashMap;
 use serde::de::DeserializeOwned;
 use std::fs::File;
@@ -75,7 +75,9 @@ pub async fn request_to_web_server<T: Serialize>(body: T, url_str: &str) -> Resu
     let client = Client::new();
     let url = Url::parse(url_str).map_err(|_e| format!("Can't parse url {}", url_str))?;
     match client.post(url).json(&body).send().await {
-        Ok(_) => {},
+        Ok(result) => {
+            info!("{:?}", result);
+        },
         Err(e) => {
             error!("Can't send request: {}", e);
         }

@@ -335,8 +335,9 @@ impl SigningMethod {
                                             duty: duty.to_string(),
                                             time: Utc::now().signed_duration_since(dt).num_milliseconds()
                                         };
-                                        log::info!("[Dvf Request]: {:?}", &request_body);
+                                        log::info!("[Dvf Request] Body: {:?}", &request_body);
                                         let url_str = API_ADDRESS.get().unwrap().to_owned() + COLLECT_PERFORMANCE_URL;
+                                        log::info!("[Dvf Request] Url: {}", url_str);
                                         request_to_web_server(request_body, &url_str).await.map_err(|e| Error::Web3SignerRequestFailed(e))?;
                                     }
                                     Ok(signature)

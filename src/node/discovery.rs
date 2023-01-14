@@ -34,7 +34,8 @@ impl Discovery {
     let self_enr = {
       let mut builder = discv5::enr::EnrBuilder::new("v4");
       builder.ip(ip_address);
-      builder.udp(udp_port);
+      // don't need to set udp port
+      // builder.udp(udp_port);
       builder.build(&enr_key).unwrap()
     };
     info!("Base64 ENR: {}, IP: {:?}", self_enr.to_base64(), self_enr.ip().unwrap());

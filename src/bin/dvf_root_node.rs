@@ -46,6 +46,7 @@ use std::{
   net::{Ipv4Addr, SocketAddr},
   time::Duration,
 };
+use std::collections::HashSet;
 use store::Store;
 pub const DEFAULT_ROOT_DIR: &str = ".lighthouse";
 #[tokio::main]
@@ -93,9 +94,9 @@ async fn main() {
           builder.ip(external_address.into());
       }
       // if a port was specified, use it
-      if std::env::args().nth(2).is_some() {
-          builder.udp(port);
-      }
+    //   if std::env::args().nth(2).is_some() {
+    //       builder.udp(port);
+    //   }
       builder.build(&enr_key).unwrap()
   };
 
@@ -143,8 +144,8 @@ async fn main() {
   discv5.start(socket_addr).await.unwrap();
 
   // construct a 30 second interval to search for new peers.
-  let mut query_interval = tokio::time::interval(Duration::from_secs(60));
-
+  let mut query_interval = tokio::time::interval(Duration::from_secs(10));
+  let mut id_set : HashSet<Ipv4Addr> = HashSet::new();
   loop {
       tokio::select! {
           _ = query_interval.tick() => {
@@ -164,6 +165,7 @@ async fn main() {
                         match enr.ip() {
                             Some(ip) => {
                                 store.write(ip.octets().to_vec(), enr.to_base64().as_bytes().to_vec()).await;
+                                id_set.insert(ip);
                             },
                             None => { }
                         }
@@ -174,6 +176,7 @@ async fn main() {
                       for node_ip in node_ips {
                           println!("Node: {:?}", node_ip);
                       }
+                      println!("size: {}", id_set.len());
                   }
               }
           }

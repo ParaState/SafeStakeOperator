@@ -94,9 +94,9 @@ async fn main() {
           builder.ip(external_address.into());
       }
       // if a port was specified, use it
-    //   if std::env::args().nth(2).is_some() {
-    //       builder.udp(port);
-    //   }
+      if std::env::args().nth(2).is_some() {
+          builder.udp(port);
+      }
       builder.build(&enr_key).unwrap()
   };
 

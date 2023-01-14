@@ -244,7 +244,7 @@ pub struct ContractConfig {
     pub safestake_network_address: String,
     pub safestake_registry_address: String,
     pub validator_registration_topic: Vec<String>,
-    pub validator_removal_topic: String,
+    pub validator_removal_topic: Vec<String>,
     pub initializer_registration_topic: String,
     pub initializer_minipool_created_topic: String,
     pub initializer_minipool_ready_topic: String,
@@ -322,7 +322,7 @@ impl Contract {
         let config = &self.config;
         let va_reg_topic =
             H256::from_slice(&hex::decode(&config.validator_registration_topic[0]).unwrap());
-        let va_rm_topic = H256::from_slice(&hex::decode(&config.validator_removal_topic).unwrap());
+        let va_rm_topic = H256::from_slice(&hex::decode(&config.validator_removal_topic[0]).unwrap());
         let ini_reg_topic =
             H256::from_slice(&hex::decode(&config.initializer_registration_topic).unwrap());
         let minipool_created_topic =
@@ -478,12 +478,8 @@ impl Contract {
                 loop {
                     match sub.try_next().await.unwrap() {
                         Some(log) => {
-                            // store hash to local database
-                            match log.transaction_hash {
-                                Some(hash) => store.write(hash.as_bytes().to_vec(), vec![0]).await,
-                                None => {}
-                            };
                             let topic = log.topics[0].clone();
+                            let transaction_hash = log.transaction_hash.clone();
                             match handlers.read().get(&topic) {
                                 Some(handler) => {
                                     match handler
@@ -497,7 +493,13 @@ impl Contract {
                                         )
                                         .await
                                     {
-                                        Ok(_) => {}
+                                        Ok(_) => {
+                                            // store hash to local database
+                                            match transaction_hash {
+                                                Some(hash) => store.write(hash.as_bytes().to_vec(), vec![0]).await,
+                                                None => {}
+                                            };
+                                        }
                                         Err(e) => {
                                             error!("error hapens, reason: {}", e.as_str());
                                         }
@@ -559,6 +561,7 @@ pub async fn process_validator_registration(
     config: &ContractConfig,
     sender: &MonitoredSender<ContractCommand>,
 ) -> Result<(), ContractError> {
+    info!("process_validator_registration");
     let validator_reg_event = Event {
         name: CONTRACT_VA_REG_EVENT_NAME.to_string(),
         inputs: vec![
@@ -601,27 +604,22 @@ pub async fn process_validator_registration(
             data: raw_log.data.0,
         })
         .map_err(|_| ContractError::LogParseError)?;
-    info!("log");
     let address = log.params[0]
         .value
         .clone()
         .into_address()
         .ok_or(ContractError::LogParseError)?;
-    info!("address");
     let va_pk = log.params[1]
         .value
         .clone()
         .into_bytes()
         .ok_or(ContractError::LogParseError)?;
-    info!("va_pk");
     let validator_id = convert_va_pk_to_u64(&va_pk);
-    info!("validator_id");
     let operator_tokens = log.params[2]
         .value
         .clone()
         .into_array()
         .ok_or(ContractError::LogParseError)?;
-    info!("operator_tokens");
     let op_ids: Vec<u32> = operator_tokens
         .into_iter()
         .map(|token| {
@@ -629,7 +627,6 @@ pub async fn process_validator_registration(
             op_id.as_u32()
         })
         .collect();
-    info!("op_ids");
     info!("operator ids {:?}", op_ids);
     let mut operator_pks: Vec<String> = Vec::new();
     // query local database first, if not existing, query from contract
@@ -695,9 +692,10 @@ pub async fn process_validator_removal(
     topic: H256,
     db: &Database,
     _operator_pk_base64: &String,
-    _config: &ContractConfig,
+    config: &ContractConfig,
     sender: &MonitoredSender<ContractCommand>,
 ) -> Result<(), ContractError> {
+    info!("process_validator_removal");
     let validator_rm_event = Event {
         name: CONTRACT_VA_RM_EVENT_NAME.to_string(),
         inputs: vec![
@@ -716,7 +714,7 @@ pub async fn process_validator_removal(
     };
     let log = validator_rm_event
         .parse_log(RawLog {
-            topics: vec![Hash::from_slice(&topic.0)],
+            topics: vec![Hash::from_slice(&topic.0), Hash::from_slice(&hex::decode(&config.validator_removal_topic[1]).unwrap())],
             data: raw_log.data.0,
         })
         .map_err(|_| ContractError::LogParseError)?;

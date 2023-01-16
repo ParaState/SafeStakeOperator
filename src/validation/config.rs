@@ -133,6 +133,7 @@ impl Config {
             BOOT_ENR.set(boot_enr).unwrap();
         } else {
             error!(log, "can't read boot enr, existing;" );
+            return Err("can't read boot enr".to_string());
         }
 
         let mut self_ip : Option<String> = None;

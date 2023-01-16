@@ -149,7 +149,7 @@ impl<T: EthSpec> Node<T> {
             base_port + DISCOVERY_PORT_OFFSET,
             Arc::clone(&key_ip_map),
             node.secret.clone(),
-            Some(BOOT_ENR.get().unwrap().clone()),
+            BOOT_ENR.get().unwrap().clone(),
         );
 
         Contract::spawn(
@@ -199,7 +199,7 @@ impl<T: EthSpec> Node<T> {
                             encrypted_sks,
                         ) => {
                             info!("StartValidator");
-                            match new_add_validator(
+                            match add_validator(
                                 node.clone(),
                                 validator,
                                 operator_pks,
@@ -218,7 +218,7 @@ impl<T: EthSpec> Node<T> {
                         }
                         ContractCommand::StopValidator(validator) => {
                             info!("StopValidator");
-                            match new_stop_validator(node.clone(), validator).await {
+                            match stop_validator(node.clone(), validator).await {
                                 Ok(_) => {}
                                 Err(e) => {
                                     error!("Failed to stop validator: {}", e);
@@ -309,7 +309,7 @@ impl<T: EthSpec> Node<T> {
     }
 }
 
-pub async fn new_add_validator<T: EthSpec>(
+pub async fn add_validator<T: EthSpec>(
     node: Arc<ParkingRwLock<Node<T>>>,
     validator: Validator,
     operator_public_keys: OperatorPublicKeys,
@@ -492,7 +492,7 @@ pub async fn new_add_validator<T: EthSpec>(
     Ok(())
 }
 
-pub async fn new_stop_validator<T: EthSpec>(
+pub async fn stop_validator<T: EthSpec>(
     node: Arc<ParkingRwLock<Node<T>>>,
     validator: Validator,
 ) -> Result<(), String> {

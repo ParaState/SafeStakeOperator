@@ -19,6 +19,7 @@ pub const DKG_PORT_OFFSET: u16 = 5;
 pub const BASE_ADDRESS: [u8; 4] = [127, 0, 0, 1];
 pub static API_ADDRESS: OnceCell<String> = OnceCell::const_new();
 pub static BOOT_ENR: OnceCell<String> =  OnceCell::const_new();
+pub static BOOT_SOCKETADDR: OnceCell<SocketAddr> = OnceCell::const_new();
 pub const COLLECT_PERFORMANCE_URL : &str = "collect_performance";
 pub const VALIDATOR_PK_URL : &str = "validator_pk";
 pub const PRESTAKE_SIGNATURE_URL : &str = "prestake_signature";

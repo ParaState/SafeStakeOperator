@@ -43,6 +43,10 @@ SafeStake's staking pool is made possible by operators, known as an 'initializer
 
 To solve the above dilemma, SafeStake runs a DKG protocol to set up the private key for the threshold signature scheme, resulting in a threshold signature scheme that doesn't use a trusted dealer and ensures no single entity holds the private key. The DKG scheme's job is to agree on a common secret/public key pair such that the secret key is shared among a set of nn participants. Only a subset of t+1≤nt+1≤n parties can use or reveal the generated secret key, while tt collaborating parties cannot recover the secret. In contrast to a traditional secret sharing scheme, DKG doesn't rely on a trusted dealer who generates, knows, and distributes the secret key, avoiding this potential security issue. Instead, it generates the key pair using **multi-party computation** so that no single party can find the shared secret.
 
+Below iteration is the mathematical process of our DKG scheme.
+
+[https://docsend.com/view/z9vdm2tqdmsesibe](https://docsend.com/view/z9vdm2tqdmsesibe)
+
 ### HotStuff Consensus Protocol
 
 HotStuff is a leader-based, partially synchronous Byzantine fault-tolerant (BFT) replication protocol. It is built around a novel framework that forms a bridge between classic BFT foundations and blockchains. SafeStake uses HotStuff as a consensus layer to govern the operator networks. Consensus is used to determine the message content of the threshold signature scheme among the operator nodes and can also be applied to determine various validator parameters, such as balance, slash rate, etc. by the ParaStateDAO. HotStuff enables a correct leader to drive the protocol to consensus at the pace of actual network delay (a property called 'responsiveness') and with communication complexity that is linear in the number of replicas. **It is the first partially synchronous BFT replication protocol to combine these functions.**&#x20;

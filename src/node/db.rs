@@ -20,7 +20,9 @@ pub enum DbCommand {
     InsertInitializer(Initializer),
     UpdateInitializer(u32, String, String, oneshot::Sender<DbResult<usize>>),
     QueryInitializer(u32, oneshot::Sender<DbResult<Option<Initializer>>>),
-    QueryInitializerReleaterOpPk(u32, oneshot::Sender<DbResult<(Vec<String>, Vec<u32>)>>)
+    QueryInitializerReleaterOpPk(u32, oneshot::Sender<DbResult<(Vec<String>, Vec<u32>)>>),
+    QueryAllValidatorOwners(oneshot::Sender<DbResult<Vec<Address>>>),
+    QueryValidatorByAddress(Address, oneshot::Sender<DbResult<Vec<Validator>>>)
 }
 
 #[derive(Clone)]
@@ -126,6 +128,14 @@ impl Database {
                     DbCommand::QueryInitializerReleaterOpPk(initializer_id, sender) => {
                         let response = query_initializer_releated_operator_pks(&conn, initializer_id);
                         let _ = sender.send(response);
+                    },
+                    DbCommand::QueryAllValidatorOwners(sender) => {
+                        let response = query_all_validator_address(&conn);
+                        let _ = sender.send(response);
+                    },
+                    DbCommand::QueryValidatorByAddress(address, sender) => {
+                        let response = query_validator_by_address(&conn, address);
+                        let _ = sender.send(response);
                     }
                 }
             }
@@ -156,6 +166,14 @@ impl Database {
     pub async fn query_validator_by_public_key(&self, public_key: String) -> DbResult<Option<Validator>> {
         let (sender, receiver) = oneshot::channel();
         if let Err(e) = self.channel.send(DbCommand::QueryValidatorByPublicKey(public_key, sender)).await {
+            panic!("Failed to send command to store: {}", e);
+        }
+        receiver.await.expect("Failed to receive reply to query validator command from db")
+    }
+
+    pub async fn query_validator_by_address(&self, address: Address) -> DbResult<Vec<Validator>> {
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self.channel.send(DbCommand::QueryValidatorByAddress(address, sender)).await {
             panic!("Failed to send command to store: {}", e);
         }
         receiver.await.expect("Failed to receive reply to query validator command from db")
@@ -219,6 +237,14 @@ impl Database {
         receiver.await.expect("Failed to receive reply to query initializer command from db")
     }
 
+    pub async fn query_all_validator_address(&self) -> DbResult<Vec<Address>> {
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self.channel.send(DbCommand::QueryAllValidatorOwners(sender)).await {
+            panic!("Failed to send query validator owners command to store: {}", e);
+        }
+        receiver.await.expect("Failed to receive reply to query initializer command from db")
+    }
+ 
 }
 
 fn insert_operator(conn: &Connection, operator: Operator) {
@@ -447,4 +473,49 @@ fn query_initializer_releated_operator_pks(conn: &Connection, id: u32) -> DbResu
         Err(e) => { error!("Can't prepare statement {}", e); return Err(e); }
     };
     Ok((op_pks,op_ids))
+}
+
+fn query_all_validator_address(conn: &Connection) -> DbResult<Vec<Address>>{
+    let mut owners = Vec::new();
+    match conn.prepare("select distinct owner_address from validators") {
+        Ok(mut stmt) => {
+            let mut rows = stmt.query([])?;
+            while let Some(row) = rows.next()? {
+                let address: String = row.get(0)?;
+                owners.push(
+                    Address::from_slice(
+                        &hex::decode(&address).unwrap()
+                    )
+                );
+            }
+        },
+        Err(e) => { error!("Can't prepare statement {}", e); return Err(e); }
+    }
+    Ok(owners)
+}
+
+
+// only used for stop validator, don't need to query releated operator ids
+fn query_validator_by_address(conn: &Connection, address: Address) -> DbResult<Vec<Validator>> {
+    let mut validators = Vec::new();
+    let address_str = format!("{0:0x}", address);
+    match conn.prepare("select public_key, id, owner_address from validators where owner_address = (?)") {
+        Ok(mut stmt) => {
+            let mut rows = stmt.query([address_str])?;
+            
+            while let Some(row) = rows.next()? {
+                let public_key: String = row.get(0)?;
+                validators.push(Validator {
+                    public_key: hex::decode(&public_key).unwrap().try_into().unwrap(),
+                    id: row.get(1)?,
+                    owner_address: address, 
+                    releated_operators: vec![]
+                });
+            }
+        },
+        Err(e) => {
+            error!("Can't prepare statement {}", e);
+        }
+    }
+    Ok(validators)
 }

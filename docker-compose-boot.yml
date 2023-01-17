@@ -13,7 +13,7 @@ services:
     expose:
       - "9005"
     ports:
-      - "9005:9005/udp"
+      - "9005:9005"
     volumes:
       - boot-data:/root/.lighthouse
 volumes:

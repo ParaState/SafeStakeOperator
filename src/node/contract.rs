@@ -314,6 +314,7 @@ impl Contract {
                 .unwrap();
             contract.construct_filter();
             contract.get_logs_from_contract(tx.clone());
+            contract.monitor_validator_paidblock(tx.clone());
             contract.listen_logs(tx);
         });
     }
@@ -353,6 +354,50 @@ impl Contract {
         handlers.insert(minipool_created_topic, Box::new(MinipoolCreatedHandler {}));
         handlers.insert(minipool_ready_topic, Box::new(MinipoolReadyHandler {}));
     }
+
+    pub fn monitor_validator_paidblock(&mut self, sender: MonitoredSender<ContractCommand>) {
+        let config = self.config.clone();
+        let db = self.db.clone();
+        tokio::spawn(async move {
+            let mut query_interval = tokio::time::interval(Duration::from_secs(3600 * 6));
+            loop {
+                tokio::select! {
+                    _ = query_interval.tick() => {
+                        match db.query_all_validator_address().await {
+                            Ok(owners) => {
+                                for owner in owners {
+                                    match check_account(&config, owner).await {
+                                        Ok(t) => {
+                                            if t {
+                                                // stop validators releated to the block
+                                                match db.query_validator_by_address(owner).await {
+                                                    Ok(validators) => {
+                                                        for va in validators {
+                                                            let _ = sender.send(ContractCommand::StopValidator(va)).await;
+                                                        }
+                                                    },
+                                                    Err(e) => {
+                                                        error!("query validator releated to the address failed {:?}", e);
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        Err(e) => {
+                                            error!("check account failed {}", e.as_str());
+                                        }
+                                    }
+                                }
+                            },
+                            Err(e) => {
+                                error!("query validator address failed {:?}", e);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
 
     pub fn get_logs_from_contract(&mut self, sender: MonitoredSender<ContractCommand>) {
         let mut record = self.record.clone();
@@ -532,6 +577,15 @@ pub async fn get_block_number(record: &mut ContractRecord) {
         },
         |number| number.as_u64(),
     );
+}
+
+pub async fn get_current_block() -> Result<U64, ContractError> {
+    let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
+    let web3 = Web3::new(WebSocket::new(transport_url).await.unwrap());
+    web3.eth().block_number().await.or_else(|e| {
+        error!("{:?} {}", e, ContractError::BlockNumberError.as_str());
+        Err(ContractError::BlockNumberError)
+    })
 }
 
 pub fn update_record_file<P: AsRef<Path>>(record: &ContractRecord, path: P) {
@@ -1026,6 +1080,39 @@ pub async fn query_operator_from_contract(
         address,
         public_key: pk.try_into().unwrap(),
     })
+}
+
+// check the paid block number of address. If the block is behind the current block number, stop validators releated to the address
+pub async fn check_account (
+    config: &ContractConfig,
+    owner: Address
+) -> Result<bool, ContractError> {
+    let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
+    let web3 = Web3::new(WebSocket::new(transport_url).await.unwrap());
+    let raw_abi = std::fs::read_to_string(&config.safestake_network_abi_path).or_else(|e| {
+        error!(
+            "Can't read from {} {}",
+            &config.safestake_network_abi_path, e
+        );
+        Err(ContractError::FileError)
+    })?;
+    let raw_json: Value = serde_json::from_str(&raw_abi).unwrap();
+    let abi = raw_json["abi"].to_string();
+    let address = Address::from_slice(&hex::decode(&config.safestake_network_address).unwrap());
+    let contract = EthContract::from_json(web3.eth(), address, abi.as_bytes()).or_else(|e| {
+        error!("Can't create contract from json {}", e);
+        Err(ContractError::ContractParseError)
+    })?;
+    let paid_block: U256 = contract.query("getAccountPaidBlockNumber", (owner, ), None, Options::default(), None).await.or_else(|e| {
+        error!("Can't getAccountPaidBlockNumber from contract {}", e);
+        Err(ContractError::QueryError)
+    })?;
+    let current_block = get_current_block().await?;
+    if current_block.as_u64() >= paid_block.as_u64() {
+        Ok(true)
+    } else {    
+        Ok(false)
+    }
 }
 
 pub fn parse_bytes_token(tk: token::Token) -> Result<Vec<Vec<u8>>, ContractError> {

@@ -83,6 +83,7 @@ pub struct Validator {
     pub owner_address: Address,
     pub public_key: ValidatorPublicKey, // bls public key
     pub releated_operators: Vec<u32>,
+    pub active: bool
 }
 
 #[derive(Clone, Debug)]
@@ -106,6 +107,8 @@ pub enum ContractCommand {
         SharedPublicKeys,
         EncryptedSecretKeys,
     ),
+    RemoveValidator(Validator),
+    ActivateValidator(Validator),
     StopValidator(Validator),
     StartInitializer(Initializer, OperatorPublicKeys),
     MiniPoolCreated(u32, ValidatorPublicKey, OperatorPublicKeys, OperatorIds, Address),
@@ -371,9 +374,27 @@ impl Contract {
                                             if t {
                                                 // stop validators releated to the block
                                                 match db.query_validator_by_address(owner).await {
-                                                    Ok(validators) => {
+                                                    Ok(validators) => { 
                                                         for va in validators {
-                                                            let _ = sender.send(ContractCommand::StopValidator(va)).await;
+                                                            if va.active {
+                                                                db.disable_validator(hex::encode(&va.public_key)).await;
+                                                                let _ = sender.send(ContractCommand::StopValidator(va)).await;
+                                                            }
+                                                        }
+                                                    },
+                                                    Err(e) => {
+                                                        error!("query validator releated to the address failed {:?}", e);
+                                                    }
+                                                }
+                                            } else {
+                                                match db.query_validator_by_address(owner).await {
+                                                    Ok(validators) => { 
+                                                        for va in validators {
+                                                            if !va.active {
+                                                                db.disable_validator(hex::encode(&va.public_key)).await;
+                                                                let _ = sender.send(ContractCommand::ActivateValidator(va)).await;
+                                                                
+                                                            }
                                                         }
                                                     },
                                                     Err(e) => {
@@ -726,6 +747,7 @@ pub async fn process_validator_registration(
             owner_address: address,
             public_key: va_pk.try_into().unwrap(),
             releated_operators: op_ids,
+            active: true
         };
         // save validator in local database
         db.insert_validator(validator.clone()).await;
@@ -789,11 +811,12 @@ pub async fn process_validator_removal(
     db.delete_validator(va_str).await;
 
     let _ = sender
-        .send(ContractCommand::StopValidator(Validator {
+        .send(ContractCommand::RemoveValidator(Validator {
             id,
             owner_address,
             public_key: va_pk.try_into().unwrap(),
             releated_operators: vec![],
+            active: true
         }))
         .await;
     Ok(())

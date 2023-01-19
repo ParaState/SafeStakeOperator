@@ -250,8 +250,8 @@ impl SigningMethod {
                         SignableMessage::BeaconBlock(b) => {
                             (b.slot(), "PROPOSER")
                         },
-                        SignableMessage::SignedAggregateAndProof(_) => {
-                            (Slot::new(0 as u64), "AGGREGATE")
+                        SignableMessage::SignedAggregateAndProof(x) => {
+                            (x.aggregate.data.slot, "AGGREGATE")
                         }
                         SignableMessage::SelectionProof(s) => {
                             (s, "SELECT")
@@ -279,38 +279,6 @@ impl SigningMethod {
                     let validator_pk = dvf_signer.validator_public_key();
                     let operator_id = dvf_signer.operator_id();
                     let dt : DateTime<Utc> = Utc::now();
-
-                    // match dvf_signer.sign(signing_root).await {
-                    //     Ok((signature, ids)) => {
-                    //         if duty ==  "ATTESTER" || duty == "PROPOSER" {
-                    //             let request_body = DvfPerformanceRequest {
-                    //                 validator_pk,
-                    //                 operator_id,
-                    //                 operators: ids, 
-                    //                 slot: slot.as_u64(),
-                    //                 epoch: signing_context.epoch.as_u64(),
-                    //                 duty: duty.to_string(),
-                    //                 time: Utc::now().signed_duration_since(dt).num_milliseconds()
-                    //             };
-                    //             let client = reqwest::Client::new();
-                    //             let url = Url::parse(API_ADDRESS.get().unwrap()).map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
-                    //             let _ = client.post(url).json(&request_body).send().await.map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
-                    //         }
-                    //         Ok(signature)
-                    //     },
-                    //     Err(e) => {
-                    //         Err(Error::CommitteeSignFailed(format!("{:?}", e)))
-                    //     }
-                    // }
-
-                    // let task_timeout = match signable_message {
-                    //     SignableMessage::SelectionProof(s) => {
-                    //         Duration::from_secs(spec.seconds_per_slot * (signing_context.epoch.end_slot(T::slots_per_epoch())-s+1).as_u64())
-                    //     }
-                    //     _ => {
-                    //         Duration::from_secs(spec.seconds_per_slot)
-                    //     }
-                    // };
 
                     // Should NOT take more than a slot duration for two reasons:
                     // 1. if longer than slot duration, it might affect duty retrieval for other VAs (for example, previously,
@@ -350,28 +318,6 @@ impl SigningMethod {
                             Err(Error::CommitteeSignFailed(format!("Timeout")))
                         }
                     }
-                    // match result {
-                    //     Ok((signature, ids)) => {
-                    //         if duty ==  "ATTESTER" || duty == "PROPOSER" {
-                    //             let request_body = DvfPerformanceRequest {
-                    //                 validator_pk,
-                    //                 operator_id,
-                    //                 operators: ids, 
-                    //                 slot: slot.as_u64(),
-                    //                 epoch: signing_context.epoch.as_u64(),
-                    //                 duty: duty.to_string(),
-                    //                 time: Utc::now().signed_duration_since(dt).num_milliseconds()
-                    //             };
-                    //             let client = reqwest::Client::new();
-                    //             let url = Url::parse(API_ADDRESS.get().unwrap()).map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
-                    //             let _ = client.post(url).json(&request_body).send().await.map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
-                    //         }
-                    //         Ok(signature)
-                    //     },
-                    //     Err(e) => {
-                    //         Err(Error::CommitteeSignFailed(format!("{:?}", e)))
-                    //     }
-                    // }
                 }
                 else {
                     Err(Error::NotLeader)

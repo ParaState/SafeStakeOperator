@@ -170,6 +170,10 @@ impl Config {
 
         if cli_args.value_of("id").is_some() {
             let operator_id : u32 = parse_required(cli_args, "id")?;
+            if operator_id == 0 {
+                error!("operator id should not be 0, please get your operator id from web first!");
+                panic!("operator id is 0");
+            }
             info!(log, "read operator id"; "operator id" => &operator_id);
             SELF_OPERATOR_ID.set(operator_id).unwrap();
         }

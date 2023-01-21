@@ -12,8 +12,6 @@ services:
         dvf_root_node ${OPERATOR_NETWORK} $$node_ip 9005 2>&1
     expose:
       - "9005"
-    ports:
-      - "9005:9005"
     volumes:
       - boot-data:/root/.lighthouse
 volumes:

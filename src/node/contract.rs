@@ -1131,6 +1131,7 @@ pub async fn check_account (
         Err(ContractError::QueryError)
     })?;
     let current_block = get_current_block().await?;
+    info!("current block {:?}, paid block {:?} , account {}", current_block, paid_block,  owner);
     if current_block.as_u64() >= paid_block.as_u64() {
         Ok(true)
     } else {    

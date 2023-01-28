@@ -23,7 +23,7 @@ As we mentioned in the overview, SafeStake operates as a staking pool, allowing 
 
 ### Operators
 
-The SafeStake framework employs committees of non-trusting tech-savvy operators working in collaboration to manage validators so stakers don't have to. It provides a turnkey solution for stakers and results in a fault-tolerant system that achieves high availability. Even if some operators are offline, others will respond to complete the validator's task. It's ultra-secure because multiple operators each have a share of the key and a minimum number of those shares are required to combine to create a valid signature. This means that even if some operators on the network participate in slashable offenses, the key will remain safe. Other operators on the network will take over to sign the data and avoid penalties.
+The SafeStake framework employs committees of non-trusting tech-savvy operators working in collaboration to manage validators so stakers don't have to. It provides a turnkey solution for stakers and results in a fault-tolerant system that achieves high availability. Even if some operators are offline, others will respond to complete the validator's task. It's ultra-secure because multiple operators each have a share of the key and a minimum number of those shares are required to combine to create a valid signature. This means that even if the 'Byzantine Fault' operators on the network act maliciously, the key will remain safe. Other operators on the network will take over to sign the data and avoid penalties.
 
 #### There are two types of operators:&#x20;
 

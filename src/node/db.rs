@@ -51,7 +51,7 @@ impl Database {
         // address is in hex
         let create_validators_sql = "CREATE TABLE IF NOT EXISTS validators(
             public_key CHARACTER(96) PRIMARY KEY,
-            id BIGINT NOT NULL, 
+            id CHARACTER(32) NOT NULL, 
             owner_address CHARACTER(40) NOT NULL,
             active INTEGER DEFAULT 1 NOT NULL
         )";
@@ -319,7 +319,7 @@ fn insert_validator(conn: &mut Connection, validator: Validator) {
     match conn.transaction() {
         Ok(mut tx) => {
             tx.set_drop_behavior(DropBehavior::Commit);
-            if let Err(e) = &tx.execute("INSERT INTO validators(public_key, id, owner_address) values(?1, ?2, ?3)", params![hex::encode(&validator.public_key), &validator.id, format!("{0:0x}", validator.owner_address)] ) {
+            if let Err(e) = &tx.execute("INSERT INTO validators(public_key, id, owner_address) values(?1, ?2, ?3)", params![hex::encode(&validator.public_key), validator.id.to_string(), format!("{0:0x}", validator.owner_address)] ) {
                 error!("Can't insert into validators, error: {} {:?}", e, validator);
                 let _ = &tx.set_drop_behavior(DropBehavior::Rollback);
             }
@@ -402,9 +402,10 @@ fn query_validator_by_public_key(conn: &Connection, validator_pk: &str) -> DbRes
                 Some(row) => {
                     let public_key: String = row.get(0)?;
                     let owner_address: String = row.get(2)?;
+                    let id: String = row.get(1)?;
                     Ok(Some(Validator{
                         public_key: hex::decode(&public_key).unwrap().try_into().unwrap(),
-                        id: row.get(1)?,
+                        id: id.parse().unwrap(),
                         owner_address: Address::from_slice(&hex::decode(owner_address).unwrap()),
                         releated_operators: releated_operators,
                         active: row.get(3)?
@@ -541,9 +542,10 @@ fn query_validator_by_address(conn: &Connection, address: Address) -> DbResult<V
             
             while let Some(row) = rows.next()? {
                 let public_key: String = row.get(0)?;
+                let id: String = row.get(1)?;
                 validators.push(Validator {
                     public_key: hex::decode(&public_key).unwrap().try_into().unwrap(),
-                    id: row.get(1)?,
+                    id: id.parse().unwrap(),
                     owner_address: address, 
                     releated_operators: vec![],
                     active: row.get(3)?
@@ -590,12 +592,12 @@ fn test_database() {
     let mut conn = Connection::open("./test.db").unwrap();
     let create_validators_sql = "CREATE TABLE IF NOT EXISTS validators(
         public_key CHARACTER(96) PRIMARY KEY,
-        id BIGINT NOT NULL, 
+        id CHARACTER(32) NOT NULL, 
         owner_address CHARACTER(40) NOT NULL,
         active INTEGER DEFAULT 1 NOT NULL
     )";
     conn.execute(create_validators_sql, [],).unwrap();
-    // conn.execute("INSERT INTO validators(public_key, id, owner_address) values(?1, ?2, ?3)", params!["123123", 1, "adasdasd"]).unwrap();
+    conn.execute("INSERT INTO validators(public_key, id, owner_address) values(?1, ?2, ?3)", params!["123123", (12222501569673719727 as u64).to_string(), "adasdasd"]).unwrap();
     disable_validator(&conn, "123123".to_string());
     match conn.prepare("select public_key, id, owner_address, active from validators where owner_address = (?)") {
         Ok(mut stmt) => {
@@ -603,7 +605,9 @@ fn test_database() {
             
             while let Some(row) = rows.next().unwrap() {
                 let active : bool = row.get(3).unwrap();
-                println!("{}", active);
+                let id: String = row.get(1).unwrap();
+                let id_u64: u64 = id.parse().unwrap();
+                println!("{} {}", active, id_u64);
             }
         },
         Err(e) => {

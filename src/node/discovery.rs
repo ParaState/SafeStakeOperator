@@ -30,7 +30,7 @@ impl Discovery {
             let mut builder = discv5::enr::EnrBuilder::new("v4");
             builder.ip(ip_address);
             // don't need to set udp port
-            // builder.udp(udp_port);
+            builder.udp4(udp_port);
             builder.build(&enr_key).unwrap()
         };
         info!(

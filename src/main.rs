@@ -18,7 +18,8 @@ use std::process::exit;
 use task_executor::ShutdownReason;
 use types::{EthSpec, EthSpecId};
 use dvf::validation::ProductionValidatorClient;
-
+use std::io::Write;
+use chrono::Local;
 fn bls_library_name() -> &'static str {
     if cfg!(feature = "portable") {
         "blst-portable"
@@ -370,9 +371,18 @@ fn run<E: EthSpec>(
         .value_of("debug-level")
         .ok_or("Expected --debug-level flag")?;
 
-    let mut logger = env_logger::Builder::from_env(Env::default().default_filter_or(debug_level));
-        logger.format_timestamp_millis();
-        logger.init();    
+    let _logger = env_logger::Builder::from_env(Env::default().default_filter_or(debug_level)).format(|buf, record| {
+        let level = { buf.default_styled_level(record.level()) };
+        writeln!(
+            buf,
+            "{} {} [{}:{}] {}",
+            Local::now().format("%Y-%m-%d %H:%M:%S%.3f"),
+            format_args!("{:>5}", level),
+            record.module_path().unwrap_or("<unnamed>"),
+            record.line().unwrap_or(0),
+            &record.args()
+        )
+    }).init();    
     
     let log_format = matches.value_of("log-format");
     let log_color = matches.is_present("log-color");

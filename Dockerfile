@@ -1,7 +1,7 @@
 FROM rust:1.63.0 AS builder
 
 RUN apt-get update && apt-get -y upgrade \
-   && apt-get install -y cmake libclang-dev
+   && apt-get install -y cmake libclang-dev protobuf-compiler
 
 RUN USER=root cargo new --bin app
 WORKDIR /app

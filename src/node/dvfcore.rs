@@ -127,6 +127,8 @@ pub struct DvfSigner {
     pub signal: Option<exit_future::Signal>,
     pub operator_id: u64,
     pub operator_committee: OperatorCommittee,
+    pub local_keypair: Keypair,
+    pub store: Store,
 }
 
 impl Drop for DvfSigner {
@@ -203,14 +205,19 @@ impl DvfSigner {
             node_para,
             committee_def.validator_id,
             hotstuff_committee,
-            keypair,
+            keypair.clone(),
             tx_consensus,
         );
+
+        let store_path = node.config.base_store_path.join(validator_id.to_string()).join(operator_id.to_string()); 
+        let store = Store::new(&store_path.to_str().unwrap()).expect("Failed to create store");
 
         Self {
             signal: Some(signal),
             operator_id,
             operator_committee,
+            local_keypair: keypair,
+            store,
         }
     }
 
@@ -222,8 +229,20 @@ impl DvfSigner {
     //     self.operator_committee.sign(message_hash).await
     // }
 
-    pub async fn sign(&self, message: Hash256) -> Result<(Signature, Vec<u64>), DvfError> {
+    pub async fn threshold_sign(&self, message: Hash256) -> Result<(Signature, Vec<u64>), DvfError> {
         self.operator_committee.sign(message).await
+    }
+
+    pub fn local_sign(&self, message: Hash256) -> Signature {
+        self.local_keypair.sk.sign(message)
+    }
+
+    pub async fn local_sign_and_store(&self, message: Hash256) {
+        let sig = self.local_sign(message);
+        let serialized_signature = bincode::serialize(&sig).unwrap();
+        // save to local db
+        let key = message.as_bytes().into();
+        self.store.write(key, serialized_signature).await;
     }
 
     pub async fn is_leader(&self, nonce: u64) -> bool {
@@ -370,10 +389,12 @@ impl DvfCore {
                                                 for batch in batches {
                                                     // construct hash256
                                                     let msg = Hash256::from_slice(&batch[..]);
-                                                    let signature = self.operator.sign(msg.clone()).await.unwrap();
-                                                    let serialized_signature = bincode::serialize(&signature).unwrap();
-                                                    // save to local db
-                                                    self.store.write(batch, serialized_signature).await;
+
+                                                    // let signature = self.operator.sign(msg.clone()).await.unwrap();
+                                                    // let serialized_signature = bincode::serialize(&signature).unwrap();
+                                                    // // save to local db
+                                                    // self.store.write(batch, serialized_signature).await;
+
                                                     
                                                     if let Err(e) = self.tx_consensus.send(msg).await {
                                                         error!("Failed to notify consensus status: {}", e);

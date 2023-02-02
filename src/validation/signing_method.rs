@@ -242,7 +242,7 @@ impl SigningMethod {
                 // it is safe (from this operator's point of view) to sign it locally.
                 dvf_signer.local_sign_and_store(signing_root).await;
 
-                let (slot, duty, only_leader) = match signable_message {
+                let (slot, duty, only_aggregator) = match signable_message {
                     SignableMessage::RandaoReveal(_) => {
                         (Slot::new(0 as u64), "RANDAO", true)
                     }
@@ -278,7 +278,7 @@ impl SigningMethod {
                     signing_root
                 );
 
-                if !only_leader || (only_leader && dvf_signer.is_leader(signing_context.epoch.as_u64()).await) {
+                if !only_aggregator || (only_aggregator && dvf_signer.is_aggregator(signing_context.epoch.as_u64()).await) {
                     // Should NOT take more than a slot duration for two reasons:
                     // 1. if longer than slot duration, it might affect duty retrieval for other VAs (for example, previously,
                     // I set this to be the epoch remaining time for selection proof, so bad committee (VA) might take several mintues

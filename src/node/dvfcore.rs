@@ -200,6 +200,9 @@ impl DvfSigner {
             consensus: consensus_committee,
         };
 
+        let store_path = node.config.base_store_path.join(validator_id.to_string()).join(operator_id.to_string()); 
+        let store = Store::new(&store_path.to_str().unwrap()).expect("Failed to create store");
+
         let signal = DvfCore::spawn(
             operator_id,
             node_para,
@@ -207,10 +210,8 @@ impl DvfSigner {
             hotstuff_committee,
             keypair.clone(),
             tx_consensus,
+            store.clone(),
         );
-
-        let store_path = node.config.base_store_path.join(validator_id.to_string()).join(operator_id.to_string()); 
-        let store = Store::new(&store_path.to_str().unwrap()).expect("Failed to create store");
 
         Self {
             signal: Some(signal),
@@ -294,6 +295,7 @@ impl DvfCore {
         committee: HotstuffCommittee,
         keypair: Keypair,
         tx_consensus: MonitoredSender<Hash256>,
+        store: Store,
     ) -> exit_future::Signal {
         let node = node.read();
         // let (tx_commit, rx_commit) = channel(CHANNEL_CAPACITY);
@@ -305,8 +307,8 @@ impl DvfCore {
         let (tx_mempool_to_consensus, rx_mempool_to_consensus) = MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "dvf-mp2cs".to_string(), "info");
 
         let parameters = Parameters::default();
-        let store_path = node.config.base_store_path.join(validator_id.to_string()).join(operator_id.to_string()); 
-        let store = Store::new(&store_path.to_str().unwrap()).expect("Failed to create store");
+        // let store_path = node.config.base_store_path.join(validator_id.to_string()).join(operator_id.to_string()); 
+        // let store = Store::new(&store_path.to_str().unwrap()).expect("Failed to create store");
 
         // Run the signature service.
         let signature_service = SignatureService::new(node.secret.secret.clone());

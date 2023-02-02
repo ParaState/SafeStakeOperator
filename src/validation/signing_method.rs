@@ -292,6 +292,7 @@ impl SigningMethod {
                         result = work => {
                             match result {
                                 Ok((signature, ids)) => {
+                                    // [Issue] Several same reports will be sent to server from different aggregators
                                     Self::dvf_report::<T>(slot, duty, dvf_signer.validator_public_key(), dvf_signer.operator_id(), ids).await?;
                                     Ok(signature)
                                 },

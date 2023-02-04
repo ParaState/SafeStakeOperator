@@ -95,9 +95,9 @@ services:
       resources:
         limits:
           memory: 5G
-    depends_on:
-      lighthouse:
-        condition: service_started
+    # depends_on:
+    #   lighthouse:
+    #     condition: service_started
 
   dvf_key_tool:
     network_mode: "host"

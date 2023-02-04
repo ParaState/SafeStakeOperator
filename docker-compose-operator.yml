@@ -9,7 +9,7 @@ services:
       - geth-data:/data/geth
     command: [
       "--${GETH_NETWORK}",
-      "--syncmode=full",
+      "--syncmode=snap",
       "--http",
       "--http.addr=0.0.0.0",
       "--http.vhosts=*",
@@ -62,7 +62,7 @@ services:
         "--subscribe-all-subnets",
         "--import-all-attestations",
         "--validator-monitor-auto",
-        "--checkpoint-sync-url=https://goerli.checkpoint-sync.ethpandaops.io",
+        "--checkpoint-sync-url=https://prater.checkpoint.sigp.io",
         "--terminal-total-difficulty-override=${TTD}"
       ]
     expose:

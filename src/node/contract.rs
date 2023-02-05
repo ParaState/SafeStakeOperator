@@ -7,6 +7,7 @@ use log::{error, info, warn};
 use parking_lot::RwLock;
 use serde_derive::{Deserialize as DeriveDeserialize, Serialize as DeriveSerialize};
 use serde_json::Value;
+use core::panic;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -33,6 +34,7 @@ const CONTRACT_MINIPOOL_CREATED_EVENT_NAME: &str = "InitializerMiniPoolCreated";
 const CONTRACT_MINIPOOL_READY_EVENT_NAME: &str = "InitializerMiniPoolReady";
 pub static SELF_OPERATOR_ID: OnceCell<u32> = OnceCell::const_new();
 pub static DEFAULT_TRANSPORT_URL: OnceCell<String> = OnceCell::const_new();
+#[derive(Debug)]
 pub enum ContractError {
     StoreError,
     BlockNumberError,
@@ -302,6 +304,14 @@ impl Contract {
         })
     }
 
+    pub async fn check_operator_id(&self) {
+        let op = query_operator_from_contract(&self.config, *SELF_OPERATOR_ID.get().unwrap()).await.unwrap();
+        if op.public_key != self.operator_pk.0 {
+            panic!("operator id is not consistent with smart contract! Please input right operator id");
+        }
+        self.db.insert_operator(op).await;
+    }
+
     pub fn spawn(base_dir: PathBuf, operator_pk: PublicKey, tx: MonitoredSender<ContractCommand>) {
         tokio::spawn(async move {
             let mut contract = Contract::new(base_dir, operator_pk)
@@ -310,6 +320,7 @@ impl Contract {
                 })
                 .unwrap();
             contract.construct_filter();
+            contract.check_operator_id().await;
             contract.get_logs_from_contract(tx.clone());
             contract.monitor_validator_paidblock(tx.clone());
             contract.listen_logs(tx);

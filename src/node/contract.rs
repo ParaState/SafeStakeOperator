@@ -22,6 +22,7 @@ use web3::{
     types::{Address, BlockNumber, FilterBuilder, Log, H256, U256, U64},
     Web3,
 };
+use std::process;
 
 const CONTRACT_CONFIG_FILE: &str = "contract_config/configs.yml";
 const CONTRACT_RECORD_FILE: &str = "contract_record.yml";
@@ -307,7 +308,8 @@ impl Contract {
     pub async fn check_operator_id(&self) {
         let op = query_operator_from_contract(&self.config, *SELF_OPERATOR_ID.get().unwrap()).await.unwrap();
         if op.public_key != self.operator_pk.0 {
-            panic!("operator id is not consistent with smart contract! Please input right operator id");
+            error!("operator id is not consistent with smart contract! Please input right operator id");
+            process::abort();
         }
         self.db.insert_operator(op).await;
     }

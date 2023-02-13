@@ -843,19 +843,36 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         info!(self.log, "Completed pruning of slashing protection DB");
     }
 
-    /// Stop a validator
-    pub async fn stop_validator_keystore(
+    /// Remove a validator
+    pub async fn remove_validator_keystore(
         &self,
         pubkey: &PublicKey
     ) {
         match self.validators.write().delete_definition_and_keystore(pubkey).await {
             Ok(_) => {
-                info!(self.log, "stop validator keystore";
+                info!(self.log, "remove validator keystore";
                 "msg" => format!("Success: delete definition and keystore {:?}", pubkey));
             }
             Err(_e) => {
-                error!(self.log, "stop validator keystore";
+                error!(self.log, "remove validator keystore";
                 "msg" => format!("Failure: delete definition and keystore {:?}", pubkey));
+            }
+        }
+    }
+
+    /// Stop a validator
+    pub async fn stop_validator_keystore(
+        &self,
+        pubkey: &PublicKey
+    ) {
+        match self.validators.write().delete_keystore(pubkey).await {
+            Ok(_) => {
+                info!(self.log, "stop validator keystore";
+                "msg" => format!("Success: delete keystore {:?}", pubkey));
+            }
+            Err(_e) => {
+                error!(self.log, "stop validator keystore";
+                "msg" => format!("Failure: delete keystore {:?}", pubkey));
             }
         }
     }

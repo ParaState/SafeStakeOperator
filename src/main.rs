@@ -18,7 +18,8 @@ use std::process::exit;
 use task_executor::ShutdownReason;
 use types::{EthSpec, EthSpecId};
 use dvf::validation::ProductionValidatorClient;
-
+use std::io::Write;
+use chrono::Local;
 fn bls_library_name() -> &'static str {
     if cfg!(feature = "portable") {
         "blst-portable"
@@ -370,10 +371,22 @@ fn run<E: EthSpec>(
         .value_of("debug-level")
         .ok_or("Expected --debug-level flag")?;
 
-    let mut logger = env_logger::Builder::from_env(Env::default().default_filter_or(debug_level));
-        logger.format_timestamp_millis();
-        logger.init();    
+    let _logger = env_logger::Builder::from_env(Env::default().default_filter_or(debug_level)).format(|buf, record| {
+        let level = { buf.default_styled_level(record.level()) };
+        writeln!(
+            buf,
+            "{} {} [{}:{}] {}",
+            Local::now().format("%Y-%m-%d %H:%M:%S%.3f"),
+            format_args!("{:>5}", level),
+            record.module_path().unwrap_or("<unnamed>"),
+            record.line().unwrap_or(0),
+            &record.args()
+        )
+    }).init();    
+    
     let log_format = matches.value_of("log-format");
+    let log_color = matches.is_present("log-color");
+    let disable_log_timestamp = matches.is_present("disable-log-timestamp");
 
     let logfile_debug_level = matches
         .value_of("logfile-debug-level")
@@ -392,6 +405,8 @@ fn run<E: EthSpec>(
         .map_err(|e| format!("Failed to parse `logfile-max-number`: {:?}", e))?;
 
     let logfile_compress = matches.is_present("logfile-compress");
+
+    let logfile_restricted = !matches.is_present("logfile-no-restricted-perms");
 
     // Construct the path to the log file.
     let mut log_path: Option<PathBuf> = clap_utils::parse_optional(matches, "logfile")?;
@@ -424,12 +439,16 @@ fn run<E: EthSpec>(
 
     let logger_config = LoggerConfig {
         path: log_path,
-        debug_level,
-        logfile_debug_level,
-        log_format,
+        debug_level: String::from(debug_level),
+        logfile_debug_level: String::from(logfile_debug_level),
+        log_format: log_format.map(String::from),
+        logfile_format: None,
+        log_color,
+        disable_log_timestamp,
         max_log_size: logfile_max_size * 1_024 * 1_024,
         max_log_number: logfile_max_number,
         compression: logfile_compress,
+        is_restricted: logfile_restricted,
     };
 
     let builder = environment_builder.initialize_logger(logger_config)?;

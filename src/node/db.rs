@@ -20,7 +20,12 @@ pub enum DbCommand {
     InsertInitializer(Initializer),
     UpdateInitializer(u32, String, String, oneshot::Sender<DbResult<usize>>),
     QueryInitializer(u32, oneshot::Sender<DbResult<Option<Initializer>>>),
-    QueryInitializerReleaterOpPk(u32, oneshot::Sender<DbResult<(Vec<String>, Vec<u32>)>>)
+    QueryInitializerReleaterOpPk(u32, oneshot::Sender<DbResult<(Vec<String>, Vec<u32>)>>),
+    QueryAllValidatorOwners(oneshot::Sender<DbResult<Vec<Address>>>),
+    QueryValidatorByAddress(Address, oneshot::Sender<DbResult<Vec<Validator>>>),
+    DisableValidator(String),
+    EnableValidator(String),
+    ValidatorActive(String, oneshot::Sender<DbResult<bool>>)
 }
 
 #[derive(Clone)]
@@ -46,8 +51,9 @@ impl Database {
         // address is in hex
         let create_validators_sql = "CREATE TABLE IF NOT EXISTS validators(
             public_key CHARACTER(96) PRIMARY KEY,
-            id BIGINT NOT NULL, 
-            owner_address CHARACTER(40) NOT NULL
+            id CHARACTER(32) NOT NULL, 
+            owner_address CHARACTER(40) NOT NULL,
+            active INTEGER DEFAULT 1 NOT NULL
         )";
 
         let create_releation_sql = "CREATE TABLE IF NOT EXISTS validator_operators_mapping(
@@ -78,7 +84,6 @@ impl Database {
         conn.execute(create_releation_sql, [],)?;
         conn.execute(create_initializer_sql,[])?;
         conn.execute(create_initializer_releation_sql, [])?;
-    
         let (tx, mut rx) = channel(1000);
 
         tokio::spawn(async move {
@@ -126,6 +131,24 @@ impl Database {
                     DbCommand::QueryInitializerReleaterOpPk(initializer_id, sender) => {
                         let response = query_initializer_releated_operator_pks(&conn, initializer_id);
                         let _ = sender.send(response);
+                    },
+                    DbCommand::QueryAllValidatorOwners(sender) => {
+                        let response = query_all_validator_address(&conn);
+                        let _ = sender.send(response);
+                    },
+                    DbCommand::QueryValidatorByAddress(address, sender) => {
+                        let response = query_validator_by_address(&conn, address);
+                        let _ = sender.send(response);
+                    },
+                    DbCommand::EnableValidator(public_key) => {
+                        enable_validator(&conn, public_key);
+                    },
+                    DbCommand::DisableValidator(public_key) => {
+                        disable_validator(&conn, public_key);
+                    },
+                    DbCommand::ValidatorActive(public_key, sender) => {
+                        let response = if_validator_active(&conn, public_key);
+                        let _ = sender.send(response);
                     }
                 }
             }
@@ -156,6 +179,14 @@ impl Database {
     pub async fn query_validator_by_public_key(&self, public_key: String) -> DbResult<Option<Validator>> {
         let (sender, receiver) = oneshot::channel();
         if let Err(e) = self.channel.send(DbCommand::QueryValidatorByPublicKey(public_key, sender)).await {
+            panic!("Failed to send command to store: {}", e);
+        }
+        receiver.await.expect("Failed to receive reply to query validator command from db")
+    }
+
+    pub async fn query_validator_by_address(&self, address: Address) -> DbResult<Vec<Validator>> {
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self.channel.send(DbCommand::QueryValidatorByAddress(address, sender)).await {
             panic!("Failed to send command to store: {}", e);
         }
         receiver.await.expect("Failed to receive reply to query validator command from db")
@@ -219,6 +250,34 @@ impl Database {
         receiver.await.expect("Failed to receive reply to query initializer command from db")
     }
 
+    pub async fn query_all_validator_address(&self) -> DbResult<Vec<Address>> {
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self.channel.send(DbCommand::QueryAllValidatorOwners(sender)).await {
+            panic!("Failed to send query validator owners command to store: {}", e);
+        }
+        receiver.await.expect("Failed to receive reply to query initializer command from db")
+    }
+
+    pub async fn if_validator_active(&self, public_key: String) -> DbResult<bool>{
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self.channel.send(DbCommand::ValidatorActive(public_key, sender)).await {
+            panic!("Failed to send query validator owners command to store: {}", e);
+        }
+        receiver.await.expect("Failed to receive reply to query initializer command from db")
+    }
+
+    pub async fn disable_validator(&self, public_key: String) {
+        if let Err(e) = self.channel.send(DbCommand::DisableValidator(public_key)).await {
+            panic!("Failed to send query validator owners command to store: {}", e);
+        }
+    }
+
+    pub async fn enable_validator(&self, public_key: String) {
+        if let Err(e) = self.channel.send(DbCommand::EnableValidator(public_key)).await {
+            panic!("Failed to send query validator owners command to store: {}", e);
+        }
+    }
+ 
 }
 
 fn insert_operator(conn: &Connection, operator: Operator) {
@@ -256,13 +315,15 @@ fn update_initializer(conn: &Connection, id: u32, validator_pk: String, minipool
 }
 
 fn insert_validator(conn: &mut Connection, validator: Validator) {
-    if let Err(e) = conn.execute("INSERT INTO validators(public_key, id, owner_address) values(?1, ?2, ?3)", params![hex::encode(&validator.public_key), &validator.id, format!("{0:0x}", validator.owner_address)],) {
-        error!("Can't insert into validators, error: {} {:?}", e, validator);
-    }
 
     match conn.transaction() {
         Ok(mut tx) => {
             tx.set_drop_behavior(DropBehavior::Commit);
+            if let Err(e) = &tx.execute("INSERT INTO validators(public_key, id, owner_address) values(?1, ?2, ?3)", params![hex::encode(&validator.public_key), validator.id.to_string(), format!("{0:0x}", validator.owner_address)] ) {
+                error!("Can't insert into validators, error: {} {:?}", e, validator);
+                let _ = &tx.set_drop_behavior(DropBehavior::Rollback);
+            }
+
             for operator_id in &validator.releated_operators {
                 if let Err(e) = &tx.execute("INSERT INTO validator_operators_mapping(validator_pk, operator_id) values(?1, ?2)", params![hex::encode(&validator.public_key), operator_id], ) {
                     error!("Can't insert into validator_operators_mapping, error: {} operator_id {:?}", e, operator_id);
@@ -334,18 +395,20 @@ fn query_validator_by_public_key(conn: &Connection, validator_pk: &str) -> DbRes
         }
     };
 
-    match conn.prepare("SELECT public_key, id, owner_address FROM validators where public_key = (?)") {
+    match conn.prepare("SELECT public_key, id, owner_address, active FROM validators where public_key = (?)") {
         Ok(mut stmt) => {
             let mut rows = stmt.query([validator_pk])?;
             match rows.next()? {
                 Some(row) => {
                     let public_key: String = row.get(0)?;
                     let owner_address: String = row.get(2)?;
+                    let id: String = row.get(1)?;
                     Ok(Some(Validator{
                         public_key: hex::decode(&public_key).unwrap().try_into().unwrap(),
-                        id: row.get(1)?,
+                        id: id.parse().unwrap(),
                         owner_address: Address::from_slice(&hex::decode(owner_address).unwrap()),
-                        releated_operators: releated_operators
+                        releated_operators: releated_operators,
+                        active: row.get(3)?
                     }))
                 },
                 None => { Ok(None) }
@@ -447,4 +510,109 @@ fn query_initializer_releated_operator_pks(conn: &Connection, id: u32) -> DbResu
         Err(e) => { error!("Can't prepare statement {}", e); return Err(e); }
     };
     Ok((op_pks,op_ids))
+}
+
+fn query_all_validator_address(conn: &Connection) -> DbResult<Vec<Address>>{
+    let mut owners = Vec::new();
+    match conn.prepare("select distinct owner_address from validators") {
+        Ok(mut stmt) => {
+            let mut rows = stmt.query([])?;
+            while let Some(row) = rows.next()? {
+                let address: String = row.get(0)?;
+                owners.push(
+                    Address::from_slice(
+                        &hex::decode(&address).unwrap()
+                    )
+                );
+            }
+        },
+        Err(e) => { error!("Can't prepare statement {}", e); return Err(e); }
+    }
+    Ok(owners)
+}
+
+
+// only used for stop validator, don't need to query releated operator ids
+fn query_validator_by_address(conn: &Connection, address: Address) -> DbResult<Vec<Validator>> {
+    let mut validators = Vec::new();
+    let address_str = format!("{0:0x}", address);
+    match conn.prepare("select public_key, id, owner_address, active from validators where owner_address = (?)") {
+        Ok(mut stmt) => {
+            let mut rows = stmt.query([address_str])?;
+            
+            while let Some(row) = rows.next()? {
+                let public_key: String = row.get(0)?;
+                let id: String = row.get(1)?;
+                validators.push(Validator {
+                    public_key: hex::decode(&public_key).unwrap().try_into().unwrap(),
+                    id: id.parse().unwrap(),
+                    owner_address: address, 
+                    releated_operators: vec![],
+                    active: row.get(3)?
+                });
+            }
+        },
+        Err(e) => {
+            error!("Can't prepare statement {}", e);
+        }
+    }
+    Ok(validators)
+}
+
+fn disable_validator(conn: &Connection, public_key: String) {
+    if let Err(e) = conn.execute("UPDATE validators SET active = 0 WHERE public_key = ?1", params![public_key]) {
+        error!("Can't update validators {}, error {}", public_key, e);
+    }
+}
+
+fn enable_validator(conn: &Connection, public_key: String) {
+    if let Err(e) = conn.execute("UPDATE validators SET active = 1 WHERE public_key = ?1", params![public_key]) {
+        error!("Can't update validators {}, error {}", public_key, e);
+    }
+}
+
+fn if_validator_active(conn: &Connection, public_key: String) -> DbResult<bool> {
+    match conn.prepare("select active from validators where public_key = (?)") {
+        Ok(mut stmt) => {
+            let mut rows = stmt.query([public_key]).unwrap();
+            while let Some(row) = rows.next().unwrap() {
+                let active : bool = row.get(0).unwrap();
+                return Ok(active);
+            }
+        },
+        Err(e) => {
+            error!("Can't prepare statement {}", e);
+        }
+    };
+    Ok(true)
+}
+
+#[test]
+fn test_database() {
+    let mut conn = Connection::open("./test.db").unwrap();
+    let create_validators_sql = "CREATE TABLE IF NOT EXISTS validators(
+        public_key CHARACTER(96) PRIMARY KEY,
+        id CHARACTER(32) NOT NULL, 
+        owner_address CHARACTER(40) NOT NULL,
+        active INTEGER DEFAULT 1 NOT NULL
+    )";
+    conn.execute(create_validators_sql, [],).unwrap();
+    conn.execute("INSERT INTO validators(public_key, id, owner_address) values(?1, ?2, ?3)", params!["123123", (12222501569673719727 as u64).to_string(), "adasdasd"]).unwrap();
+    disable_validator(&conn, "123123".to_string());
+    match conn.prepare("select public_key, id, owner_address, active from validators where owner_address = (?)") {
+        Ok(mut stmt) => {
+            let mut rows = stmt.query(["adasdasd"]).unwrap();
+            
+            while let Some(row) = rows.next().unwrap() {
+                let active : bool = row.get(3).unwrap();
+                let id: String = row.get(1).unwrap();
+                let id_u64: u64 = id.parse().unwrap();
+                println!("{} {}", active, id_u64);
+            }
+        },
+        Err(e) => {
+            error!("Can't prepare statement {}", e);
+        }
+    };
+
 }

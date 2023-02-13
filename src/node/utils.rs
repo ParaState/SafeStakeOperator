@@ -2,16 +2,22 @@ use reqwest::Client;
 use url::Url;
 use serde::Serialize;
 use tokio::sync::RwLock;
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, SocketAddr, Ipv4Addr};
 use std::sync::Arc;
 use crate::node::contract::OperatorPublicKeys;
-use log::error;
+use log::{error, info, warn};
+use network::{ReliableSender, DvfMessage, VERSION};
+use super::config::BOOT_SOCKETADDR;
 use std::collections::HashMap;
 use serde::de::DeserializeOwned;
 use std::fs::File;
 use std::path::Path;
 use web3::types::H160;
 use types::DepositData;
+use bytes::Bytes;
+use std::time::Duration;
+use tokio::time::timeout;
+use futures::executor::block_on;
 pub trait FromFile<T: DeserializeOwned> {
     fn from_file<P: AsRef<Path>>(path: P) -> Result<T, String> {
         let file = File::options()
@@ -75,7 +81,9 @@ pub async fn request_to_web_server<T: Serialize>(body: T, url_str: &str) -> Resu
     let client = Client::new();
     let url = Url::parse(url_str).map_err(|_e| format!("Can't parse url {}", url_str))?;
     match client.post(url).json(&body).send().await {
-        Ok(_) => {},
+        Ok(result) => {
+            info!("{:?}", result);
+        },
         Err(e) => {
             error!("Can't send request: {}", e);
         }
@@ -96,8 +104,8 @@ pub async fn get_operator_ips(
             let op_pk_str = base64::encode(op_pk);
             key_ip_map.get(&op_pk_str).map_or_else(
                 || {
-                    error!("Can't discovery operator: {}", op_pk_str);
-                    None
+                    warn!("Can't discovery operator {} locally, querying from boot node", op_pk_str);
+                    block_on(query_ip_from_boot(op_pk))
                 },
                 |ip| Some(ip.clone()),
             )
@@ -131,4 +139,42 @@ pub fn convert_address_to_withdraw_crendentials (address: H160) -> [u8;32] {
         credentials[i] = address_bytes[i-12];
     } 
     credentials
+}
+
+pub async fn query_ip_from_boot(op_pk: &Vec<u8>) -> Option<IpAddr>{
+    let dvf_message = DvfMessage { 
+        version: VERSION, validator_id: 0, message: op_pk.to_vec() 
+    };
+    let timeout_mill :u64 = 2000;
+    let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+    let network_sender = ReliableSender::new();
+    let socketaddr = BOOT_SOCKETADDR.get().unwrap().clone();
+    let receiver = network_sender.send(socketaddr, Bytes::from(serialized_msg)).await;
+    let result = timeout(Duration::from_millis(timeout_mill), receiver).await;
+
+    let base64_pk = base64::encode(op_pk);
+    let ipaddr: Option<IpAddr> = match result {
+        Ok(output) => {
+            match output {
+                Ok(data) => {
+                    if data.len() != 4 {
+                        error!("can't find ip for op {} from boot node", &base64_pk);
+                        None
+                    } else {
+                        info!("Get ip from server! pk {}, ip {:?}", &base64_pk, data);
+                        Some(IpAddr::V4(Ipv4Addr::new(data[0], data[1], data[2], data[3])))
+                    }
+                },
+                Err(_) => {
+                    warn!("recv is interrupted.");
+                    None
+                }
+            }
+        },
+        Err(_) => {
+            warn!("timeout for querying ip from boot for op {}", &base64_pk);
+            None
+        }
+    };
+    ipaddr
 }

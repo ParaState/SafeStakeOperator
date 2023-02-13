@@ -149,7 +149,7 @@ impl<T: EthSpec> Node<T> {
             base_port + DISCOVERY_PORT_OFFSET,
             Arc::clone(&key_ip_map),
             node.secret.clone(),
-            Some(BOOT_ENR.get().unwrap().clone()),
+            BOOT_ENR.get().unwrap().clone(),
         );
 
         Contract::spawn(
@@ -199,7 +199,7 @@ impl<T: EthSpec> Node<T> {
                             encrypted_sks,
                         ) => {
                             info!("StartValidator");
-                            match new_add_validator(
+                            match add_validator(
                                 node.clone(),
                                 validator,
                                 operator_pks,
@@ -216,9 +216,27 @@ impl<T: EthSpec> Node<T> {
                                 }
                             }
                         }
+                        ContractCommand::RemoveValidator(validator) => {
+                            info!("RemoveValidator");
+                            match remove_validator(node.clone(), validator).await {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    error!("Failed to remove validator: {}", e);
+                                }
+                            }
+                        }
+                        ContractCommand::ActivateValidator(validator) => {
+                            info!("RemoveValidator");
+                            match activate_validator(node.clone(), validator).await {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    error!("Failed to remove validator: {}", e);
+                                }
+                            }
+                        }
                         ContractCommand::StopValidator(validator) => {
                             info!("StopValidator");
-                            match new_stop_validator(node.clone(), validator).await {
+                            match stop_validator(node.clone(), validator).await {
                                 Ok(_) => {}
                                 Err(e) => {
                                     error!("Failed to stop validator: {}", e);
@@ -309,7 +327,7 @@ impl<T: EthSpec> Node<T> {
     }
 }
 
-pub async fn new_add_validator<T: EthSpec>(
+pub async fn add_validator<T: EthSpec>(
     node: Arc<ParkingRwLock<Node<T>>>,
     validator: Validator,
     operator_public_keys: OperatorPublicKeys,
@@ -325,6 +343,7 @@ pub async fn new_add_validator<T: EthSpec>(
     let secret = node.secret.clone();
     let sk = &secret.secret;
     let self_pk = &secret.name;
+    let total = operator_public_keys.len();
     let secret_key = secp256k1::SecretKey::from_slice(&sk.0).expect("Unable to load secret key");
 
     let validator_id = validator.id;
@@ -340,7 +359,7 @@ pub async fn new_add_validator<T: EthSpec>(
         match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
             Ok(address) => address,
             Err(e) => {
-                sleep(Duration::from_secs(10)).await;
+                sleep(Duration::from_secs(60)).await;
                 let _ = tx_validator_command
                     .send(ContractCommand::StartValidator(
                         validator,
@@ -361,7 +380,7 @@ pub async fn new_add_validator<T: EthSpec>(
         .iter()
         .map(|x| *x as u64)
         .collect();
-    let operator_bls_pks: Vec<Result<PublicKey, String>> = operator_public_keys
+    let operator_bls_pks: Vec<Result<PublicKey, String>> = shared_public_keys
         .iter()
         .map(|pk| {
             Ok(PublicKey::deserialize(&pk).map_err(|e| {
@@ -374,7 +393,7 @@ pub async fn new_add_validator<T: EthSpec>(
         return Err("Some operators pk can't be deserialized!".to_string());
     }
     let operator_bls_pks = operator_bls_pks.into_iter().map(|x| x.unwrap()).collect();
-    let operator_node_pks: Vec<hscrypto::PublicKey> = shared_public_keys
+    let operator_node_pks: Vec<hscrypto::PublicKey> = operator_public_keys
         .into_iter()
         .map(|shared_pk| hscrypto::PublicKey(shared_pk.try_into().unwrap()))
         .collect();
@@ -435,7 +454,7 @@ pub async fn new_add_validator<T: EthSpec>(
 
     // generate keypair
     let def = OperatorCommitteeDefinition {
-        total: operator_public_keys.len() as u64,
+        total: total as u64,
         threshold: THRESHOLD,
         validator_id: validator_id,
         validator_public_key: validator_pk.clone(),
@@ -491,7 +510,60 @@ pub async fn new_add_validator<T: EthSpec>(
     Ok(())
 }
 
-pub async fn new_stop_validator<T: EthSpec>(
+pub async fn activate_validator<T: EthSpec>(
+    node: Arc<ParkingRwLock<Node<T>>>,
+    validator: Validator
+) -> Result<(), String> {
+    let node = node.read();
+    let validator_id = validator.id;
+    let validator_pk = PublicKey::deserialize(&validator.public_key)
+        .map_err(|e| format!("Unable to deserialize validator public key: {:?}", e))?;
+    let validator_dir = node.config.validator_dir.clone();
+    let secret_dir = node.config.secrets_dir.clone();
+
+    let committee_def_path =
+        default_operator_committee_definition_path(&validator_pk, validator_dir.clone());
+
+    let voting_keystore_share_path = validator_dir
+        .join(format!("{}", validator_pk))
+        .join(format!("{}", SELF_OPERATOR_ID.get().unwrap()));
+
+    let keystore_share =
+        KeystoreShare::from_json_file(&voting_keystore_share_path).map_err(|e| {
+            format!("failed to get keystore share from file, error: {:?}", e)
+        })?;
+    let voting_keystore_share_password_path =
+        default_keystore_share_password_path(&keystore_share, secret_dir.clone());
+    match &node.validator_store {
+        Some(validator_store) => {
+            let _ = validator_store
+                .add_validator_keystore_share(
+                    voting_keystore_share_path,
+                    voting_keystore_share_password_path,
+                    true,
+                    None,
+                    None,
+                    None,
+                    None,
+                    committee_def_path,
+                    keystore_share.master_id,
+                    keystore_share.share_id,
+                )
+                .await;
+            info!("[VA {}] reactive validator {}", validator_id, validator_pk);
+        }
+        _ => {
+            error!(
+                "[VA {}] failed to add validator {}. Error: no validator store is set.",
+                validator_id, validator_pk
+            );
+        }
+    }
+    
+    Ok(())
+} 
+
+pub async fn remove_validator<T: EthSpec>(
     node: Arc<ParkingRwLock<Node<T>>>,
     validator: Validator,
 ) -> Result<(), String> {
@@ -499,7 +571,7 @@ pub async fn new_stop_validator<T: EthSpec>(
     let validator_pk = PublicKey::deserialize(&validator.public_key)
         .map_err(|e| format!("[VA {}] Deserialize error ({:?})", validator_id, e))?;
     info!(
-        "[VA {}] stopping validator {}...",
+        "[VA {}] removing validator {}...",
         validator_id, validator_pk
     );
     let (validator_dir, secret_dir, validator_store) = {
@@ -521,6 +593,31 @@ pub async fn new_stop_validator<T: EthSpec>(
     cleanup_validator_dir(&validator_dir, &validator_pk, validator_id)?;
     cleanup_password_dir(&secret_dir, &validator_pk, validator_id)?;
 
+    info!("[VA {}] removeed validator {}", validator_id, validator_pk);
+    Ok(())
+}
+
+pub async fn stop_validator<T: EthSpec>(
+    node: Arc<ParkingRwLock<Node<T>>>,
+    validator: Validator
+) -> Result<(), String> {
+    let validator_id = validator.id;
+    let validator_pk = PublicKey::deserialize(&validator.public_key).map_err(|e| format!("[VA {}] Deserialize error ({:?})", validator_id, e))?;
+    info!(
+        "[VA {}] stopping validator {}...",
+        validator_id, validator_pk
+    );
+    let validator_store =  {
+        let node_ = node.read();
+        node_.validator_store.clone()
+    };
+
+    match validator_store {
+        Some(validator_store) => {
+            validator_store.stop_validator_keystore(&validator_pk).await;
+        }
+        _ => {}
+    }
     info!("[VA {}] stopped validator {}", validator_id, validator_pk);
     Ok(())
 }
@@ -675,7 +772,7 @@ pub async fn cleanup_keystore<T: EthSpec>(
 ) {
     match validator_store {
         Some(validator_store) => {
-            validator_store.stop_validator_keystore(validator_pk).await;
+            validator_store.remove_validator_keystore(validator_pk).await;
         }
         _ => {}
     }

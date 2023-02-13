@@ -3,13 +3,16 @@ services:
   geth:
     image: ethereum/client-go:v1.10.25
     pull_policy: always
+    restart: unless-stopped
     network_mode: "host"
     volumes:
       - jwt-data:/data/jwt
       - geth-data:/data/geth
     command: [
       "--${GETH_NETWORK}",
-      "--syncmode=snap",
+      "--syncmode=full",
+      # https://ethereum.stackexchange.com/questions/131757/geth-error-fatal-database-has-receipts-with-a-legacy-format
+      "--ignore-legacy-receipts",
       "--http",
       "--http.addr=0.0.0.0",
       "--http.vhosts=*",
@@ -33,10 +36,22 @@ services:
       - "8547"
       - "8551"
       - "30303"
+
+  mev-boost:
+    image: flashbots/mev-boost:v1.4.0
+    network_mode: "host"
+    pull_policy: always
+    restart: unless-stopped
+    command: -${GETH_NETWORK} -relays ${MEV_BOOST_RELAYS}
+    expose:
+      - "18550"
+
+
   lighthouse:
     network_mode: "host"
     image: sigp/lighthouse:v3.4.0
     pull_policy: always
+    restart: unless-stopped
     volumes:
       - geth-data:/data/geth
       - jwt-data:/data/jwt
@@ -44,7 +59,9 @@ services:
     command:
       [
         "lighthouse",
+        #lighthouse bn --builder https://mainnet-builder.test
         "bn",
+        "--builder=http://127.0.0.1:18550",
         "--network=${LIGHTHOUSE_NETWORK}",
         "--datadir=/data/lighthouse",
         # "--jwt-secrets=/data/jwt/jwtsecret",
@@ -62,14 +79,17 @@ services:
         "--subscribe-all-subnets",
         "--import-all-attestations",
         "--validator-monitor-auto",
-        "--checkpoint-sync-url=https://prater.checkpoint.sigp.io",
+        "--checkpoint-sync-url=https://goerli.checkpoint-sync.ethpandaops.io",
         "--terminal-total-difficulty-override=${TTD}"
       ]
     expose:
       - "5052"
       - "9000"
+
     depends_on:
       geth:
+        condition: service_started
+      mev-boost:
         condition: service_started
 
   operator:
@@ -78,12 +98,14 @@ services:
       - operator-data:/root/.lighthouse
     image: parastate/dvf-operator:${IMAGE_TAG}
     pull_policy: always
+    restart: unless-stopped
+    #such as : lighthouse vc --builder-proposals/private-tx-proposals
     command:
       - /bin/sh
       - -c
       - |
-        node_ip=$$(curl -s ifconfig.me)
-        dvf validator_client --debug-level=info --network=${OPERATOR_NETWORK} --beacon-nodes=${BEACON_NODE_ENDPOINT} --api=${API_SERVER} --ws-url=${WS_URL}  --ip=$$node_ip --id=${OPERATOR_ID} --boot-enr=${ENR} --base-port=26000 2>&1
+        node_ip=$$(curl -s ifconfig.me) 
+        dvf validator_client --private-tx-proposals --debug-level=info --network=${OPERATOR_NETWORK} --beacon-nodes=${BEACON_NODE_ENDPOINT} --api=${API_SERVER} --ws-url=${WS_URL}  --ip=$$node_ip --id=${OPERATOR_ID} --boot-enr=${ENR} --base-port=26000 2>&1
     expose:
       - "26000"
       - "26001"

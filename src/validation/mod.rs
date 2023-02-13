@@ -80,8 +80,68 @@ const HTTP_PROPOSAL_TIMEOUT_QUOTIENT: u32 = 2;
 const HTTP_PROPOSER_DUTIES_TIMEOUT_QUOTIENT: u32 = 4;
 const HTTP_SYNC_COMMITTEE_CONTRIBUTION_TIMEOUT_QUOTIENT: u32 = 4;
 const HTTP_SYNC_DUTIES_TIMEOUT_QUOTIENT: u32 = 4;
+const HTTP_GET_BEACON_BLOCK_SSZ_TIMEOUT_QUOTIENT: u32 = 4;
+const HTTP_GET_DEBUG_BEACON_STATE_QUOTIENT: u32 = 4;
+const HTTP_GET_DEPOSIT_SNAPSHOT_QUOTIENT: u32 = 4;
 
 const DOPPELGANGER_SERVICE_NAME: &str = "doppelganger";
+
+async fn check_synced<T: SlotClock, E: EthSpec>(beacon_nodes: Arc<BeaconNodeFallback<T, E>>, log: Logger) -> bool {
+    if beacon_nodes.num_synced().await == 0 {
+        warn!(log, 
+            "beancon node unsynced";
+            "action" => "Automatically re-check after 1 minute. You can safely close this program and re-run it after making sure your beacon node instance is synced."
+        );
+        return false;
+    }
+    else {
+        info!(log, 
+            "beacon node is synced";
+            "action" => "Moving on to check execution engine."
+        );
+    }
+
+    match beacon_nodes
+        .first_success(RequireSynced::Yes, |beacon_node| async move {
+            if let Ok(response) = beacon_node.get_node_syncing().await {
+                if let Some(is_optimistic) = response.data.is_optimistic {
+                    // "Optimistic" means the execution engine is not yet synced
+                    // https://github.com/sigp/lighthouse/blob/38514c07f222ff7783834c48cf5c0a6ee7f346d0/beacon_node/client/src/notifier.rs#L268
+                    if is_optimistic {
+                        Err("unsynced")
+                    }
+                    else {
+                        Ok(())
+                    }
+                }
+                else {
+                    Err("unknown")
+                }
+            }
+            else {
+                Err("unknown")
+            }
+        })
+        .await
+    {
+        Ok(()) => {
+            info!(log, 
+                "execution engine is synced";
+                "action" => "Moving on to start of validator client."
+            );
+            return true;
+        },
+        Err(e) => {
+            warn!(
+                log,
+                "execution engine status";
+                "status" => e.to_string(),
+                "action" => "Automatically re-check after 1 minute. You can safely close this program and re-run it after making sure your execution engine is synced.",
+            );
+            return false;
+        },
+    }
+}
 
 #[derive(Clone)]
 pub struct ProductionValidatorClient<T: EthSpec> {
@@ -207,6 +267,11 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
                     sync_committee_contribution: slot_duration
                         / HTTP_SYNC_COMMITTEE_CONTRIBUTION_TIMEOUT_QUOTIENT,
                     sync_duties: slot_duration / HTTP_SYNC_DUTIES_TIMEOUT_QUOTIENT,
+                    get_beacon_blocks_ssz: slot_duration
+                            / HTTP_GET_BEACON_BLOCK_SSZ_TIMEOUT_QUOTIENT,
+                    get_debug_beacon_states: slot_duration
+                        / HTTP_GET_DEBUG_BEACON_STATE_QUOTIENT,
+                    get_deposit_snapshot: slot_duration / HTTP_GET_DEPOSIT_SNAPSHOT_QUOTIENT,
                 }
             } else {
                 Timeouts::set_all(slot_duration)
@@ -258,18 +323,10 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         start_fallback_updater_service(context.clone(), beacon_nodes.clone())?;
 
         loop {
-            if beacon_nodes.num_synced().await == 0 {
-                warn!(log, 
-                    "beancon node unsynced";
-                    "action" => "Automatically re-check after 1 minute. You can safely close this program and re-run it after making sure your beacon node instance is synced."
-                );
+            if !check_synced(beacon_nodes.clone(), log.clone()).await {
                 sleep(Duration::from_secs(60)).await;
             }
             else {
-                info!(log, 
-                    "beacon node is synced";
-                    "action" => "Moving on to further initialization steps..."
-                );
                 break;
             }
         }

@@ -31,7 +31,7 @@ pub struct DKG<T, U> {
     io: Arc<T>,
     threshold: usize,
     _h: blst_p1,
-    _phantom: PhantomData<U>,
+    _phantom: PhantomData<U>, // Allow to use generic type U when no concrete member is related to U
 }
 
 impl<T, U> DKG<T, U> 

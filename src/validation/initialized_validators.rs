@@ -411,7 +411,7 @@ pub fn load_pem_certificate<P: AsRef<Path>>(pem_path: P) -> Result<Certificate, 
     Certificate::from_pem(&buf).map_err(Error::InvalidWeb3SignerRootCertificate)
 }
 
-fn build_web3_signer_url(base_url: &str, voting_public_key: &PublicKey) -> Result<Url, ParseError> {
+fn _build_web3_signer_url(base_url: &str, voting_public_key: &PublicKey) -> Result<Url, ParseError> {
     Url::parse(base_url)?.join(&format!("api/v1/eth2/sign/{}", voting_public_key))
 }
 
@@ -625,6 +625,61 @@ impl<T: EthSpec> InitializedValidators<T> {
             .save(&self.validators_dir)
             .map_err(Error::UnableToSaveDefinitions)?;
 
+        Ok(DeleteKeystoreStatus::Deleted)
+    }
+
+    // remove keystore but preserve definition 
+    pub async fn delete_keystore(
+        &mut self,
+        pubkey: &PublicKey
+    ) ->  Result<DeleteKeystoreStatus, Error> {
+        // 1. Disable the validator definition.
+        //
+        // We disable before removing so that in case of a crash the auto-discovery mechanism
+        // won't re-activate the keystore.
+        if let Some(def) = self
+            .definitions
+            .as_mut_slice()
+            .iter_mut()
+            .find(|def| &def.voting_public_key == pubkey)
+        {
+            // [Zico]TODO: to be revised
+            if def.signing_definition.is_local_keystore() || def.signing_definition.is_distributed_keystore() {
+                def.enabled = false;
+                self.definitions
+                    .save(&self.validators_dir)
+                    .map_err(Error::UnableToSaveDefinitions)?;
+            } else {
+                return Err(Error::InvalidActionOnRemoteValidator);
+            }
+        } else {
+            return Ok(DeleteKeystoreStatus::NotFound);
+        }
+
+        // 2. Delete from `self.validators`, which holds the signing method.
+        //    Delete the keystore files.
+        if let Some(initialized_validator) = self.validators.remove(&pubkey.compress()) {
+            if let SigningMethod::LocalKeystore {
+                ref voting_keystore_path,
+                ref voting_keystore_lockfile,
+                ..
+            } = *initialized_validator.signing_method
+            {
+                // Drop the lock file so that it may be deleted. This is particularly important on
+                // Windows where the lockfile will fail to be deleted if it is still open.
+                drop(voting_keystore_lockfile.lock().take());
+            }
+
+            // [Zico]TODO: to be revised
+            if let SigningMethod::DistributedKeystore {
+                ref voting_keystore_share_path,
+                ref voting_keystore_share_lockfile,
+                ..
+            } = *initialized_validator.signing_method
+            {
+                drop(voting_keystore_share_lockfile.lock().take());
+            }
+        }
         Ok(DeleteKeystoreStatus::Deleted)
     }
 

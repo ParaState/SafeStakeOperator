@@ -16,11 +16,10 @@ use network::{MessageHandler, Writer};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use store::Store;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{ Receiver};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::HashMap;
-use futures::executor::block_on;
 use log::{info};
 use utils::monitored_channel::{MonitoredChannel, MonitoredSender};
 

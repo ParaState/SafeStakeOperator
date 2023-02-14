@@ -1,468 +1,1156 @@
-use web3::{
-  Web3,
-  transports::WebSocket,
-  types::{FilterBuilder, Address, H256, Log, BlockNumber, U64}, 
-  futures::{TryStreamExt}
-}; 
-use web3::ethabi::{Event, EventParam, ParamType, RawLog, Hash, token};
-use serde::{Deserialize, Serialize};
+use super::db::Database;
+use super::utils::{convert_va_pk_to_u64, FromFile, ToFile};
+use async_trait::async_trait;
+use hscrypto::PublicKey;
+use hsutils::monitored_channel::MonitoredSender;
+use log::{error, info, warn};
+use parking_lot::RwLock;
 use serde_derive::{Deserialize as DeriveDeserialize, Serialize as DeriveSerialize};
-use log::{info, error};
-use tokio::sync::{mpsc};
-use std::sync::{Arc};
-use tokio::sync::RwLock;
-use std::collections::{HashMap, HashSet};
-use std::fs::{File,remove_file};
+use serde_json::Value;
+use core::panic;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
+use store::Store;
 use tokio::sync::OnceCell;
-use hsutils::monitored_channel::{MonitoredSender};
+use web3::ethabi::{token, Event, EventParam, ParamType, RawLog};
+use web3::{
+    contract::{Contract as EthContract, Options},
+    futures::TryStreamExt,
+    transports::WebSocket,
+    types::{Address, BlockNumber, FilterBuilder, Log, H256, U256, U64},
+    Web3,
+};
 
-const DEFAULT_ABI_JSON: &str = "[{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"validatorPublicKey\",\"type\":\"bytes\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"index\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"operatorPublicKey\",\"type\":\"bytes\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"sharedPublicKey\",\"type\":\"bytes\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"encryptedKey\",\"type\":\"bytes\"}],\"name\":\"OessAdded\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"string\",\"name\":\"name\",\"type\":\"string\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"ownerAddress\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"publicKey\",\"type\":\"bytes\"}],\"name\":\"OperatorAdded\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"string\",\"name\":\"name\",\"type\":\"string\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"publicKey\",\"type\":\"bytes\"}],\"name\":\"OperatorDeleted\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"ownerAddress\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"publicKey\",\"type\":\"bytes\"},{\"components\":[{\"internalType\":\"uint256\",\"name\":\"index\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"operatorPublicKey\",\"type\":\"bytes\"},{\"internalType\":\"bytes\",\"name\":\"sharedPublicKey\",\"type\":\"bytes\"},{\"internalType\":\"bytes\",\"name\":\"encryptedKey\",\"type\":\"bytes\"}],\"indexed\":false,\"internalType\":\"struct ISSVNetwork.Oess[]\",\"name\":\"oessList\",\"type\":\"tuple[]\"}],\"name\":\"ValidatorAdded\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"ownerAddress\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"publicKey\",\"type\":\"bytes\"}],\"name\":\"ValidatorDeleted\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"ownerAddress\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"publicKey\",\"type\":\"bytes\"},{\"components\":[{\"internalType\":\"uint256\",\"name\":\"index\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"operatorPublicKey\",\"type\":\"bytes\"},{\"internalType\":\"bytes\",\"name\":\"sharedPublicKey\",\"type\":\"bytes\"},{\"internalType\":\"bytes\",\"name\":\"encryptedKey\",\"type\":\"bytes\"}],\"indexed\":false,\"internalType\":\"struct ISSVNetwork.Oess[]\",\"name\":\"oessList\",\"type\":\"tuple[]\"}],\"name\":\"ValidatorUpdated\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"string\",\"name\":\"_name\",\"type\":\"string\"},{\"internalType\":\"address\",\"name\":\"_ownerAddress\",\"type\":\"address\"},{\"internalType\":\"bytes\",\"name\":\"_publicKey\",\"type\":\"bytes\"}],\"name\":\"addOperator\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_ownerAddress\",\"type\":\"address\"},{\"internalType\":\"bytes\",\"name\":\"_publicKey\",\"type\":\"bytes\"},{\"internalType\":\"bytes[]\",\"name\":\"_operatorPublicKeys\",\"type\":\"bytes[]\"},{\"internalType\":\"bytes[]\",\"name\":\"_sharesPublicKeys\",\"type\":\"bytes[]\"},{\"internalType\":\"bytes[]\",\"name\":\"_encryptedKeys\",\"type\":\"bytes[]\"}],\"name\":\"addValidator\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"_publicKey\",\"type\":\"bytes\"}],\"name\":\"deleteOperator\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"_publicKey\",\"type\":\"bytes\"}],\"name\":\"deleteValidator\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"operatorCount\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"\",\"type\":\"bytes\"}],\"name\":\"operators\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"name\",\"type\":\"string\"},{\"internalType\":\"address\",\"name\":\"ownerAddress\",\"type\":\"address\"},{\"internalType\":\"bytes\",\"name\":\"publicKey\",\"type\":\"bytes\"},{\"internalType\":\"uint256\",\"name\":\"score\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"_operatorPublicKey\",\"type\":\"bytes\"},{\"internalType\":\"uint256\",\"name\":\"_validatorsPerOperator\",\"type\":\"uint256\"}],\"name\":\"setValidatorsPerOperator\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"_validatorsPerOperatorLimit\",\"type\":\"uint256\"}],\"name\":\"setValidatorsPerOperatorLimit\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"_publicKey\",\"type\":\"bytes\"},{\"internalType\":\"bytes[]\",\"name\":\"_operatorPublicKeys\",\"type\":\"bytes[]\"},{\"internalType\":\"bytes[]\",\"name\":\"_sharesPublicKeys\",\"type\":\"bytes[]\"},{\"internalType\":\"bytes[]\",\"name\":\"_encryptedKeys\",\"type\":\"bytes[]\"}],\"name\":\"updateValidator\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"validatorCount\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"_operatorPublicKey\",\"type\":\"bytes\"}],\"name\":\"validatorsPerOperatorCount\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"validatorsPerOperatorLimit\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]";
+const CONTRACT_CONFIG_FILE: &str = "contract_config/configs.yml";
+const CONTRACT_RECORD_FILE: &str = "contract_record.yml";
+const CONTRACT_STORE_FILE: &str = "contract_store";
+const CONTRACT_DATABASE_FILE: &str = "contract_database.db";
+const CONTRACT_VA_REG_EVENT_NAME: &str = "ValidatorRegistration";
+const CONTRACT_VA_RM_EVENT_NAME: &str = "ValidatorRemoval";
+const CONTRACT_INI_REG_EVENT_NAME: &str = "InitializerRegistration";
+const CONTRACT_MINIPOOL_CREATED_EVENT_NAME: &str = "InitializerMiniPoolCreated";
+const CONTRACT_MINIPOOL_READY_EVENT_NAME: &str = "InitializerMiniPoolReady";
+pub static SELF_OPERATOR_ID: OnceCell<u32> = OnceCell::const_new();
 pub static DEFAULT_TRANSPORT_URL: OnceCell<String> = OnceCell::const_new();
-// const DEFAULT_CONTRACT_ADDRESS: &str = "EE56aB0FfAD43e003a1c0517E6583D036A1A56b2";
-pub static DEFAULT_CONTRACT_ADDRESS: OnceCell<String> = OnceCell::const_new();
-const DEFAULT_ADD_VALIDATOR_TOPIC: &str = "8674c0b4bd63a0814bf1ae6d64d71cf4886880a8bdbd3d7c1eca89a37d1e9271";
-const DEFAULT_UPDATE_VALIDATOR_TOPIC: &str = "4c63bf11b116f386ae0aee6d8d6df531b5ed877eb5d2073119ddb4769ba3f312";
-const DEFAULT_DELETE_VALIDATOR_TOPIC: &str = "4c63bf11b116f386ae0aee6d8d6df531b5ed877eb5d2073119ddb4769ba3f312";
-const CONTRACTRECORDFIL: &str = "contract_record.yml";
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Debug)]
+pub enum ContractError {
+    StoreError,
+    BlockNumberError,
+    LogError,
+    RecordFileError,
+    LogParseError,
+    NoEnoughOperatorError,
+    DatabaseError,
+    InvalidArgumentError,
+    FileError,
+    ContractParseError,
+    QueryError,
+}
+
+impl ContractError {
+    fn as_str(&self) -> &'static str {
+        match self {
+            ContractError::StoreError => "[ERROR!]: Can't interact with store.",
+            ContractError::BlockNumberError => "[ERROR]: Can't get blocknumber from infura.",
+            ContractError::LogError => "[ERROR]: Can't get logs from infura.",
+            ContractError::RecordFileError => "[ERROR]: Error happens with record file.",
+            ContractError::LogParseError => "[ERROR]: Can't parse eth log.",
+            ContractError::NoEnoughOperatorError => {
+                "[ERROR]: There are not enough operators in local database"
+            }
+            ContractError::DatabaseError => "[ERROR]: Can't get result from local databse",
+            ContractError::InvalidArgumentError => "[ERROR]: Invalid Argument from contract",
+            ContractError::FileError => "[ERROR]: Error happens when processing file",
+            ContractError::ContractParseError => "[ERROR]: Can't parse contract from abi json",
+            ContractError::QueryError => "[ERROR]: Can't query from contract",
+        }
+    }
+}
+
+type ValidatorPublicKey = [u8; 48];
+type OperatorPublicKey = [u8; 33];
+#[derive(Clone, Debug)]
 pub struct Operator {
-  pub id: u64, 
-  pub node_public_key: Vec<u8>, 
-  pub shared_public_key: Vec<u8>, 
-  pub encrypted_key: Vec<u8> 
+    pub id: u32,
+    pub name: String,
+    pub address: Address,
+    pub public_key: OperatorPublicKey, // ecc256 public key
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Debug)]
 pub struct Validator {
-  pub id: u64, 
-  pub validator_address: Address,
-  pub validator_public_key: Vec<u8>
+    pub id: u64,
+    pub owner_address: Address,
+    pub public_key: ValidatorPublicKey, // bls public key
+    pub releated_operators: Vec<u32>,
+    pub active: bool
+}
+
+#[derive(Clone, Debug)]
+pub struct Initializer {
+    pub id: u32,
+    pub owner_address: Address,
+    pub releated_operators: Vec<u32>,
+    pub validator_pk: Option<ValidatorPublicKey>,
+    pub minipool_address: Option<Address>,
+}
+
+pub type SharedPublicKeys = Vec<Vec<u8>>;
+pub type EncryptedSecretKeys = Vec<Vec<u8>>;
+pub type OperatorPublicKeys = Vec<Vec<u8>>;
+pub type OperatorIds = Vec<u32>;
+#[derive(Clone)]
+pub enum ContractCommand {
+    StartValidator(
+        Validator,
+        OperatorPublicKeys,
+        SharedPublicKeys,
+        EncryptedSecretKeys,
+    ),
+    RemoveValidator(Validator),
+    ActivateValidator(Validator),
+    StopValidator(Validator),
+    StartInitializer(Initializer, OperatorPublicKeys),
+    MiniPoolCreated(u32, ValidatorPublicKey, OperatorPublicKeys, OperatorIds, Address),
+    MiniPoolReady(u32, ValidatorPublicKey, OperatorPublicKeys, OperatorIds, Address),
+}
+
+#[async_trait]
+pub trait TopicHandler: Send + Sync + 'static {
+    async fn process(
+        &self,
+        log: Log,
+        db: &Database,
+        operator_pk_base64: &String,
+        config: &ContractConfig,
+        sender: &MonitoredSender<ContractCommand>,
+    ) -> Result<(), ContractError>;
 }
 
 #[derive(Clone)]
-pub enum ValidatorCommand {
-  Start(Validator),
-  Stop(Validator)
-}
+pub struct ValidatorRegistrationHandler {}
 
-pub enum ValidatorEventType {
-  ADDED,
-  UPDATED,
-  DELETED
-}
-
-pub struct ListenContract {
-  // web3: Web3<WebSocket>,
-  node_public_key: Vec<u8>,
-  channel: MonitoredSender<ValidatorCommand>,
-  validators_map: Arc<RwLock<HashMap<u64, Validator>>>,
-  validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>
+#[async_trait]
+impl TopicHandler for ValidatorRegistrationHandler {
+    async fn process(
+        &self,
+        log: Log,
+        db: &Database,
+        operator_pk_base64: &String,
+        config: &ContractConfig,
+        sender: &MonitoredSender<ContractCommand>,
+    ) -> Result<(), ContractError> {
+        process_validator_registration(log, db, operator_pk_base64, config, sender)
+            .await
+            .map_err(|e| {
+                error!("error happens when process validator registration");
+                e
+            })
+    }
 }
 
 #[derive(Clone)]
+pub struct ValidatorRemovalHandler {}
+#[async_trait]
+impl TopicHandler for ValidatorRemovalHandler {
+    async fn process(
+        &self,
+        log: Log,
+        db: &Database,
+        operator_pk_base64: &String,
+        config: &ContractConfig,
+        sender: &MonitoredSender<ContractCommand>,
+    ) -> Result<(), ContractError> {
+        process_validator_removal(log, db, operator_pk_base64, config, sender)
+            .await
+            .map_err(|e| {
+                error!("error happens when process validator removal");
+                e
+            })
+    }
+}
+
+#[derive(Clone)]
+pub struct InitializerRegistrationHandler {}
+
+#[async_trait]
+impl TopicHandler for InitializerRegistrationHandler {
+    async fn process(
+        &self,
+        log: Log,
+        db: &Database,
+        operator_pk_base64: &String,
+        config: &ContractConfig,
+        sender: &MonitoredSender<ContractCommand>,
+    ) -> Result<(), ContractError> {
+        process_initializer_registration(log, db, operator_pk_base64, config, sender)
+            .await
+            .map_err(|e| {
+                error!("error happens when process initializer registration");
+                e
+            })
+    }
+}
+
+#[derive(Clone)]
+pub struct MinipoolCreatedHandler {}
+
+#[async_trait]
+impl TopicHandler for MinipoolCreatedHandler {
+    async fn process(
+        &self,
+        log: Log,
+        db: &Database,
+        operator_pk_base64: &String,
+        config: &ContractConfig,
+        sender: &MonitoredSender<ContractCommand>,
+    ) -> Result<(), ContractError> {
+        process_minipool_created(log, db, operator_pk_base64, config, sender)
+            .await
+            .map_err(|e| {
+                error!("error happens when process initializer registration");
+                e
+            })
+    }
+}
+
+#[derive(Clone)]
+pub struct MinipoolReadyHandler {}
+
+#[async_trait]
+impl TopicHandler for MinipoolReadyHandler {
+    async fn process(
+        &self,
+        log: Log,
+        db: &Database,
+        operator_pk_base64: &String,
+        config: &ContractConfig,
+        sender: &MonitoredSender<ContractCommand>,
+    ) -> Result<(), ContractError> {
+        process_minipool_ready(log, db, operator_pk_base64, config, sender)
+            .await
+            .map_err(|e| {
+                error!("error happens when process initializer registration");
+                e
+            })
+    }
+}
+
+#[derive(Debug, DeriveSerialize, DeriveDeserialize, Clone)]
 pub struct ContractConfig {
-  pub transport_url: String, 
-  pub contract_address: String, 
-  pub added_topic: String, 
-  pub updated_topic: String,
-  pub deleted_topic: String,
-  pub abi_json: String
+    pub safestake_network_address: String,
+    pub safestake_registry_address: String,
+    pub validator_registration_topic: String,
+    pub validator_removal_topic: String,
+    pub initializer_registration_topic: String,
+    pub initializer_minipool_created_topic: String,
+    pub initializer_minipool_ready_topic: String,
+    pub safestake_network_abi_path: String,
+    pub safestake_registry_abi_path: String,
 }
+impl FromFile<ContractConfig> for ContractConfig {}
+impl ToFile for ContractConfig {}
 
-#[derive(Clone, PartialEq, DeriveSerialize, DeriveDeserialize)]
+#[derive(Clone, DeriveSerialize, DeriveDeserialize, Debug)]
 pub struct ContractRecord {
-    pub block_num: u64
+    pub block_num: u64,
 }
 
+impl FromFile<ContractRecord> for ContractRecord {}
+impl ToFile for ContractRecord {}
 
-impl ContractRecord {
-  pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
-    let file = File::options()
-        .read(true)
-        .write(false)
-        .create(false)
-        .open(path)
-        .unwrap();
-    serde_yaml::from_reader(file).unwrap()
-  }
-
-  pub fn to_file<P: AsRef<Path>>(&self, path: P) {
-    let file = File::options()
-        .write(true)
-        .read(true)
-        .create_new(true)
-        .open(path)
-        .unwrap();
-    serde_yaml::to_writer(file, self).unwrap()
-  }
-  
-  pub fn open_or_create_contract_record(path: &PathBuf) -> Self {
-    if path.exists() {
-      ContractRecord::from_file(path)
-    } else {
-      Self { block_num: 0 }
-    }
-  }
+pub struct Contract {
+    pub config: ContractConfig,
+    pub record: ContractRecord,
+    pub db: Database,
+    pub operator_pk: PublicKey,
+    pub store: Store,
+    pub base_dir: PathBuf,
+    pub handlers: Arc<RwLock<HashMap<H256, Box<dyn TopicHandler>>>>,
+    pub filter_builder: Option<FilterBuilder>,
 }
 
-impl ContractConfig {
-  pub fn default() -> Self {
-    Self {
-      transport_url: DEFAULT_TRANSPORT_URL.get().unwrap().to_string(),
-      contract_address: DEFAULT_CONTRACT_ADDRESS.get().unwrap().to_string(),
-      added_topic: DEFAULT_ADD_VALIDATOR_TOPIC.to_string(),
-      updated_topic: DEFAULT_UPDATE_VALIDATOR_TOPIC.to_string(),
-      deleted_topic: DEFAULT_DELETE_VALIDATOR_TOPIC.to_string(),
-      abi_json: DEFAULT_ABI_JSON.to_string()
-    }
-  }
-}
-
-impl ListenContract {
-  pub fn pull_from_contract(
-    config: ContractConfig,
-    node_public_key: Vec<u8>,
-    channel: MonitoredSender<ValidatorCommand>,
-    validators_map: Arc<RwLock<HashMap<u64, Validator>>>,
-    validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>,
-    base_dir: PathBuf,
-    ethlog_hashset: Arc<RwLock<HashSet<H256>>>
-  ) {
-    
-    tokio::spawn(async move {
-      tokio::time::sleep(Duration::from_secs(60 * 3)).await;
-      let contract = Self {
-        node_public_key,
-        channel,
-        validators_map,
-        validator_operators_map
-      };
-
-      let contract_record_path = base_dir.join(CONTRACTRECORDFIL);
-      
-      let mut contract_record = ContractRecord::open_or_create_contract_record(&contract_record_path);
-
-      if contract_record.block_num == 0 {
-        let web3 : Web3<WebSocket> = Web3::new(WebSocket::new(&config.transport_url).await.unwrap());
-        contract_record.block_num = match web3.eth().block_number().await {
-          Ok(number) => { number.as_u64() },
-          Err(error) => {
-            error!("can't get current block number {:?}", error);
-            12825550 
-          }
-        };
-      }
-
-      let added_topic = H256::from_slice(&hex::decode(config.added_topic).unwrap());
-      let deleted_topic = H256::from_slice(&hex::decode(config.deleted_topic).unwrap());
-      let mut query_interval = tokio::time::interval(Duration::from_secs(60 * 5));
-      loop {
-        tokio::select! {
-          _ = query_interval.tick() => {
-            let web3: Web3<WebSocket> = Web3::new(WebSocket::new(&config.transport_url).await.unwrap());
-            let filter = FilterBuilder::default().
-              address(vec![Address::from_slice(&hex::decode(&config.contract_address).unwrap())]).
-              topics(Some(vec![added_topic.clone(), deleted_topic.clone()]), None, None, None)
-              .from_block(BlockNumber::Number(U64::from(contract_record.block_num as u64)))
-              .build();
-            match web3.eth().logs(filter).await {
-              Ok(logs) => {
-                info!("get {} logs", &logs.len());
-                contract_record.block_num = web3.eth().block_number().await.unwrap().as_u64();
-                for log in logs {
-                  let hash = log.transaction_hash.unwrap();
-                  let log_hashset = ethlog_hashset.read().await;
-                  if log_hashset.contains(&hash) {
-                    info!("this log has been listened, don't do anything");
-                    continue;
-                  }
-                  if log.topics[0] == added_topic {
-                    info!("added topic");
-                    contract.process_validator_add_or_update_event(log, &added_topic, ValidatorEventType::ADDED).await;
-                  } else if log.topics[0] == deleted_topic {
-                    info!("deleted topic");
-                    contract.process_validator_deleted_event(log, &deleted_topic).await;
-                  } else {
-                    error!("unkown topic");
-                  }
-                }
-                if contract_record_path.exists() {
-                  remove_file(&contract_record_path).unwrap();
-                }
-                contract_record.to_file(&contract_record_path);
-              },
-              Err(_) => {
-                error!("can't get logs from infura");
-                continue;
-              }
-            };
-          }
-        }
-      }
-    });
-  }
-
-  pub fn spawn (
-    config: ContractConfig,
-    node_public_key: Vec<u8>,
-    channel: MonitoredSender<ValidatorCommand>,
-    validators_map: Arc<RwLock<HashMap<u64, Validator>>>,
-    validator_operators_map: Arc<RwLock<HashMap<u64, Vec<Operator>>>>,
-    ethlog_hashset: Arc<RwLock<HashSet<H256>>>
-  ) {
-
-    tokio::spawn(async move {
-      let listen_contract = Self {
-        node_public_key,
-        channel,
-        validators_map,
-        validator_operators_map
-      };
-
-      let added_topic = H256::from_slice(&hex::decode(config.added_topic).unwrap());
-      // let updated_topic = H256::from_slice(&hex::decode(config.updated_topic).unwrap());
-      let deleted_topic = H256::from_slice(&hex::decode(config.deleted_topic).unwrap());
-      loop {
-        let web3: Web3<WebSocket> = Web3::new(WebSocket::new(&config.transport_url).await.unwrap());
-        // listen from smart contract
-        let filter = FilterBuilder::default().address(vec![Address::from_slice(&hex::decode(&config.contract_address).unwrap())])
-        // .topics(Some(vec![added_topic, updated_topic, deleted_topic]), None, None, None)
-          .topics(Some(vec![added_topic.clone(), deleted_topic.clone()]), None, None, None)
-          .build();
-        let mut sub = web3.eth_subscribe().subscribe_logs(filter.clone()).await.unwrap();
-        loop {
-          // let eth_log = sub.try_next().await.unwrap().unwrap();
-          match sub.try_next().await.unwrap() {
-            Some(eth_log) => {
-              let hash = eth_log.transaction_hash.unwrap();
-              let mut log_set = ethlog_hashset.write().await;
-              let _ = log_set.insert(hash);
-              if eth_log.topics[0] == added_topic {
-                info!("added topic");
-                listen_contract.process_validator_add_or_update_event(eth_log, &added_topic, ValidatorEventType::ADDED).await;
-              // } else if eth_log.topics[0] == updated_topic {
-              //   info!("updated topic");
-              //   listen_contract.process_validator_event(eth_log, &updated_topic, ValidatorEventType::UPDATED).await;
-              } else if eth_log.topics[0] == deleted_topic {
-                info!("deleted topic");
-                listen_contract.process_validator_deleted_event(eth_log, &deleted_topic).await;
-              } else {
-                error!("unkown topic");
-              }
-            },
-            None => { 
-              error!("none event"); 
-              break;
+impl Contract {
+    pub fn new<P: AsRef<Path>>(base_dir: P, operator_pk: PublicKey) -> Result<Self, String> {
+        let config = ContractConfig::from_file(CONTRACT_CONFIG_FILE)?;
+        let record = match ContractRecord::from_file(base_dir.as_ref().join(CONTRACT_RECORD_FILE)) {
+            Ok(record) => record,
+            Err(err_str) => {
+                warn!("Can't recover from contract record file {}, get current block number from contract", err_str);
+                ContractRecord { block_num: 0 }
             }
-          }
-        }
-      }
-    });
-    
-  }
-
-  pub async fn process_validator_info(&self, eth_log: web3::ethabi::Log, event_type: ValidatorEventType) {
-    let address = match &eth_log.params[0].value {
-      token::Token::Address(address) => Some(address),
-      _ => None
-    }.unwrap();
-
-    // need a function convert address to id
-
-    let public_key = match &eth_log.params[1].value {
-      token::Token::Bytes(public_key) => Some(public_key),
-      _ => None
-    }.unwrap();
-
-    let validator_id = ListenContract::convert_publick_key_to_u64(public_key);
-  
-    let validator = Validator {
-      id: validator_id,
-      validator_address: address.clone(),
-      validator_public_key: public_key.clone()
-    };
-    if let token::Token::Array(operators) = &eth_log.params[2].value {
-
-      let mut included_self = false;
-      let mut self_operator_id: u64 = 0;
-      // check self is added to a validator
-      let operators_list : Vec<Operator> = operators.into_iter().map(|operator_tuple| {
-        let operator = match operator_tuple {
-          token::Token::Tuple(tuple) => {
-            let id = match tuple[0] {
-              token::Token::Uint(id) => Some(id.as_u64()) ,
-              _ => None
-            };
-            let node_public_key = match &tuple[1] {
-              token::Token::Bytes(node_public_key) => Some(node_public_key),
-              _ => None
-            };
-            if &self.node_public_key == node_public_key.unwrap() {
-              included_self = true;
-              self_operator_id = id.unwrap() + 1
-            }
-
-            // check self is included in the list 
-
-            let shared_publick_key = match &tuple[2] {
-              token::Token::Bytes(shared_publick_key) => Some(shared_publick_key),
-              _ => None
-            };
-            let encrypted_key = match &tuple[3] {
-              token::Token::Bytes(encrypted_key) => Some(encrypted_key),
-              _ => None
-            };
-            let opeartor = Operator {
-              id : id.unwrap() + 1, // 0 is a reserved id for threshold signature, so operator id should start from 1
-              node_public_key: node_public_key.unwrap().clone(),
-              shared_public_key: shared_publick_key.unwrap().clone(),
-              encrypted_key: encrypted_key.unwrap().clone()
-            };
-            Some(opeartor)
-          },
-          _ => None
         };
-        operator.unwrap()
-      }).collect();
+        let contract_store_path = base_dir
+            .as_ref()
+            .join(CONTRACT_STORE_FILE)
+            .to_str()
+            .ok_or(("Can't get contract store path").to_string())?
+            .to_owned();
+        let store =
+            Store::new(&contract_store_path).map_err(|e| format!("Can't create contract store {:?}", e))?;
+        let db = Database::new(base_dir.as_ref().join(CONTRACT_DATABASE_FILE))
+            .map_err(|e| format!("can't create contract database {:?}", e))?;
+        Ok(Self {
+            config,
+            record,
+            db,
+            operator_pk,
+            store,
+            base_dir: base_dir.as_ref().to_path_buf(),
+            handlers: Arc::new(RwLock::new(HashMap::new())),
+            filter_builder: None,
+        })
+    }
 
-      if included_self {
-        {
-          match self.validators_map.read().await.get(&validator_id) {
-            Some(_) => { 
-              info!("validator already exists");
-              return; 
-            },
-            None => {}
-          }
+    pub async fn check_operator_id(&self) {
+        let op = query_operator_from_contract(&self.config, *SELF_OPERATOR_ID.get().unwrap()).await.unwrap();
+        if op.public_key != self.operator_pk.0 {
+            panic!("operator id is not consistent with smart contract! Please input right operator id");
         }
-        self.validators_map.write().await.insert(validator_id, Validator {
-          id: validator_id,
-          validator_address: address.clone(),
-          validator_public_key: public_key.to_vec()
+        self.db.insert_operator(op).await;
+    }
+
+    pub fn spawn(base_dir: PathBuf, operator_pk: PublicKey, tx: MonitoredSender<ContractCommand>) {
+        tokio::spawn(async move {
+            let mut contract = Contract::new(base_dir, operator_pk)
+                .map_err(|e| {
+                    error!("contract error: {}", e);
+                })
+                .unwrap();
+            contract.construct_filter();
+            contract.check_operator_id().await;
+            contract.get_logs_from_contract(tx.clone());
+            contract.monitor_validator_paidblock(tx.clone());
+            contract.listen_logs(tx);
         });
-        self.validator_operators_map.write().await.insert(validator_id, operators_list);
-
-        // notify and send pk to start consensus
-        match event_type {
-          ValidatorEventType::ADDED => {
-            let _ = self.channel.send(ValidatorCommand::Start(validator)).await;
-          },
-          ValidatorEventType::UPDATED => {
-            // stop and start 
-            let _ = self.channel.send(ValidatorCommand::Stop(validator.clone())).await;
-            let _ = self.channel.send(ValidatorCommand::Start(validator)).await;
-          },
-          _ => {}
-        };
-        
-      } else {
-        info!("This node is not included in this event. Don't need to do anything.")
-      }
-      
     }
-  }
 
-  pub async fn process_validator_deleted(&self, eth_log: web3::ethabi::Log) {
-    let address = match &eth_log.params[0].value {
-      token::Token::Address(address) => Some(address),
-      _ => None
-    }.unwrap();
-
-    let public_key = match &eth_log.params[1].value {
-      token::Token::Bytes(public_key) => Some(public_key),
-      _ => None
-    }.unwrap();
-
-    let validator_id = ListenContract::convert_publick_key_to_u64(public_key);
-
-    // check self is included in this validators
-    match self.validators_map.write().await.remove(&validator_id) {
-      Some(validator) => {
-        let _ = self.channel.send(ValidatorCommand::Stop(validator)).await;
-      }, 
-      None => {
-        let validator = Validator {
-          id: validator_id,
-          validator_address: address.clone(),
-          validator_public_key: public_key.clone()
-        };
-        let _ = self.channel.send(ValidatorCommand::Stop(validator)).await;
-      }
+    pub fn construct_filter(&mut self) {
+        let config = &self.config;
+        let va_reg_topic =
+            H256::from_slice(&hex::decode(&config.validator_registration_topic).unwrap());
+        let va_rm_topic = H256::from_slice(&hex::decode(&config.validator_removal_topic).unwrap());
+        let ini_reg_topic =
+            H256::from_slice(&hex::decode(&config.initializer_registration_topic).unwrap());
+        let minipool_created_topic =
+            H256::from_slice(&hex::decode(&config.initializer_minipool_created_topic).unwrap());
+        let minipool_ready_topic =
+            H256::from_slice(&hex::decode(&config.initializer_minipool_ready_topic).unwrap());
+        let filter_builder = FilterBuilder::default()
+            .address(vec![Address::from_slice(
+                &hex::decode(&config.safestake_network_address).unwrap(),
+            )])
+            .topics(
+                Some(vec![
+                    va_reg_topic,
+                    va_rm_topic,
+                    ini_reg_topic,
+                    minipool_created_topic,
+                    minipool_ready_topic,
+                ]),
+                None,
+                None,
+                None,
+            );
+        self.filter_builder = Some(filter_builder);
+        let mut handlers = self.handlers.write();
+        handlers.insert(va_reg_topic, Box::new(ValidatorRegistrationHandler {}));
+        handlers.insert(va_rm_topic, Box::new(ValidatorRemovalHandler {}));
+        handlers.insert(ini_reg_topic, Box::new(InitializerRegistrationHandler {}));
+        handlers.insert(minipool_created_topic, Box::new(MinipoolCreatedHandler {}));
+        handlers.insert(minipool_ready_topic, Box::new(MinipoolReadyHandler {}));
     }
-  }
 
-  pub async fn process_validator_add_or_update_event(&self, log: Log, topic: &H256, event_type: ValidatorEventType) {
-    let oess = ParamType::Tuple(vec![ParamType::Uint(256 as usize), ParamType::Bytes, ParamType::Bytes, ParamType::Bytes]);
-    let event_name = match event_type {
-      ValidatorEventType::ADDED => { "ValidatorAdded".to_string() },
-      ValidatorEventType::UPDATED => { "ValidatorUpdated".to_string() },
-      _ => { "ERROR".to_string() }
-    };
-    
-    let validator_event = Event {
-      name: event_name,
-      inputs: vec![
-        EventParam {
-          name: "ownerAddress".to_string(),
-          kind: ParamType::Address,
-          indexed: false
-        }, 
-        EventParam {
-          name: "publicKey".to_string(),
-          kind: ParamType::Bytes,
-          indexed: false
+    pub fn monitor_validator_paidblock(&mut self, sender: MonitoredSender<ContractCommand>) {
+        let config = self.config.clone();
+        let db = self.db.clone();
+        tokio::spawn(async move {
+            let mut query_interval = tokio::time::interval(Duration::from_secs(3600 * 6));
+            loop {
+                tokio::select! {
+                    _ = query_interval.tick() => {
+                        match db.query_all_validator_address().await {
+                            Ok(owners) => {
+                                for owner in owners {
+                                    match check_account(&config, owner).await {
+                                        Ok(t) => {
+                                            if t {
+                                                // stop validators releated to the block
+                                                match db.query_validator_by_address(owner).await {
+                                                    Ok(validators) => { 
+                                                        for va in validators {
+                                                            if va.active {
+                                                                db.disable_validator(hex::encode(&va.public_key)).await;
+                                                                let _ = sender.send(ContractCommand::StopValidator(va)).await;
+                                                            }
+                                                        }
+                                                    },
+                                                    Err(e) => {
+                                                        error!("query validator releated to the address failed {:?}", e);
+                                                    }
+                                                }
+                                            } else {
+                                                match db.query_validator_by_address(owner).await {
+                                                    Ok(validators) => { 
+                                                        for va in validators {
+                                                            if !va.active {
+                                                                db.disable_validator(hex::encode(&va.public_key)).await;
+                                                                let _ = sender.send(ContractCommand::ActivateValidator(va)).await;
+                                                                
+                                                            }
+                                                        }
+                                                    },
+                                                    Err(e) => {
+                                                        error!("query validator releated to the address failed {:?}", e);
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        Err(e) => {
+                                            error!("check account failed {}", e.as_str());
+                                        }
+                                    }
+                                }
+                            },
+                            Err(e) => {
+                                error!("query validator address failed {:?}", e);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+
+    pub fn get_logs_from_contract(&mut self, sender: MonitoredSender<ContractCommand>) {
+        let mut record = self.record.clone();
+        let config = self.config.clone();
+        let record_path = self.base_dir.join(CONTRACT_RECORD_FILE);
+        let store = self.store.clone();
+        let db = self.db.clone();
+        let operator_pk = self.operator_pk.clone();
+        let operator_pk_base64 = base64::encode(&operator_pk);
+        let filter_builder = self.filter_builder.as_ref().unwrap().clone();
+        let handlers = self.handlers.clone();
+        let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(60 * 3)).await;
+            if record.block_num == 0 {
+                get_block_number(&mut record).await;
+                update_record_file(&record, &record_path);
+            }
+            let mut query_interval = tokio::time::interval(Duration::from_secs(60 * 5));
+            loop {
+                tokio::select! {
+                    _ = query_interval.tick() => {
+                        let transport = WebSocket::new(transport_url).await;
+                        match &transport {
+                            Ok(_) => {},
+                            Err(e) => {
+                                warn!("can't connect to websocket {}", e);
+                                tokio::time::sleep(Duration::from_secs(60 * 3)).await;
+                                continue;
+                            }
+                        }
+                        let web3 = Web3::new(transport.unwrap());
+                        let filter = filter_builder
+                            .clone()
+                            .from_block(BlockNumber::Number(U64::from(record.block_num)))
+                            .limit(20)
+                            .build();
+                        match web3.eth().logs(filter).await {
+                            Ok(logs) => {
+                                info!("Get {} logs.", &logs.len());
+                                if logs.len() == 0 {
+                                    get_block_number(&mut record).await;
+                                }
+                                for log in logs {
+                                    record.block_num = log
+                                        .block_number
+                                        .map_or_else(|| record.block_num, |bn| bn.as_u64()) + 1;
+
+                                    let listened = match log.transaction_hash {
+                                        Some(hash) => log_listened(&store, &hash).await,
+                                        None => false,
+                                    };
+                                    if listened {
+                                        info!("This log has been lestened, continue");
+                                        continue;
+                                    }
+                                    let topic = log.topics[0].clone();
+                                    match handlers.read().get(&topic) {
+                                        Some(handler) => {
+                                            match handler
+                                                .process(
+                                                    log,
+                                                    &db,
+                                                    &operator_pk_base64,
+                                                    &config,
+                                                    &sender,
+                                                )
+                                                .await
+                                            {
+                                                Ok(_) => {}
+                                                Err(e) => {
+                                                    error!("error hapens, reason: {}", e.as_str());
+                                                }
+                                            }
+                                        }
+                                        None => {
+                                            error!("Can't find handler");
+                                        }
+                                    };
+                                }
+                                
+                            }
+                            Err(e) => {
+                                error!("{}, {}", ContractError::LogError.as_str(), e);
+                                continue;
+                            }
+                        }
+                        update_record_file(&record, &record_path);
+                    }
+                }
+            }
+        });
+    }
+
+    pub fn listen_logs(&self, sender: MonitoredSender<ContractCommand>) {
+        let config = self.config.clone();
+        let store = self.store.clone();
+        let db = self.db.clone();
+        let operator_pk = self.operator_pk.clone();
+        let operator_pk_base64 = base64::encode(&operator_pk);
+        let filter_builder = self.filter_builder.as_ref().unwrap().clone();
+        let filter = filter_builder.build();
+        let handlers = self.handlers.clone();
+        let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
+        tokio::spawn(async move {
+            loop {
+                let transport = WebSocket::new(transport_url).await;
+                match &transport {
+                    Ok(_) => {},
+                    Err(e) => {
+                        warn!("can't connect to websocket {}", e);
+                        tokio::time::sleep(Duration::from_secs(60 * 3)).await;
+                        continue;
+                    }
+                }
+                let web3 = Web3::new(transport.unwrap());
+                let mut sub = web3
+                    .eth_subscribe()
+                    .subscribe_logs(filter.clone())
+                    .await
+                    .unwrap();
+                loop {
+                    match sub.try_next().await.unwrap() {
+                        Some(log) => {
+                            let topic = log.topics[0].clone();
+                            let transaction_hash = log.transaction_hash.clone();
+                            match handlers.read().get(&topic) {
+                                Some(handler) => {
+                                    match handler
+                                        .process(
+                                            log,
+                                            &db,
+                                            &operator_pk_base64,
+                                            &config,
+                                            &sender,
+                                        )
+                                        .await
+                                    {
+                                        Ok(_) => {
+                                            // store hash to local database
+                                            match transaction_hash {
+                                                Some(hash) => store.write(hash.as_bytes().to_vec(), vec![0]).await,
+                                                None => {}
+                                            };
+                                        }
+                                        Err(e) => {
+                                            error!("error hapens, reason: {}", e.as_str());
+                                        }
+                                    }
+                                }
+                                None => {
+                                    error!("Can't find handler");
+                                }
+                            };
+                        }
+                        None => {
+                            error!("none event");
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
+
+pub async fn get_block_number(record: &mut ContractRecord) {
+    let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
+    let web3 = Web3::new(WebSocket::new(transport_url).await.unwrap());
+    // if can't get block number, reset to zero.
+    record.block_num = web3.eth().block_number().await.map_or_else(
+        |_| {
+            error!("{}", ContractError::BlockNumberError.as_str());
+            0
         },
-        EventParam {
-          name: "oessList".to_string(),
-          kind: ParamType::Array(Box::new(oess)),
-          indexed: false
-        }],
-      anonymous: false
-    };
+        |number| number.as_u64(),
+    );
+}
 
-    let parse_log = validator_event.parse_log(RawLog {
-      topics: vec![Hash::from_slice(&topic.0)],
-      data: log.data.0
-    }).unwrap();
+pub async fn get_current_block() -> Result<U64, ContractError> {
+    let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
+    let web3 = Web3::new(WebSocket::new(transport_url).await.unwrap());
+    web3.eth().block_number().await.or_else(|e| {
+        error!("{:?} {}", e, ContractError::BlockNumberError.as_str());
+        Err(ContractError::BlockNumberError)
+    })
+}
 
-    self.process_validator_info(parse_log, event_type).await;
-  }
+pub fn update_record_file<P: AsRef<Path>>(record: &ContractRecord, path: P) {
+    record
+        .to_file(path)
+        .map_err(|e| {
+            error!("{} error: {}", ContractError::RecordFileError.as_str(), e);
+        })
+        .unwrap();
+}
 
-
-  pub async fn process_validator_deleted_event(&self, log: Log, topic: &H256) {
-    let validators_deleted_event = Event {
-      name: "ValidatorDeleted".to_string(),
-      inputs: vec![
-        EventParam {
-          name: "ownerAddress".to_string(),
-          kind: ParamType::Address,
-          indexed: false
-        },
-        EventParam {
-          name: "publicKey".to_string(),
-          kind: ParamType::Bytes,
-          indexed: false
+pub async fn log_listened(store: &Store, log_hash: &H256) -> bool {
+    match store.read(log_hash.as_fixed_bytes().to_vec()).await {
+        Ok(res) => res.map_or_else(|| false, |_| true),
+        Err(_) => {
+            error!("{}", ContractError::StoreError.as_str());
+            false
         }
-      ],
-      anonymous: false
-    };
-    let parse_log = validators_deleted_event.parse_log(RawLog {
-      topics: vec![Hash::from_slice(&topic.0)],
-      data: log.data.0
-    }).unwrap();
-    self.process_validator_deleted(parse_log).await;
-  }
+    }
+}
 
-  pub fn convert_publick_key_to_u64(public_key: &Vec<u8>) -> u64 {
-    let mut little_endian: [u8; 8] = [0; 8];
-    let mut i = 0;
-    for elem in little_endian.iter_mut() {
-        *elem = public_key[i];
-        i = i + 1;
-    } 
-    let id = u64::from_le_bytes(little_endian);
-    id 
-  } 
+pub async fn process_validator_registration(
+    raw_log: Log,
+    db: &Database,
+    operator_pk_base64: &String,
+    config: &ContractConfig,
+    sender: &MonitoredSender<ContractCommand>,
+) -> Result<(), ContractError> {
+    info!("process_validator_registration");
+    let validator_reg_event = Event {
+        name: CONTRACT_VA_REG_EVENT_NAME.to_string(),
+        inputs: vec![
+            EventParam {
+                name: "ownerAddress".to_string(),
+                kind: ParamType::Address,
+                indexed: true,
+            },
+            EventParam {
+                name: "publicKey".to_string(),
+                kind: ParamType::Bytes,
+                indexed: false,
+            },
+            EventParam {
+                name: "operatorIds".to_string(),
+                kind: ParamType::Array(Box::new(ParamType::Uint(32))),
+                indexed: false,
+            },
+            EventParam {
+                name: "sharesPublicKeys".to_string(),
+                kind: ParamType::Array(Box::new(ParamType::Bytes)),
+                indexed: false,
+            },
+            EventParam {
+                name: "encryptedKeys".to_string(),
+                kind: ParamType::Array(Box::new(ParamType::Bytes)),
+                indexed: false,
+            },
+            EventParam {
+                name: "paidBlockNumber".to_string(),
+                kind: ParamType::Uint(256),
+                indexed: false,
+            },
+        ],
+        anonymous: false,
+    };
+    let log = validator_reg_event
+        .parse_log(RawLog {
+            topics: raw_log.topics,
+            data: raw_log.data.0,
+        })
+        .map_err(|_| ContractError::LogParseError)?;
+    let address = log.params[0]
+        .value
+        .clone()
+        .into_address()
+        .ok_or(ContractError::LogParseError)?;
+    let va_pk = log.params[1]
+        .value
+        .clone()
+        .into_bytes()
+        .ok_or(ContractError::LogParseError)?;
+    let validator_id = convert_va_pk_to_u64(&va_pk);
+    let operator_tokens = log.params[2]
+        .value
+        .clone()
+        .into_array()
+        .ok_or(ContractError::LogParseError)?;
+    let op_ids: Vec<u32> = operator_tokens
+        .into_iter()
+        .map(|token| {
+            let op_id = token.into_uint().unwrap();
+            op_id.as_u32()
+        })
+        .collect();
+    info!("operator ids {:?}", op_ids);
+    let mut operator_pks: Vec<String> = Vec::new();
+    // query local database first, if not existing, query from contract
+    for op_id in &op_ids {
+        match db
+            .query_operator_public_key_by_id(*op_id)
+            .await
+            .map_err(|_| ContractError::DatabaseError)?
+        {
+            Some(pk_str) => {
+                operator_pks.push(pk_str);
+            }
+            None => {
+                let operator = query_operator_from_contract(config, *op_id).await?;
+                operator_pks.push(base64::encode(&operator.public_key));
+                db.insert_operator(operator).await;
+            }
+        };
+    }
+    if operator_pks.contains(operator_pk_base64) {
+        set_global_operator_id(&operator_pks, &operator_pk_base64, &op_ids);
+        let shared_pks = parse_bytes_token(log.params[3].value.clone())?;
+        let encrypted_sks = parse_bytes_token(log.params[4].value.clone())?;
+        // TODO paid block should store for tokenomics
+        let _paid_block_number = log.params[5]
+            .value
+            .clone()
+            .into_uint()
+            .ok_or(ContractError::LogParseError)?
+            .as_u64();
+        // check array length should be same
+        if shared_pks.len() != encrypted_sks.len() {
+            return Err(ContractError::InvalidArgumentError);
+        }
+        // binary operator publics
+        let op_pk_bn: Vec<Vec<u8>> = operator_pks
+            .into_iter()
+            .map(|s| base64::decode(s).unwrap())
+            .collect();
+        //send command to node
+        let validator = Validator {
+            id: validator_id,
+            owner_address: address,
+            public_key: va_pk.try_into().unwrap(),
+            releated_operators: op_ids,
+            active: true
+        };
+        // save validator in local database
+        db.insert_validator(validator.clone()).await;
+        let _ = sender
+            .send(ContractCommand::StartValidator(
+                validator,
+                op_pk_bn,
+                shared_pks,
+                encrypted_sks,
+            ))
+            .await;
+    }
+    Ok(())
+}
+
+pub async fn process_validator_removal(
+    raw_log: Log,
+    db: &Database,
+    _operator_pk_base64: &String,
+    _config: &ContractConfig,
+    sender: &MonitoredSender<ContractCommand>,
+) -> Result<(), ContractError> {
+    info!("process_validator_removal");
+    let validator_rm_event = Event {
+        name: CONTRACT_VA_RM_EVENT_NAME.to_string(),
+        inputs: vec![
+            EventParam {
+                name: "ownerAddress".to_string(),
+                kind: ParamType::Address,
+                indexed: true,
+            },
+            EventParam {
+                name: "publicKey".to_string(),
+                kind: ParamType::Bytes,
+                indexed: false,
+            },
+        ],
+        anonymous: false,
+    };
+    let log = validator_rm_event
+        .parse_log(RawLog {
+            topics: raw_log.topics,
+            data: raw_log.data.0,
+        })
+        .map_err(|_| ContractError::LogParseError)?;
+    let owner_address = log.params[0]
+        .value
+        .clone()
+        .into_address()
+        .ok_or(ContractError::LogParseError)?;
+    let va_pk = log.params[1]
+        .value
+        .clone()
+        .into_bytes()
+        .ok_or(ContractError::LogParseError)?;
+    let id = convert_va_pk_to_u64(&va_pk);
+
+    let va_str = hex::encode(&va_pk);
+
+    db.delete_validator(va_str).await;
+
+    let _ = sender
+        .send(ContractCommand::RemoveValidator(Validator {
+            id,
+            owner_address,
+            public_key: va_pk.try_into().unwrap(),
+            releated_operators: vec![],
+            active: true
+        }))
+        .await;
+    Ok(())
+}
+
+pub async fn process_initializer_registration(
+    raw_log: Log,
+    db: &Database,
+    operator_pk_base64: &String,
+    config: &ContractConfig,
+    sender: &MonitoredSender<ContractCommand>,
+) -> Result<(), ContractError> {
+    let ini_reg_event = Event {
+        name: CONTRACT_INI_REG_EVENT_NAME.to_string(),
+        inputs: vec![
+            EventParam {
+                name: "initializerId".to_string(),
+                kind: ParamType::Uint(32),
+                indexed: false,
+            },
+            EventParam {
+                name: "ownerAddress".to_string(),
+                kind: ParamType::Address,
+                indexed: false,
+            },
+            EventParam {
+                name: "operatorIds".to_string(),
+                kind: ParamType::Array(Box::new(ParamType::Uint(32))),
+                indexed: false,
+            },
+        ],
+        anonymous: false,
+    };
+    let log = ini_reg_event
+        .parse_log(RawLog {
+            topics: raw_log.topics,
+            data: raw_log.data.0,
+        })
+        .map_err(|_| ContractError::LogParseError)?;
+    let id = log.params[0]
+        .value
+        .clone()
+        .into_uint()
+        .ok_or(ContractError::LogParseError)?
+        .as_u32();
+    let address = log.params[1]
+        .value
+        .clone()
+        .into_address()
+        .ok_or(ContractError::LogParseError)?;
+    let operator_tokens = log.params[2]
+        .value
+        .clone()
+        .into_array()
+        .ok_or(ContractError::LogParseError)?;
+    let op_ids: Vec<u32> = operator_tokens
+        .into_iter()
+        .map(|token| {
+            let op_id = token.into_uint().unwrap();
+            op_id.as_u32()
+        })
+        .collect();
+
+    let mut operator_pks: Vec<String> = Vec::new();
+    println!("operator ids {:?}", op_ids);
+    for op_id in &op_ids {
+        match db
+            .query_operator_public_key_by_id(*op_id)
+            .await
+            .map_err(|_| ContractError::DatabaseError)?
+        {
+            Some(pk_str) => {
+                operator_pks.push(pk_str);
+            }
+            None => {
+                let operator = query_operator_from_contract(config, *op_id).await?;
+                operator_pks.push(base64::encode(&operator.public_key));
+                db.insert_operator(operator).await;
+            }
+        };
+    }
+    if operator_pks.contains(operator_pk_base64) {
+        set_global_operator_id(&operator_pks, &operator_pk_base64, &op_ids);
+        let initializer = Initializer {
+            id,
+            owner_address: address,
+            releated_operators: op_ids,
+            validator_pk: None,
+            minipool_address: None,
+        };
+        let op_pk_bn: Vec<Vec<u8>> = operator_pks
+            .into_iter()
+            .map(|s| base64::decode(s).unwrap())
+            .collect();
+        db.insert_initializer(initializer.clone()).await;
+        let _ = sender.send(ContractCommand::StartInitializer(initializer, op_pk_bn)).await;
+    } else {
+        info!("This node is not included in this initializer registration event. Continue.");
+    }
+    Ok(())
+}
+
+pub async fn process_minipool_created(
+    raw_log: Log,
+    db: &Database,
+    _operator_pk_base64: &String,
+    _config: &ContractConfig,
+    sender: &MonitoredSender<ContractCommand>,
+) -> Result<(), ContractError> {
+    let minipool_created_event = Event {
+        name: CONTRACT_MINIPOOL_CREATED_EVENT_NAME.to_string(),
+        inputs: vec![
+            EventParam {
+                name: "initializerId".to_string(),
+                kind: ParamType::Uint(32),
+                indexed: false,
+            },
+            EventParam {
+                name: "validatorPublicKey".to_string(),
+                kind: ParamType::Bytes,
+                indexed: false,
+            },
+            EventParam {
+                name: "minipoolAddress".to_string(),
+                kind: ParamType::Address,
+                indexed: false,
+            },
+        ],
+        anonymous: false,
+    };
+    let log = minipool_created_event
+        .parse_log(RawLog {
+            topics: raw_log.topics,
+            data: raw_log.data.0,
+        })
+        .map_err(|_| ContractError::LogParseError)?;
+    let id = log.params[0]
+        .value
+        .clone()
+        .into_uint()
+        .ok_or(ContractError::LogParseError)?
+        .as_u32();
+    let va_pk = log.params[1]
+        .value
+        .clone()
+        .into_bytes()
+        .ok_or(ContractError::LogParseError)?;
+    let minipool_address = log.params[2]
+        .value
+        .clone()
+        .into_address()
+        .ok_or(ContractError::LogParseError)?;
+
+    match db
+        .update_initializer(id, hex::encode(&va_pk), format!("{0:0x}", minipool_address))
+        .await
+    {
+        Ok(updated) => {
+            if updated != 0 {
+                let (op_pks, op_ids) = db
+                    .query_initializer_releated_op_pks(id)
+                    .await
+                    .map_err(|_| {
+                        error!("Can't query initializer releated op pks");
+                        ContractError::DatabaseError
+                    })?;
+                let op_pk_bns = op_pks.into_iter()
+                    .map(|s| base64::decode(s).unwrap())
+                    .collect();
+                let _ = sender.send(ContractCommand::MiniPoolCreated(
+                    id,
+                    va_pk.try_into().unwrap(),
+                    op_pk_bns,
+                    op_ids,
+                    minipool_address,
+                )).await;
+            }
+            Ok(())
+        }
+        Err(e) => {
+            error!("Can't update initializer {}", e);
+            Err(ContractError::DatabaseError)
+        }
+    }
+}
+
+pub async fn process_minipool_ready(
+    raw_log: Log,
+    db: &Database,
+    _operator_pk_base64: &String,
+    _config: &ContractConfig,
+    sender: &MonitoredSender<ContractCommand>,
+) -> Result<(), ContractError> {
+    let minipool_ready_event = Event {
+        name: CONTRACT_MINIPOOL_READY_EVENT_NAME.to_string(),
+        inputs: vec![EventParam {
+            name: "initializerId".to_string(),
+            kind: ParamType::Uint(32),
+            indexed: false,
+        }],
+        anonymous: false,
+    };
+    let log = minipool_ready_event
+        .parse_log(RawLog {
+            topics: raw_log.topics,
+            data: raw_log.data.0,
+        })
+        .map_err(|_| ContractError::LogParseError)?;
+    let id = log.params[0]
+        .value
+        .clone()
+        .into_uint()
+        .ok_or(ContractError::LogParseError)?
+        .as_u32();
+    match db.query_initializer(id).await {
+        Ok(initializer_option) => match initializer_option {
+            Some(initializer) => {
+                let _ = initializer
+                    .validator_pk
+                    .ok_or(ContractError::DatabaseError)?;
+                let _ = initializer
+                    .minipool_address
+                    .ok_or(ContractError::DatabaseError)?;
+                let (op_pks, op_ids) = db
+                    .query_initializer_releated_op_pks(id)
+                    .await
+                    .map_err(|_| {
+                        error!("Can't query initializer releated op pks");
+                        ContractError::DatabaseError
+                    })?;
+                
+                let op_pks_bn = op_pks.into_iter()
+                    .map(|s| base64::decode(s).unwrap())
+                    .collect();
+                let _ = sender.send(ContractCommand::MiniPoolReady(
+                    id,
+                    initializer.validator_pk.unwrap(),
+                    op_pks_bn,
+                    op_ids,
+                    initializer.minipool_address.unwrap(),
+                )).await;
+                Ok(())
+            }
+            None => Ok(()),
+        },
+        Err(_) => Err(ContractError::DatabaseError),
+    }
+}
+
+pub async fn query_operator_from_contract(
+    config: &ContractConfig,
+    id: u32,
+) -> Result<Operator, ContractError> {
+    let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
+    let web3 = Web3::new(WebSocket::new(transport_url).await.unwrap());
+    let raw_abi = std::fs::read_to_string(&config.safestake_registry_abi_path).or_else(|e| {
+        error!(
+            "Can't read from {} {}",
+            &config.safestake_registry_abi_path, e
+        );
+        Err(ContractError::FileError)
+    })?;
+    let raw_json: Value = serde_json::from_str(&raw_abi).unwrap();
+    let abi = raw_json["abi"].to_string();
+    let address = Address::from_slice(&hex::decode(&config.safestake_registry_address).unwrap());
+    let contract = EthContract::from_json(web3.eth(), address, abi.as_bytes()).or_else(|e| {
+        error!("Can't create contract from json {}", e);
+        Err(ContractError::ContractParseError)
+    })?;
+    let (name, address, pk, _, _, _, _): (String, Address, Vec<u8>, U256, U256, U256, bool) =
+        contract
+            .query("getOperatorById", (id,), None, Options::default(), None)
+            .await
+            .or_else(|e| {
+                error!("Can't query from contract {}", e);
+                Err(ContractError::QueryError)
+            })?;
+    Ok(Operator {
+        id,
+        name,
+        address,
+        public_key: pk.try_into().unwrap(),
+    })
+}
+
+// check the paid block number of address. If the block is behind the current block number, stop validators releated to the address
+pub async fn check_account (
+    config: &ContractConfig,
+    owner: Address
+) -> Result<bool, ContractError> {
+    let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
+    let web3 = Web3::new(WebSocket::new(transport_url).await.unwrap());
+    let raw_abi = std::fs::read_to_string(&config.safestake_network_abi_path).or_else(|e| {
+        error!(
+            "Can't read from {} {}",
+            &config.safestake_network_abi_path, e
+        );
+        Err(ContractError::FileError)
+    })?;
+    let raw_json: Value = serde_json::from_str(&raw_abi).unwrap();
+    let abi = raw_json["abi"].to_string();
+    let address = Address::from_slice(&hex::decode(&config.safestake_network_address).unwrap());
+    let contract = EthContract::from_json(web3.eth(), address, abi.as_bytes()).or_else(|e| {
+        error!("Can't create contract from json {}", e);
+        Err(ContractError::ContractParseError)
+    })?;
+    let paid_block: U256 = contract.query("getAccountPaidBlockNumber", (owner, ), None, Options::default(), None).await.or_else(|e| {
+        error!("Can't getAccountPaidBlockNumber from contract {}", e);
+        Err(ContractError::QueryError)
+    })?;
+    let current_block = get_current_block().await?;
+    info!("current block {:?}, paid block {:?} , account {}", current_block, paid_block,  owner);
+    if current_block.as_u64() >= paid_block.as_u64() {
+        Ok(true)
+    } else {    
+        Ok(false)
+    }
+}
+
+pub fn parse_bytes_token(tk: token::Token) -> Result<Vec<Vec<u8>>, ContractError> {
+    let token_arr = tk.into_array().ok_or(ContractError::LogParseError)?;
+    let res: Vec<Vec<u8>> = token_arr
+        .into_iter()
+        .map(|token| token.into_bytes().unwrap())
+        .collect();
+    Ok(res)
+}
+
+// only call once
+pub fn set_global_operator_id(pks: &Vec<String>, self_pk: &str, ids: &Vec<u32>) {
+    if !SELF_OPERATOR_ID.initialized() {
+        let index = pks.iter().position(|x| *x == *self_pk).unwrap();
+        SELF_OPERATOR_ID.set(ids[index]).unwrap();
+        info!("Set self operator id successfully")
+    }
 }

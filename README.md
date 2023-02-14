@@ -80,6 +80,15 @@ Fill your WS_URL
 
 ## Run
 ### Run your operator
+First run the `dvf_key_tool` to generate key for your operator, and use the public key to register on the web to get your operator id.
+```
+sudo docker compose -f  docker-compose-operator.yml up dvf_key_tool
+```
+Update your operator id in `.env` file.
+```
+OPERATOR_ID=[Your operator id]
+```
+Run your operator.
 ```
 sudo docker compose -f  docker-compose-operator.yml up -d
 ```

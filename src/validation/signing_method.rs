@@ -18,13 +18,13 @@ use types::*;
 use url::Url;
 use web3signer::{ForkInfo, SigningRequest, SigningResponse};
 use crate::node::dvfcore::{DvfSigner, DvfPerformanceRequest};
-use crate::node::config::{API_ADDRESS};
+use crate::node::config::{API_ADDRESS, COLLECT_PERFORMANCE_URL};
+use crate::node::utils::request_to_web_server;
 pub use web3signer::Web3SignerObject;
 use chrono::prelude::*;
 use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
 use std::time::Duration;
 use tokio::time::sleep;
-
 mod web3signer;
 
 #[derive(Debug, PartialEq)]
@@ -238,108 +238,62 @@ impl SigningMethod {
             SigningMethod::DistributedKeystore { dvf_signer, .. } => {
                 let _timer =
                     metrics::start_timer_vec(&metrics::SIGNING_TIMES, &[metrics::LOCAL_KEYSTORE]);
-                // if dvf_signer.is_leader(SigningMethod::convert_signingroot_to_u64(&signing_root)).await {
-                if dvf_signer.is_leader(signing_context.epoch.as_u64()).await {
-                    let (slot, duty) = match signable_message {
-                        SignableMessage::RandaoReveal(_) => {
-                            (Slot::new(0 as u64), "RANDAO")
-                        }
-                        SignableMessage::AttestationData(a) => {
-                            (a.slot, "ATTESTER")
-                        },
-                        SignableMessage::BeaconBlock(b) => {
-                            (b.slot(), "PROPOSER")
-                        },
-                        SignableMessage::SignedAggregateAndProof(_) => {
-                            (Slot::new(0 as u64), "AGGREGATE")
-                        }
-                        SignableMessage::SelectionProof(s) => {
-                            (s, "SELECT")
-                        }
-                        SignableMessage::SyncSelectionProof(_) => {
-                            (Slot::new(0 as u64), "SYNC_SELECT")
-                        }
-                        SignableMessage::SyncCommitteeSignature{..} => {
-                            (Slot::new(0 as u64), "SYNC_COMMITTEE")
-                        }
-                        SignableMessage::SignedContributionAndProof(_) => {
-                            (Slot::new(0 as u64), "CONTRIB")
-                        }
-                        _ => { (Slot::new(0 as u64), "ERROR") }
-                    };
+                // Following LocalKeystore, if the code logic reaches here, then it has already passed all checks of this duty, and
+                // it is safe (from this operator's point of view) to sign it locally.
+                dvf_signer.local_sign_and_store(signing_root).await;
 
-                    log::info!("[Dvf {}/{}] Signing\t-\tSlot: {}.\tEpoch: {}.\tType: {}.\tRoot: {:?}.", 
-                               dvf_signer.operator_id, 
-                               dvf_signer.operator_committee.validator_id(),
-                               slot,
-                               signing_context.epoch.as_u64(),
-                               duty,
-                               signing_root
-                            );
+                let (slot, duty, only_aggregator) = match signable_message {
+                    SignableMessage::RandaoReveal(_) => {
+                        (Slot::new(0 as u64), "RANDAO", true)
+                    }
+                    SignableMessage::AttestationData(a) => {
+                        (a.slot, "ATTESTER", true)
+                    },
+                    SignableMessage::BeaconBlock(b) => {
+                        (b.slot(), "PROPOSER", true)
+                    },
+                    SignableMessage::SignedAggregateAndProof(x) => {
+                        (x.aggregate.data.slot, "AGGREGATE", true)
+                    }
+                    SignableMessage::SelectionProof(s) => {
+                        (s, "SELECT", false)
+                    }
+                    SignableMessage::SyncSelectionProof(_) => {
+                        (Slot::new(0 as u64), "SYNC_SELECT", false)
+                    }
+                    SignableMessage::SyncCommitteeSignature{..} => {
+                        (Slot::new(0 as u64), "SYNC_COMMITTEE", true)
+                    }
+                    SignableMessage::SignedContributionAndProof(_) => {
+                        (Slot::new(0 as u64), "CONTRIB", true)
+                    }
+                };
 
-                    let validator_pk = dvf_signer.validator_public_key();
-                    let operator_id = dvf_signer.operator_id();
-                    let dt : DateTime<Utc> = Utc::now();
+                log::info!("[Dvf {}/{}] Signing\t-\tSlot: {}.\tEpoch: {}.\tType: {}.\tRoot: {:?}.", 
+                    dvf_signer.operator_id, 
+                    dvf_signer.operator_committee.validator_id(),
+                    slot,
+                    signing_context.epoch.as_u64(),
+                    duty,
+                    signing_root
+                );
 
-                    // match dvf_signer.sign(signing_root).await {
-                    //     Ok((signature, ids)) => {
-                    //         if duty ==  "ATTESTER" || duty == "PROPOSER" {
-                    //             let request_body = DvfPerformanceRequest {
-                    //                 validator_pk,
-                    //                 operator_id,
-                    //                 operators: ids, 
-                    //                 slot: slot.as_u64(),
-                    //                 epoch: signing_context.epoch.as_u64(),
-                    //                 duty: duty.to_string(),
-                    //                 time: Utc::now().signed_duration_since(dt).num_milliseconds()
-                    //             };
-                    //             let client = reqwest::Client::new();
-                    //             let url = Url::parse(API_ADDRESS.get().unwrap()).map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
-                    //             let _ = client.post(url).json(&request_body).send().await.map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
-                    //         }
-                    //         Ok(signature)
-                    //     },
-                    //     Err(e) => {
-                    //         Err(Error::CommitteeSignFailed(format!("{:?}", e)))
-                    //     }
-                    // }
-
-                    // let task_timeout = match signable_message {
-                    //     SignableMessage::SelectionProof(s) => {
-                    //         Duration::from_secs(spec.seconds_per_slot * (signing_context.epoch.end_slot(T::slots_per_epoch())-s+1).as_u64())
-                    //     }
-                    //     _ => {
-                    //         Duration::from_secs(spec.seconds_per_slot)
-                    //     }
-                    // };
-
+                if !only_aggregator || (only_aggregator && dvf_signer.is_aggregator(signing_context.epoch.as_u64()).await) {
                     // Should NOT take more than a slot duration for two reasons:
                     // 1. if longer than slot duration, it might affect duty retrieval for other VAs (for example, previously,
                     // I set this to be the epoch remaining time for selection proof, so bad committee (VA) might take several mintues
                     // to timeout, making duties of other VAs outdated.)
                     // 2. most duties should complete in a slot
                     let task_timeout = Duration::from_secs(spec.seconds_per_slot / 2);
-
-                    let work = dvf_signer.sign(signing_root);
                     let timeout = sleep(task_timeout);
+                    let work = dvf_signer.threshold_sign(signing_root);
+
                     tokio::select!{
                         result = work => {
                             match result {
                                 Ok((signature, ids)) => {
-                                    if duty ==  "ATTESTER" || duty == "PROPOSER" {
-                                        let request_body = DvfPerformanceRequest {
-                                            validator_pk,
-                                            operator_id,
-                                            operators: ids, 
-                                            slot: slot.as_u64(),
-                                            epoch: signing_context.epoch.as_u64(),
-                                            duty: duty.to_string(),
-                                            time: Utc::now().signed_duration_since(dt).num_milliseconds()
-                                        };
-                                        let client = reqwest::Client::new();
-                                        let url = Url::parse(API_ADDRESS.get().unwrap()).map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
-                                        let _ = client.post(url).json(&request_body).send().await.map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
-                                    }
+                                    // [Issue] Several same reports will be sent to server from different aggregators
+                                    Self::dvf_report::<T>(slot, duty, dvf_signer.validator_public_key(), dvf_signer.operator_id(), ids).await?;
                                     Ok(signature)
                                 },
                                 Err(e) => {
@@ -351,28 +305,6 @@ impl SigningMethod {
                             Err(Error::CommitteeSignFailed(format!("Timeout")))
                         }
                     }
-                    // match result {
-                    //     Ok((signature, ids)) => {
-                    //         if duty ==  "ATTESTER" || duty == "PROPOSER" {
-                    //             let request_body = DvfPerformanceRequest {
-                    //                 validator_pk,
-                    //                 operator_id,
-                    //                 operators: ids, 
-                    //                 slot: slot.as_u64(),
-                    //                 epoch: signing_context.epoch.as_u64(),
-                    //                 duty: duty.to_string(),
-                    //                 time: Utc::now().signed_duration_since(dt).num_milliseconds()
-                    //             };
-                    //             let client = reqwest::Client::new();
-                    //             let url = Url::parse(API_ADDRESS.get().unwrap()).map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
-                    //             let _ = client.post(url).json(&request_body).send().await.map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
-                    //         }
-                    //         Ok(signature)
-                    //     },
-                    //     Err(e) => {
-                    //         Err(Error::CommitteeSignFailed(format!("{:?}", e)))
-                    //     }
-                    // }
                 }
                 else {
                     Err(Error::NotLeader)
@@ -381,15 +313,31 @@ impl SigningMethod {
         }
     }
 
-    pub fn convert_signingroot_to_u64(signing_root: &types::Hash256) -> u64 {
-        let mut little_endian: [u8; 8] = [0; 8];
-        let mut i = 0;
-        for elem in little_endian.iter_mut() {
-            *elem = signing_root.0[i];
-            i = i + 1;
-        } 
-        let nonce = u64::from_le_bytes(little_endian);
-        nonce 
+    async fn dvf_report<E: EthSpec>(
+        slot: Slot,
+        duty: &str, 
+        validator_pk: String, 
+        operator_id: u64, 
+        ids: Vec<u64>,
+    ) -> Result<(), Error> {
+        let dt : DateTime<Utc> = Utc::now();
+        let signing_epoch = slot.epoch(E::slots_per_epoch());
+
+        if duty ==  "ATTESTER" || duty == "PROPOSER" {
+            let request_body = DvfPerformanceRequest {
+                validator_pk,
+                operator_id,
+                operators: ids, 
+                slot: slot.as_u64(),
+                epoch: signing_epoch.as_u64(),
+                duty: duty.to_string(),
+                time: Utc::now().signed_duration_since(dt).num_milliseconds()
+            };
+            log::info!("[Dvf Request] Body: {:?}", &request_body);
+            let url_str = API_ADDRESS.get().unwrap().to_owned() + COLLECT_PERFORMANCE_URL;
+            request_to_web_server(request_body, &url_str).await.map_err(|e| Error::Web3SignerRequestFailed(e))?;
+        }
+        Ok(())
     }
 }
 

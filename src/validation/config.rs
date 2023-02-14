@@ -11,14 +11,13 @@ use directory::ensure_dir_exists;
 use eth2::types::Graffiti;
 use sensitive_url::SensitiveUrl;
 use serde_derive::{Deserialize, Serialize};
-use slog::{info, warn, Logger};
+use slog::{info, warn, Logger, error};
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use types::{Address, GRAFFITI_BYTES_LEN};
-use crate::node::config::{NodeConfig,API_ADDRESS};
-use crate::node::contract::{DEFAULT_CONTRACT_ADDRESS, DEFAULT_TRANSPORT_URL};
-
+use crate::node::config::{NodeConfig,API_ADDRESS, BOOT_ENR};
+use crate::node::contract::{DEFAULT_TRANSPORT_URL, SELF_OPERATOR_ID};
 pub const DEFAULT_BEACON_NODE: &str = "http://localhost:5052/";
 
 /// Stores the core configuration for this validator instance.
@@ -129,9 +128,12 @@ impl Config {
         }
 
         if cli_args.value_of("boot-enr").is_some() {
-            let boot_enr = parse_required(cli_args, "boot-enr")?;
+            let boot_enr: String= parse_required(cli_args, "boot-enr")?;
             info!(log, "read boot enr"; "boot-enr" => &boot_enr);
-            config.dvf_node_config.boot_enr = boot_enr;
+            BOOT_ENR.set(boot_enr).unwrap();
+        } else {
+            error!(log, "can't read boot enr, existing;" );
+            return Err("can't read boot enr".to_string());
         }
 
         let mut self_ip : Option<String> = None;
@@ -158,26 +160,22 @@ impl Config {
             let api_str: String = parse_required(cli_args, "api")?;
             info!(log, "read api address"; "api" => &api_str);
             API_ADDRESS.set(api_str).unwrap();
-            
-        }
-
-        if cli_args.value_of("contract-address").is_some() {
-            let contract_address_str: String = parse_required(cli_args, "contract-address")?;
-            info!(log, "read contract-address"; "contract-address" => &contract_address_str);
-            // check contract address 
-            if contract_address_str.starts_with("0x") {
-                let address = &contract_address_str[2..contract_address_str.len()];
-                DEFAULT_CONTRACT_ADDRESS.set(address.to_string()).unwrap();
-            } else {
-                DEFAULT_CONTRACT_ADDRESS.set(contract_address_str).unwrap();
-            }
-            
         }
 
         if cli_args.value_of("ws-url").is_some() {
             let ws_transport_url_str: String = parse_required(cli_args, "ws-url")?;
             info!(log, "read ws-url"; "ws-url" => &ws_transport_url_str);
             DEFAULT_TRANSPORT_URL.set(ws_transport_url_str).unwrap();
+        }
+
+        if cli_args.value_of("id").is_some() {
+            let operator_id : u32 = parse_required(cli_args, "id")?;
+            if operator_id == 0 {
+                error!(log, "operator id should not be 0, please get your operator id from web first!"; );
+                panic!("operator id is 0");
+            }
+            info!(log, "read operator id"; "operator id" => &operator_id);
+            SELF_OPERATOR_ID.set(operator_id).unwrap();
         }
 
         match base_port {
@@ -371,9 +369,12 @@ impl Config {
          * Explorer metrics
          */
         if let Some(monitoring_endpoint) = cli_args.value_of("monitoring-endpoint") {
+            let update_period_secs =
+                clap_utils::parse_optional(cli_args, "monitoring-endpoint-period")?;
             config.monitoring_api = Some(monitoring_api::Config {
                 db_path: None,
                 freezer_db_path: None,
+                update_period_secs,
                 monitoring_endpoint: monitoring_endpoint.to_string(),
             });
         }

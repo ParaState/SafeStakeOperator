@@ -15,12 +15,16 @@ pub const MEMPOOL_PORT_OFFSET: u16 = 1;
 pub const CONSENSUS_PORT_OFFSET: u16 = 2;
 pub const SIGNATURE_PORT_OFFSET: u16 = 3; 
 pub const DISCOVERY_PORT_OFFSET: u16 = 4;
+pub const DKG_PORT_OFFSET: u16 = 5;
 pub const BASE_ADDRESS: [u8; 4] = [127, 0, 0, 1];
-pub const BASE64_ENR : &str = "enr:-IS4QJ6XVEkrC9xX9t8u4yRjP08sD4BwN0QwyBx6xOxnhLokTUTKUugkaAAzD2N9bssKduTtFW_OHEXo67Mus1dqPuwBgmlkgnY0gmlwhCNYD_SJc2VjcDI1NmsxoQPKY0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCIyg";
-pub const CONTRACT_ABI_PATH: &str = "abi/abi.json";
-pub const BACKEND_IP: [u8; 4] = [35, 88, 15, 244];
-pub const BACKEND_PORT: u16 = 80;
 pub static API_ADDRESS: OnceCell<String> = OnceCell::const_new();
+pub static BOOT_ENR: OnceCell<String> =  OnceCell::const_new();
+pub static BOOT_SOCKETADDR: OnceCell<SocketAddr> = OnceCell::const_new();
+pub const COLLECT_PERFORMANCE_URL : &str = "collect_performance";
+pub const VALIDATOR_PK_URL : &str = "validator_pk";
+pub const PRESTAKE_SIGNATURE_URL : &str = "prestake_signature";
+pub const STAKE_SIGNATURE_URL : &str = "stake_signature";
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct NodeConfig {
     // pub id: u64,
@@ -33,8 +37,6 @@ pub struct NodeConfig {
     pub node_key_path: PathBuf,
     pub validator_dir: PathBuf,
     pub secrets_dir: PathBuf,
-    pub backend_address: SocketAddr,
-    pub boot_enr: String
 }
 
 impl Default for NodeConfig {
@@ -61,7 +63,6 @@ impl NodeConfig {
         let node_key_path = base_dir.join(NODE_KEY_FILENAME);
         let validator_dir = base_dir.join(DEFAULT_VALIDATOR_DIR);
         let secrets_dir = base_dir.join(DEFAULT_SECRET_DIR);
-        let backend_ip = IpAddr::V4(Ipv4Addr::new(BACKEND_IP[0], BACKEND_IP[1], BACKEND_IP[2], BACKEND_IP[3]));
         Self {
             // id,
             base_address: SocketAddr::new(ip.clone(), base_port),
@@ -73,8 +74,6 @@ impl NodeConfig {
             node_key_path,
             validator_dir,
             secrets_dir,
-            backend_address: SocketAddr::new(backend_ip, BACKEND_PORT),
-            boot_enr: BASE64_ENR.to_string()
         }
     }
 

@@ -5,7 +5,6 @@ use crate::DEFAULT_CHANNEL_CAPACITY;
 use crate::node::config::SIGNATURE_PORT_OFFSET;
 use std::sync::Arc;
 use tokio::sync::{RwLock};
-use tokio::sync::mpsc::{channel, Sender};
 use types::Hash256;
 use hsutils::monitored_channel::{MonitoredChannel, MonitoredSender};
 

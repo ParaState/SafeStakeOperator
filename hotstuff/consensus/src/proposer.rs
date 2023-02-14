@@ -3,12 +3,10 @@ use crate::consensus::{ConsensusMessage, Round};
 use crate::messages::{Block, QC, TC};
 use bytes::Bytes;
 use crypto::{Digest, PublicKey, SignatureService};
-use futures::stream::futures_unordered::FuturesUnordered;
-use futures::stream::StreamExt as _;
 use log::{debug, info};
-use network::{CancelHandler, ReliableSender, SimpleSender, DvfMessage, VERSION};
+use network::{CancelHandler, SimpleSender, DvfMessage, VERSION};
 use std::collections::HashSet;
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::{Receiver};
 use crypto::Hash;
 use utils::monitored_channel::MonitoredSender;
 
@@ -64,7 +62,7 @@ impl Proposer {
     }
 
     /// Helper function. It waits for a future to complete and then delivers a value.
-    async fn waiter(wait_for: CancelHandler, deliver: Stake) -> Stake {
+    async fn _waiter(wait_for: CancelHandler, deliver: Stake) -> Stake {
         let result = wait_for.await;
         if let Ok(ack) = result {
             if ack == "Ack" {
@@ -110,7 +108,7 @@ impl Proposer {
 
         // Broadcast our new block.
         debug!("Broadcasting {:?}", block);
-        let (names, addresses): (Vec<_>, _) = self
+        let (_names, addresses): (Vec<_>, _) = self
             .committee
             .broadcast_addresses(&self.name)
             .iter()

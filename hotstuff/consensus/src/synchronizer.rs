@@ -12,7 +12,7 @@ use network::{SimpleSender, DvfMessage, VERSION};
 use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 use store::Store;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{Receiver};
 use tokio::time::{sleep, Duration, Instant};
 use std::net::SocketAddr;
 use tokio::time::timeout;

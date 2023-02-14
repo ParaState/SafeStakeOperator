@@ -7,7 +7,7 @@ use hscrypto::SignatureService;
 use log::{info, error, warn};
 use mempool::{Mempool, MempoolMessage};
 use store::Store;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{Receiver, Sender};
 use network::{MessageHandler, Writer};
 use std::sync::{Arc};
 use async_trait::async_trait;
@@ -127,6 +127,8 @@ pub struct DvfSigner {
     pub signal: Option<exit_future::Signal>,
     pub operator_id: u64,
     pub operator_committee: OperatorCommittee,
+    pub local_keypair: Keypair,
+    pub store: Store,
 }
 
 impl Drop for DvfSigner {
@@ -198,19 +200,25 @@ impl DvfSigner {
             consensus: consensus_committee,
         };
 
+        let store_path = node.config.base_store_path.join(validator_id.to_string()).join(operator_id.to_string()); 
+        let store = Store::new(&store_path.to_str().unwrap()).expect("Failed to create store");
+
         let signal = DvfCore::spawn(
             operator_id,
             node_para,
             committee_def.validator_id,
             hotstuff_committee,
-            keypair,
+            keypair.clone(),
             tx_consensus,
+            store.clone(),
         );
 
         Self {
             signal: Some(signal),
             operator_id,
             operator_committee,
+            local_keypair: keypair,
+            store,
         }
     }
 
@@ -222,12 +230,25 @@ impl DvfSigner {
     //     self.operator_committee.sign(message_hash).await
     // }
 
-    pub async fn sign(&self, message: Hash256) -> Result<(Signature, Vec<u64>), DvfError> {
+    pub async fn threshold_sign(&self, message: Hash256) -> Result<(Signature, Vec<u64>), DvfError> {
         self.operator_committee.sign(message).await
     }
 
-    pub async fn is_leader(&self, nonce: u64) -> bool {
+    pub fn local_sign(&self, message: Hash256) -> Signature {
+        self.local_keypair.sk.sign(message)
+    }
+
+    pub async fn local_sign_and_store(&self, message: Hash256) {
+        let sig = self.local_sign(message);
+        let serialized_signature = bincode::serialize(&sig).unwrap();
+        // save to local db
+        let key = message.as_bytes().into();
+        self.store.write(key, serialized_signature).await;
+    }
+
+    pub async fn is_aggregator(&self, nonce: u64) -> bool {
         self.operator_committee.get_leader(nonce).await == self.operator_id
+        || self.operator_committee.get_leader(nonce + 1).await == self.operator_id
     }
 
     pub fn validator_public_key(&self) -> String {
@@ -274,6 +295,7 @@ impl DvfCore {
         committee: HotstuffCommittee,
         keypair: Keypair,
         tx_consensus: MonitoredSender<Hash256>,
+        store: Store,
     ) -> exit_future::Signal {
         let node = node.read();
         // let (tx_commit, rx_commit) = channel(CHANNEL_CAPACITY);
@@ -285,8 +307,8 @@ impl DvfCore {
         let (tx_mempool_to_consensus, rx_mempool_to_consensus) = MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "dvf-mp2cs".to_string(), "info");
 
         let parameters = Parameters::default();
-        let store_path = node.config.base_store_path.join(validator_id.to_string()).join(operator_id.to_string()); 
-        let store = Store::new(&store_path.to_str().unwrap()).expect("Failed to create store");
+        // let store_path = node.config.base_store_path.join(validator_id.to_string()).join(operator_id.to_string()); 
+        // let store = Store::new(&store_path.to_str().unwrap()).expect("Failed to create store");
 
         // Run the signature service.
         let signature_service = SignatureService::new(node.secret.secret.clone());
@@ -370,10 +392,12 @@ impl DvfCore {
                                                 for batch in batches {
                                                     // construct hash256
                                                     let msg = Hash256::from_slice(&batch[..]);
-                                                    let signature = self.operator.sign(msg.clone()).await.unwrap();
-                                                    let serialized_signature = bincode::serialize(&signature).unwrap();
-                                                    // save to local db
-                                                    self.store.write(batch, serialized_signature).await;
+
+                                                    // let signature = self.operator.sign(msg.clone()).await.unwrap();
+                                                    // let serialized_signature = bincode::serialize(&signature).unwrap();
+                                                    // // save to local db
+                                                    // self.store.write(batch, serialized_signature).await;
+
                                                     
                                                     if let Err(e) = self.tx_consensus.send(msg).await {
                                                         error!("Failed to notify consensus status: {}", e);

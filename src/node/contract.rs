@@ -34,6 +34,8 @@ const CONTRACT_MINIPOOL_CREATED_EVENT_NAME: &str = "InitializerMiniPoolCreated";
 const CONTRACT_MINIPOOL_READY_EVENT_NAME: &str = "InitializerMiniPoolReady";
 pub static SELF_OPERATOR_ID: OnceCell<u32> = OnceCell::const_new();
 pub static DEFAULT_TRANSPORT_URL: OnceCell<String> = OnceCell::const_new();
+pub static REGISTRY_CONTRACT: OnceCell<String> = OnceCell::const_new();
+pub static NETWORK_CONTRACT: OnceCell<String> = OnceCell::const_new();
 #[derive(Debug)]
 pub enum ContractError {
     StoreError,
@@ -340,7 +342,12 @@ impl Contract {
             H256::from_slice(&hex::decode(&config.initializer_minipool_ready_topic).unwrap());
         let filter_builder = FilterBuilder::default()
             .address(vec![Address::from_slice(
-                &hex::decode(&config.safestake_network_address).unwrap(),
+                &hex::decode({
+                    match NETWORK_CONTRACT.get() {
+                        Some(network_contract) => network_contract,
+                        None => &config.safestake_network_address
+                    }
+                }).unwrap(),
             )])
             .topics(
                 Some(vec![
@@ -1082,7 +1089,12 @@ pub async fn query_operator_from_contract(
     })?;
     let raw_json: Value = serde_json::from_str(&raw_abi).unwrap();
     let abi = raw_json["abi"].to_string();
-    let address = Address::from_slice(&hex::decode(&config.safestake_registry_address).unwrap());
+    let address = Address::from_slice(&hex::decode({
+        match REGISTRY_CONTRACT.get() {
+            Some(registry_contract) => registry_contract,
+            None => &config.safestake_registry_address
+        }
+    }).unwrap());
     let contract = EthContract::from_json(web3.eth(), address, abi.as_bytes()).or_else(|e| {
         error!("Can't create contract from json {}", e);
         Err(ContractError::ContractParseError)
@@ -1119,7 +1131,12 @@ pub async fn check_account (
     })?;
     let raw_json: Value = serde_json::from_str(&raw_abi).unwrap();
     let abi = raw_json["abi"].to_string();
-    let address = Address::from_slice(&hex::decode(&config.safestake_network_address).unwrap());
+    let address = Address::from_slice(&hex::decode({
+        match NETWORK_CONTRACT.get() {
+            Some(network_contract) => network_contract,
+            None => &config.safestake_network_address
+        }
+    }).unwrap());
     let contract = EthContract::from_json(web3.eth(), address, abi.as_bytes()).or_else(|e| {
         error!("Can't create contract from json {}", e);
         Err(ContractError::ContractParseError)

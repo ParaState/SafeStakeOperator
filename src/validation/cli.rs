@@ -113,6 +113,24 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 .takes_value(true)
         )
         .arg(
+            Arg::with_name("registry-contract")
+                .long("registry-contract")
+                .value_name("REGISTRY_CONTRACT")
+                .help(
+                    "This is the address of registry contract"
+                )
+                .takes_value(true)
+        )
+        .arg(
+            Arg::with_name("network-contract")
+                .long("network-contract")
+                .value_name("NETWORK_CONTRACT")
+                .help(
+                    "This is the address of network contract"
+                )
+                .takes_value(true)
+        )
+        .arg(
             Arg::with_name("delete-lockfiles")
             .long("delete-lockfiles")
             .help(

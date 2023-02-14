@@ -17,7 +17,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use types::{Address, GRAFFITI_BYTES_LEN};
 use crate::node::config::{NodeConfig,API_ADDRESS, BOOT_ENR};
-use crate::node::contract::{DEFAULT_TRANSPORT_URL, SELF_OPERATOR_ID};
+use crate::node::contract::{DEFAULT_TRANSPORT_URL, SELF_OPERATOR_ID, NETWORK_CONTRACT, REGISTRY_CONTRACT};
 pub const DEFAULT_BEACON_NODE: &str = "http://localhost:5052/";
 
 /// Stores the core configuration for this validator instance.
@@ -136,6 +136,22 @@ impl Config {
             return Err("can't read boot enr".to_string());
         }
 
+        if cli_args.values_of("registry-contract").is_some() {
+            let registry_contract: String= parse_required(cli_args, "registry-contract")?;
+            info!(log, "read registry contract"; "registry-contract" => &registry_contract);
+            REGISTRY_CONTRACT.set(registry_contract).unwrap();
+        } else {
+            warn!(log, "can't read registry-contract, use old value, may be wrong");
+        }
+
+        if cli_args.values_of("network-contract").is_some() {
+            let network_contract: String= parse_required(cli_args, "network-contract")?;
+            info!(log, "read registry contract"; "registry-contract" => &network_contract);
+            NETWORK_CONTRACT.set(network_contract).unwrap();
+        } else {
+            warn!(log, "can't read network-contract, use old value, may be wrong");
+        }
+
         let mut self_ip : Option<String> = None;
         if cli_args.value_of("ip").is_some() {
             self_ip = Some(parse_required(cli_args, "ip")?);
@@ -146,7 +162,9 @@ impl Config {
                 info!(log, "read node ip"; "ip" => &ip);
                 config.dvf_node_config.base_address.set_ip(IpAddr::V4(ip.parse::<Ipv4Addr>().unwrap()));
             },
-            _ => {}
+            None => {
+                panic!("ip is none");
+            }
         }
 
         let mut base_port : Option<u16> = None;

@@ -67,8 +67,9 @@ where
     pub async fn run(&self) -> Result<(Keypair, PublicKey, HashMap<u64, PublicKey>), DvfError> {
         let mut threshold_sig = ThresholdSignature::new(self.threshold);
         let ids = self.io.ids();
-        let (kp, kps) = threshold_sig.key_gen(ids)?;
+        let (kp, kps, poly) = threshold_sig.key_gen_with_poly(ids)?;
 
+        // 0. Broadcast shares and commitments
         let kps_ref = &kps; // Take reference so that it can be used in async move
         let kp_ref = &kp;
         let futs = ids.iter().map(|id| async move {

@@ -1,2 +1,5 @@
 
-pub const VERSION: u64 = 1_001_000;
+pub const ROOT_VERSION: u64 = 1;
+pub const MAJOR_VERSION: u64 = 1;
+pub const MINOR_VERSION: u64 = 0;
+pub static VERSION: u64 = ROOT_VERSION * 1000_000_000_000 + MAJOR_VERSION * 1000_000 + MINOR_VERSION;

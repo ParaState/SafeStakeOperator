@@ -38,7 +38,7 @@ services:
       - "30303"
 
   mev-boost:
-    image: flashbots/mev-boost:v1.4.0
+    image: flashbots/mev-boost:1.4.0-portable
     network_mode: "host"
     pull_policy: always
     restart: unless-stopped

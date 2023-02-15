@@ -10,6 +10,7 @@ COPY ./Cargo.lock ./Cargo.lock
 COPY ./Cargo.toml ./Cargo.toml
 COPY ./lighthouse ./lighthouse
 COPY ./hotstuff ./hotstuff
+COPY ./common ./common
 COPY ./contract_config ./contract_config
 RUN cargo build --release
 RUN rm src/*.rs

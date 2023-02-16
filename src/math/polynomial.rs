@@ -92,11 +92,13 @@ impl CommittedPoly {
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Self {
-        let (size_bytes, bytes) = bytes.split_at(std::mem::size_of::<u32>());
+        let size_bytes = &bytes[0..std::mem::size_of::<u32>()];
+        let mut index = std::mem::size_of::<u32>();
         let size = u32::from_be_bytes(size_bytes.try_into().unwrap());
         let mut commitments = Vec::with_capacity(size as usize);
         for i in 0..size {
-            let (ser_cm, bytes) = bytes.split_at(PUBLIC_KEY_BYTES_LEN);
+            let ser_cm = &bytes[index..index+PUBLIC_KEY_BYTES_LEN];
+            println!("bytes: {:?}", &ser_cm[0..4]);
             let mut cm = blst_p1::default();
             unsafe {
                 let mut cm_affine = blst_p1_affine::default();
@@ -104,6 +106,7 @@ impl CommittedPoly {
                 blst::blst_p1_from_affine(&mut cm, &cm_affine);
             }
             commitments.push(cm);
+            index += PUBLIC_KEY_BYTES_LEN;
         }
         Self {
             commitments,
@@ -158,10 +161,6 @@ mod tests {
 
         let exponent = bigint_to_blst_scalar(poly.eval(&(7.into())));
 
-        // let mut y_ = blst_p1::default();
-        // unsafe {
-        //     blst::blst_p1_mult(&mut y_, &g, exponent.b.as_ptr(), 255);
-        // }
         let y_ = blst_p1_mult(&g, &exponent);
 
         assert_eq!(y, y_, "Verification failed");

@@ -19,6 +19,8 @@ use types::{Address, GRAFFITI_BYTES_LEN};
 use crate::node::config::{NodeConfig,API_ADDRESS, BOOT_ENR};
 use crate::node::contract::{DEFAULT_TRANSPORT_URL, SELF_OPERATOR_ID, NETWORK_CONTRACT, REGISTRY_CONTRACT};
 use dvf_version::{ROOT_VERSION};
+use dvf_directory::{get_default_base_dir};
+
 pub const DEFAULT_BEACON_NODE: &str = "http://localhost:5052/";
 
 /// Stores the core configuration for this validator instance.
@@ -111,11 +113,7 @@ impl Config {
     pub fn from_cli(cli_args: &ArgMatches, log: &Logger) -> Result<Config, String> {
         let mut config = Config::default();
 
-        let default_base_dir = dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(DEFAULT_ROOT_DIR)
-            .join(format!("v{}", ROOT_VERSION))
-            .join(get_network_dir(cli_args));
+        let default_base_dir = get_default_base_dir(cli_args);
 
 
         // let default_root_dir = dirs::home_dir()

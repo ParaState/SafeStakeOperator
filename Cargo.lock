@@ -1782,6 +1782,7 @@ dependencies = [
  "dirs",
  "discv5",
  "downcast-rs",
+ "dvf_directory",
  "dvf_version",
  "env_logger",
  "environment",
@@ -1846,6 +1847,16 @@ dependencies = [
  "warp_utils",
  "web3",
  "zeroize",
+]
+
+[[package]]
+name = "dvf_directory"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "directory",
+ "dirs",
+ "dvf_version",
 ]
 
 [[package]]

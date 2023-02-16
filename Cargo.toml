@@ -28,6 +28,7 @@ types = { path = "lighthouse/consensus/types" }
 
 # common
 dvf_version = { path = "common/dvf_version" }
+dvf_directory = { path = "common/dvf_directory" }
 
 # hotstuff
 hscrypto = { path = "hotstuff/crypto", package="crypto"}

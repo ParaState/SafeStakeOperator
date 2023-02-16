@@ -1,6 +1,6 @@
 [package]
 name = "dvf"
-version = "0.1.0"
+version = "1.1.0"
 authors = ["Zico <zhicong303@gmail.com"]
 edition = "2021"
 
@@ -25,6 +25,10 @@ eth2_hashing = "0.3.0"
 #simulator = { path = "lighthouse/testing/simulator" }
 types = { path = "lighthouse/consensus/types" }
 #lighthouse_bls = { path = "lighthouse/crypto/bls", package="bls"}
+
+# common
+dvf_version = { path = "common/dvf_version" }
+dvf_directory = { path = "common/dvf_directory" }
 
 # hotstuff
 hscrypto = { path = "hotstuff/crypto", package="crypto"}

@@ -1757,7 +1757,7 @@ checksum = "5caaa75cbd2b960ff1e5392d2cfb1f44717fffe12fc1f32b7b5d1267f99732a6"
 
 [[package]]
 name = "dvf"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "account_manager",
  "account_utils",
@@ -1782,6 +1782,8 @@ dependencies = [
  "dirs",
  "discv5",
  "downcast-rs",
+ "dvf_directory",
+ "dvf_version",
  "env_logger",
  "environment",
  "eth2",
@@ -1846,6 +1848,20 @@ dependencies = [
  "web3",
  "zeroize",
 ]
+
+[[package]]
+name = "dvf_directory"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "directory",
+ "dirs",
+ "dvf_version",
+]
+
+[[package]]
+name = "dvf_version"
+version = "0.1.0"
 
 [[package]]
 name = "ecdsa"
@@ -4629,6 +4645,7 @@ dependencies = [
  "async-trait",
  "bincode",
  "bytes",
+ "dvf_version",
  "exit-future",
  "futures",
  "log",

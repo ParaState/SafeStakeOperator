@@ -20,6 +20,8 @@ use types::{EthSpec, EthSpecId};
 use dvf::validation::ProductionValidatorClient;
 use std::io::Write;
 use chrono::Local;
+use dvf_directory::{get_default_base_dir};
+
 fn bls_library_name() -> &'static str {
     if cfg!(feature = "portable") {
         "blst-portable"
@@ -420,11 +422,8 @@ fn run<E: EthSpec>(
                     .with_extension("log"),
             ),
             ("validator_client", Some(vc_matches)) => {
-                let base_path = if vc_matches.is_present("validators-dir") {
-                    parse_path_or_default(vc_matches, "validators-dir")?
-                } else {
-                    parse_path_or_default(matches, "datadir")?.join(DEFAULT_VALIDATOR_DIR)
-                };
+                let base_path = get_default_base_dir(matches)
+                    .join(DEFAULT_VALIDATOR_DIR);
 
                 Some(
                     base_path

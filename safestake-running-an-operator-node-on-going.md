@@ -36,7 +36,7 @@ Standalone mode contains the following list of programs/soft on a single host:
 
 `Light Mode`
 
-Light mode contains only the Operator Node service, the following list of programs/soft on a host:
+Light mode contains only the OperatorNode service, the following list of programs/soft on a host:
 * OperatorNode Service
 
 

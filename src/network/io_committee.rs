@@ -16,7 +16,6 @@ use tokio::task::JoinHandle;
 use tokio::sync::{Notify};
 use tokio::time::{sleep, Duration};
 use std::cmp::min;
-// use secp256k1::{All, Secp256k1, SecretKey, PublicKey, ecdh};
 use sha256::{digest_bytes};
 use aes_gcm::{Aes128Gcm, Key, Nonce, Error};
 use aes_gcm::aead::{Aead, NewAead};
@@ -358,9 +357,6 @@ impl SecureNetIOCommittee {
         ids: &[u64],
         addresses: &[SocketAddr]) -> SecureNetIOCommittee {
         let plain_committee = NetIOCommittee::new(party, port, ids, addresses).await;
-        // let secp = Secp256k1::new();
-        // let mut rng = rand::thread_rng();
-        // let (sk, pk) = secp.generate_keypair(&mut rng);
         let pk = blst_sk_to_pk(&sk);
 
         let pk_bytes = blst_p1_to_bytes(&pk);

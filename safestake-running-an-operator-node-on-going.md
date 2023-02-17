@@ -164,7 +164,7 @@ WS_URL= #YOUR WSS URL
 OPERATOR_ID= #The Operator ID is the ID you receive after registering the operator on SafeStake website
 BEACON_NODE_ENDPOINT= # Depending on whether you are running single-node mode or multi-node mode, fill in the correct Lighthouse beacon node service url
 ```
-`WS_URL` and `OPERATOR_ID` should have been obtained by following previous steps. As for `BEACON_NODE_ENDPOINT`, if you can't find an available third-party beacon node service, you can follow [this section]() to setup one by yourself.
+`WS_URL` and `OPERATOR_ID` should have been obtained by following previous steps. As for `BEACON_NODE_ENDPOINT`, if you can't find an available third-party beacon node service, you can follow [this section](#running-lighthouse--geth-service) to setup one by yourself.
 
 
 #### 11. Start operator service

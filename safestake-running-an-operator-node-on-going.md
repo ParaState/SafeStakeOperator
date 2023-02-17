@@ -226,6 +226,3 @@ It is a good practice to back up your operator private key file
 ```
 
 **`Your SafeStake Operator Node is now configured`**
-
-
-##

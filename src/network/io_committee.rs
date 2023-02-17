@@ -16,11 +16,13 @@ use tokio::task::JoinHandle;
 use tokio::sync::{Notify};
 use tokio::time::{sleep, Duration};
 use std::cmp::min;
-use secp256k1::{All, Secp256k1, SecretKey, PublicKey, ecdh};
+// use secp256k1::{All, Secp256k1, SecretKey, PublicKey, ecdh};
 use sha256::{digest_bytes};
 use aes_gcm::{Aes128Gcm, Key, Nonce, Error};
 use aes_gcm::aead::{Aead, NewAead};
 use rand::Rng;
+use crate::utils::blst_utils::{blst_sk_to_pk, bytes_to_blst_p1, blst_p1_to_bytes, blst_ecdh_shared_secret};
+use blst::{blst_scalar, blst_p1};
 
 
 #[async_trait]
@@ -340,7 +342,7 @@ impl IOCommittee<NetIOChannel> for NetIOCommittee {
 /// Secure network IO committee
 pub struct SecureNetIOCommittee {
     party: u64,
-    sk: SecretKey,
+    sk: blst_scalar,
     ids: Vec<u64>,
     channels: HashMap<u64, SecureNetIOChannel>,
 }
@@ -351,15 +353,17 @@ impl SecureNetIOCommittee {
     /// The communication is also secured.
     pub async fn new(
         party: u64, 
-        port: u16, 
+        port: u16,
+        sk: blst_scalar,
         ids: &[u64],
         addresses: &[SocketAddr]) -> SecureNetIOCommittee {
         let plain_committee = NetIOCommittee::new(party, port, ids, addresses).await;
-        let secp = Secp256k1::new();
-        let mut rng = rand::thread_rng();
-        let (sk, pk) = secp.generate_keypair(&mut rng);
+        // let secp = Secp256k1::new();
+        // let mut rng = rand::thread_rng();
+        // let (sk, pk) = secp.generate_keypair(&mut rng);
+        let pk = blst_sk_to_pk(&sk);
 
-        let pk_bytes = Bytes::copy_from_slice(pk.serialize().as_slice());
+        let pk_bytes = blst_p1_to_bytes(&pk);
         plain_committee.broadcast(pk_bytes).await;
         let (_, _, mut channels) = plain_committee.unwrap();
         let mut sec_channels : HashMap<u64, SecureNetIOChannel> = Default::default();
@@ -371,7 +375,7 @@ impl SecureNetIOCommittee {
             else {
                 let recv_channel = channels.remove(&ids[i]).unwrap();
                 let other_pk_bytes = recv_channel.recv().await;
-                let other_pk = PublicKey::from_slice(other_pk_bytes.as_ref()).unwrap();
+                let other_pk = bytes_to_blst_p1(other_pk_bytes);
                 let sec_channel = SecureNetIOChannel::new(recv_channel, sk.clone(), other_pk);
                 sec_channels.insert(ids[i], sec_channel);
             }
@@ -397,12 +401,12 @@ impl SecureNetIOCommittee {
 
 pub struct SecureNetIOChannel {
     channel: NetIOChannel,
-    sk: SecretKey,
-    other_pk: PublicKey,
+    sk: blst_scalar,
+    other_pk: blst_p1,
 }
 
 impl SecureNetIOChannel {
-    pub fn new(channel: NetIOChannel, sk: SecretKey, other_pk: PublicKey) -> Self {
+    pub fn new(channel: NetIOChannel, sk: blst_scalar, other_pk: blst_p1) -> Self {
         Self {
             channel,
             sk,
@@ -415,8 +419,9 @@ impl SecureNetIOChannel {
 impl IOChannel for SecureNetIOChannel {
 
     async fn send(&self, message: Bytes) {
-        let point = ecdh::shared_secret_point(&self.other_pk, &self.sk);
-        let secret = hex::decode(digest_bytes(&point)).unwrap(); 
+        let point = blst_ecdh_shared_secret(&self.other_pk, &self.sk);
+        let point_bytes = blst_p1_to_bytes(&point);
+        let secret = hex::decode(digest_bytes(point_bytes.as_ref())).unwrap(); 
 
         let key = Key::from_slice(&secret.as_slice()[0..16]); 
         let cipher = Aes128Gcm::new(key);
@@ -435,8 +440,9 @@ impl IOChannel for SecureNetIOChannel {
     async fn recv(&self) -> Bytes {
         let enc_msg = self.channel.recv().await;
 
-        let point = ecdh::shared_secret_point(&self.other_pk, &self.sk);
-        let secret = hex::decode(digest_bytes(&point)).unwrap(); 
+        let point = blst_ecdh_shared_secret(&self.other_pk, &self.sk);
+        let point_bytes = blst_p1_to_bytes(&point);
+        let secret = hex::decode(digest_bytes(point_bytes.as_ref())).unwrap(); 
 
         let key = Key::from_slice(&secret.as_slice()[0..16]); 
         let cipher = Aes128Gcm::new(key);
@@ -478,6 +484,7 @@ mod tests {
     use super::*;
     use crate::network::io_committee::{SecureNetIOCommittee};
     use futures::future::join_all;
+    use crate::utils::blst_utils::{random_blst_scalar};
 
     const t: usize = 3;
     const ids: [u64; 4] = [1, 2, 3, 4];
@@ -490,7 +497,8 @@ mod tests {
         let ports_ref = &ports;
         let addrs_ref = &addrs;
         let futs = (0..ids.len()).map(|i| async move {
-            let io = &Arc::new(SecureNetIOCommittee::new(ids[i], ports_ref[i], ids.as_slice(), addrs_ref.as_slice()).await);
+            let sk = random_blst_scalar();
+            let io = &Arc::new(SecureNetIOCommittee::new(ids[i], ports_ref[i], sk, ids.as_slice(), addrs_ref.as_slice()).await);
             io.broadcast(Bytes::copy_from_slice(format!("hello from {}", ids[i]).as_bytes())).await;
             for j in 0..ids.len() {
                 if i == j {

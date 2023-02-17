@@ -13,6 +13,9 @@ use bytes::Bytes;
 use crate::utils::error::DvfError;
 use std::marker::PhantomData;
 use std::collections::HashMap;
+use crate::utils::blst_utils::{u64_to_blst_scalar, bigint_to_blst_scalar,
+    fixed_p1_generator, bytes_to_blst_p1_affine, blst_p1_mult};
+use crate::math::polynomial::{Commitable, CommittedPoly};
 
 /// Distributed key generation.
 /// NOTE: DKG and the corresponding IO committee are not thread-safe if multiple instances for
@@ -68,16 +71,22 @@ where
         let mut threshold_sig = ThresholdSignature::new(self.threshold);
         let ids = self.io.ids();
         let (kp, kps, poly) = threshold_sig.key_gen_with_poly(ids)?;
+        // Generator g
+        let g = fixed_p1_generator();
+        let committed_poly = poly.commit(g);
 
         // 0. Broadcast shares and commitments
         let kps_ref = &kps; // Take reference so that it can be used in async move
         let kp_ref = &kp;
+        let committed_poly_ref = &committed_poly;
+        let g_ref = &g;
         let futs = ids.iter().map(|id| async move {
             let s_ij = Bytes::copy_from_slice(kps_ref.get(id).unwrap().sk.serialize().as_bytes());
             let pk_i = Bytes::copy_from_slice(kp_ref.pk.serialize().as_slice());
-            let (s_ji, pk_j) = {
+            let commitments = committed_poly_ref.to_bytes().into();
+            let (s_ji, pk_j, commitments_j) = {
                 if *id == self.party {
-                    (s_ij, pk_i)
+                    (s_ij, pk_i, commitments)
                 }
                 else {
                     let send_channel = self.io.channel(self.party, *id);
@@ -90,16 +99,34 @@ where
                     send_channel.send(pk_i).await;
                     // Recv public key corresponding to the secret of party `id`
                     let pk_bytes = recv_channel.recv().await;
-                    (s, pk_bytes)
+                    // Send commitments to party `id`
+                    send_channel.send(commitments).await;
+                    // Recv commitments from party `id`
+                    let commitments_bytes = recv_channel.recv().await;
+                    (s, pk_bytes, commitments_bytes)
                 }
             };
 
             let s = BigInt::from_bytes_be(Sign::Plus, s_ji.as_ref());
-            let mut pk: blst_p1_affine = Default::default();
-            unsafe {
-                blst::blst_p1_uncompress(&mut pk, pk_j.as_ptr());
-            };
+            let pk = bytes_to_blst_p1_affine(pk_j);
+            let committed_poly_ = CommittedPoly::from_bytes(commitments_j.as_ref());
 
+            let y_ = committed_poly_.eval(u64_to_blst_scalar(*id));
+            let y = blst_p1_mult(
+                g_ref, 
+                &bigint_to_blst_scalar(s.clone()),
+            );
+
+            // Share Verification
+            if y == y_ {
+
+            }
+
+            // NOTE:
+            // Our implementation is a simpler variant of the EthDKG protocol, in the sense that
+            // we require all parties to be 
+
+            // (*id, s, pk, committed_poly_)
             (*id, s, pk)
         });
         let results = join_all(futs)

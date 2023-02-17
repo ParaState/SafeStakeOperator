@@ -152,7 +152,7 @@ impl Config {
 
         if cli_args.values_of("network-contract").is_some() {
             let network_contract: String= parse_required(cli_args, "network-contract")?;
-            info!(log, "read network contract"; "registry-contract" => &network_contract);
+            info!(log, "read network contract"; "network-contract" => &network_contract);
             NETWORK_CONTRACT.set(network_contract).unwrap();
         } else {
             warn!(log, "can't read network-contract, use old value, may be wrong");

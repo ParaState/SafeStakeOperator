@@ -1,100 +1,21 @@
 # SafeStake: Running an Operator Node (on going)
 
-{% hint style="danger" %}
-**Updates happen frequently! Our** [**Github**](https://github.com/ParaState/SafeStakeOperator) **always has the latest operator node resources and setup instructions.**
-{% endhint %}
+***Updates happen frequently! Our** [**Github**](https://github.com/ParaState/SafeStakeOperator) **always has the latest operator node resources and setup instructions.***
 
-**Operators must first set up a SafeStake Service Provider Node**
 
-The SafeStake service provider contains several components:
+## Deploy the Operator node
 
-* A web server and frontend
-* A nodejs backend (to communicate with operators)
-* A root node service (for peer discovery in a p2p network)
+### Dependencies
 
-### **Root Node Service**
-
-The duty agreement among operators uses Hotstuff consensus and runs on a p2p network. This requires operators to know each other's IP addresses. For this purpose, SafeStake runs and maintains a root node that operators can consult and use to join the p2p network.
-
-**Dependencies**
-
-**Server**
-
-* Public Static Network IP
-* Hardware(Recommend)
-  * CPU: 16
-  * Memory: 32G
-  * Disk: 600GB
-* OS
-  * Unix
-* Software
-  * Docker
-  * Docker Compose
-
-**Set firewall rule**
-
-| Port range | Protocol | Source    |
-| ---------- | -------- | --------- |
-| 22         | TCP      | 0.0.0.0/0 |
-| 9000       | UDP      | 0.0.0.0/0 |
-
-**Installation**
-
-Clone this repository:
-
-```
-git clone --recurse-submodules https://github.com/ParaState/SafeStakeOperator dvf
-cd dvf
-```
-
-Install Docker and Docker Compose
-
-* [install docker engine](https://docs.docker.com/engine/install/)
-* [install docker compose](https://docs.docker.com/compose/install/)
-
-Build root node:
-
-```
-sudo docker compose -f docker-compose-boot.yml build
-```
-
-**Start Service**
-
-Run the following to start the root node service:
-
-```
-sudo docker compose -f docker-compose-boot.yml up -d
-```
-
-Get root node enr
-
-```
-docker-compose -f docker-compose-boot.yml logs -f dvf_root_node | grep enr
-```
-
-output
-
-> dvf-dvf\_root\_node-1 | Base64 ENR: _enr:-IS4QNa-kpJM1eWfueeEnY2iXlLAL0QY2gAWAhmsb4c8VmrSK9J7N5dfXS\_DgSASCDrUTHMqMUlP4OXSYEVh-Z7zFHkBgmlkgnY0gmlwhAMBnbWJc2VjcDI1NmsxoQPKY0yuDUmstAHYpMa2\_oxVtw0RW\_QAdpzBQA8yWM0xOIN1ZHCCIy0_
-
-_**NOTE:**_  SafeStake will maintain the ENR(s) of the root node(s) on its website so that users registering as operators can utilize them to start operator nodes.
-
-{% hint style="success" %}
-**`<The SafeStake Service Provider is now installed/>`**
-{% endhint %}
-
-### **Deploy the Operator node**
-
-#### Dependencies
-
-#### Server Host
+### Server Host
 
 * Public Static Network IP
 * Hardware
-  * (SingleNode Mode Recommend)
+  * (Standalone Mode Recommend)
     * CPU: 16
     * Memory: 32G
     * Disk: 600GB
-  * (MultiNode Mode Recommend)
+  * (Light Mode Recommend)
     * CPU: 2
     * Memory: 4G
     * Disk: 200GB
@@ -104,97 +25,70 @@ _**NOTE:**_  SafeStake will maintain the ENR(s) of the root node(s) on its websi
   * Docker
   * Docker Compose
 
-#### **Running Mode Of Operator Node**
+### Running Mode Of Operator Node
 
-`SingleNode Mode`
+`Standalone Mode`
 
-SingleNode mode contains the following list of programs/soft Run on a single host:
+Standalone mode contains the following list of programs/soft on a single host:
 * Geth Service
 * Lighthouse Service
 * OperatorNode Service
 
-`MultiNode Mode`
+`Light Mode`
 
-MultiNode mode contains only Operator Node service, the following list of programs/soft:
-* OperatorNode Service （Stand-alone deployment）
-
-* Geth Service (Dedicated Host deployment)
-* Lighthouse Service (Dedicated Host deployment)
+Light mode contains only the Operator Node service, the following list of programs/soft on a host:
+* OperatorNode Service
 
 
-> Geth service and Lighthouse service run on other hosts.
+> Geth service and Lighthouse service can run on other hosts. Users should configure the `beacon node endpoint` (discussed later) in order to connect to Lighthouse's beacon node instance.
 The purpose of this is to make the architecture clearer and easier to scale operator nodes. And the cost efficiency ratio of infrastructure will be higher.
 As a result, the deployment document is divided into two architectural patterns of deployment
 
 
-#### Get your Infura WS\_URL
+### Preparation: Get your Infura WS\_URL
 
 * Follow the instructions found at [https://docs.infura.io/infura/](https://docs.infura.io/infura/)
-* Create Infura account (or other Ethereum api service providers)
+* Create Infura account [here](https://app.infura.io/register) and login the account
 * Create new key
 
-<figure><img src=".gitbook/assets/image (8).png" alt=""><figcaption></figcaption></figure>
+<figure><img src="imgs/infura-step1.png" height="70%" width="70%"></figure>
 
-* Select 'Goerli' network
+* Select 'WEBSOCKETS'
 
-<figure><img src=".gitbook/assets/image (10) (1).png" alt=""><figcaption></figcaption></figure>
+<figure><img src="imgs/infura-step2.png" alt=""><figcaption></figcaption></figure>
 
-* Select Websock
+* Select 'Goerli' network under 'Ethereum'
 
-<figure><img src=".gitbook/assets/image.png" alt=""><figcaption></figcaption></figure>
+<figure><img src="imgs/infura-step3.png" alt=""><figcaption></figcaption></figure>
 
 * Copy your WS\_URL
 
-#### Use your own configuration
-
-Fill your WS\_URL
-
-#### Or get your alchemy ws\_url
-
-* Follow the document [https://docs.alchemy.com/reference/api-overview](https://docs.alchemy.com/reference/api-overview)
-* Regiter a alchemy account
-* Create new app
-
-> [![alchemy step1](https://github.com/ParaState/SafeStakeOperator/raw/main/imgs/alchemy-step1.png?raw=true)](imgs/alchemy-step1.png)
-
-* Select Goerli network
-
-> [![alchemy step2](https://github.com/ParaState/SafeStakeOperator/raw/main/imgs/alchemy-step2.png?raw=true)](imgs/alchemy-step2.png)
-
-* Select your app and view key
-
-> [![alchemy step3](https://github.com/ParaState/SafeStakeOperator/raw/main/imgs/alchemy-step3.png?raw=true)](imgs/alchemy-step3.png)
-
-* Select WEBSOCKETS and copy
-
-> [![alchemy step4](https://github.com/ParaState/SafeStakeOperator/raw/main/imgs/alchemy-step4.png?raw=true)](imgs/alchemy-step4.png)
-
-Save the WSS Socket URL, which will be used later.
+<figure><img src="imgs/infura-step4.png" alt=""><figcaption></figcaption></figure>
 
 
-### SingleNode Mode Installation steps
 
-#### Set firewall rule
+### Deployment
 
-Log in to your host cloud service provider,open the following rules:
-![](<.gitbook/assets/image (3).png>)
+#### 1. Set firewall rule
 
-#### Installation
+Log in to your host cloud service provider, open the following firewall inbound rules:
 
-#### Login to your server ([jumpserver](https://www.jumpserver.org/) recommand)
+![](imgs/firewall_rule.png)
 
-#### Install Docker and Docker compose
+#### 2. SSH Login to your server ([jumpserver](https://www.jumpserver.org/) recommand)
+
+#### 3. Install Docker and Docker compose
 
 * [install docker engine](https://docs.docker.com/engine/install/)
 * [install docker compose](https://docs.docker.com/compose/install/)
 
-#### Enable docker service and start it immediately.
+#### 4. Enable docker service and start it immediately.
 
 ```
  sudo systemctl enable docker
 ```
 
-#### Create local volume directory
+#### 5. Create local volume directory
 
 ```
  sudo mkdir -p /data/geth
@@ -203,27 +97,49 @@ Log in to your host cloud service provider,open the following rules:
  sudo mkdir -p /data/operator
 ```
 
-#### Generate your jwt secret to jwt dirctory
+#### 6. Generate your jwt secret to jwt dirctory
 
 ```
 openssl rand -hex 32 | tr -d "\n" | sudo tee /data/jwt/jwtsecret
 ```
 
-#### Clone operator code from Github
+#### 7. Clone operator code from Github
 
 ```
 git clone --recurse-submodules https://github.com/ParaState/SafeStakeOperator.git dvf
 ```
 
+#### 8. Generate a registration public and private key
+```bash
+cd dvf
+sudo docker compose -f docker-compose-operator.yml up dvf_key_tool
+```
+Output:
+```
+...
+dvf-dvf_key_tool-1  | INFO: node public key AtzozvDHiWUpO+oJph2ikv+EyBN5pdBXsfgZqLi0+Yqd
+dvf-dvf_key_tool-1 exited with code 0
+```
+Save the public key, which will be used later. Go to [SafeStake website](https://testnet.safestake.xyz/) and `Join As Operator`.
+
+After we register an Operator on the Safestake website, we will be shown our `OPERATOR ID`, which is the unique identifier we need to start with. We will need to update the OPERATOR ID to the `.env` file before running the operator service.
+
+#### 9. Obtain your beacon node endpoint
+You should acquire a beacon node endpoint for the operator to connect with. You can either run such a service by yourself, or potentially obtain it from some third-party service (we might open such a paid service later if necessary).
+
+We will show later how to run such a service with `Lighthouse` by yourself. For now, let's continue with other steps.
+
+#### 10. Edit local environment variables
 ```
 cd dvf
 cp .env.example .env
+vim .env
 ```
-We will modify the values based on the actual configuration of the different environments.
+Now that we have open the `.env` file, we will update the values based on our own configuration.
 
-`Testnet`
+`Goerli Testnet`
 
-Changeless:
+**Leave these variables unchanged**:
 ```bash
 ENR=enr:-IS4QKIF_55zNM3o29E91Rj2gwjTQJHvnGVW8e--2nvsixCXCKbS0vhuBILafB1qv3AyR2GhKt611zf_x5V6zwGEmEwBgmlkgnY0gmlwhBKIH16Jc2VjcDI1NmsxoQNsOWU-IpJ0fRj4WlVELfC5HLLhzhHZr9HMsN401NGJdYN1ZHCCIy0
 GETH_NETWORK=goerli
@@ -242,93 +158,55 @@ MEV_BOOST_RELAYS=https://0xafa4c6985aa049fb79dd37010438cfebeb0f2bd42b115b89dd678
 GAS_LIMIT_INTEGER=30000000
 ```
 
-Change
+**Update these variables with yours**
 ```bash
 WS_URL= #YOUR WSS URL
-OPERATOR_ID= #The Operator ID is the ID registered to the website
-BEACON_NODE_ENDPOINT=http://127.0.0.1:5052 # Depending on whether you are running single-node mode or multi-node mode, fill in the correct Lighthouse service url
+OPERATOR_ID= #The Operator ID is the ID you receive after registering the operator on SafeStake website
+BEACON_NODE_ENDPOINT= # Depending on whether you are running single-node mode or multi-node mode, fill in the correct Lighthouse beacon node service url
 ```
-After modifying to the correct value, you can start the next step of actually running the Operator service
+`WS_URL` and `OPERATOR_ID` should have been obtained by following previous steps. As for `BEACON_NODE_ENDPOINT`, if you can't find an available third-party beacon node service, you can follow [this section]() to setup one by yourself.
 
 
-### Run Operator Node(SingleNode Mode)
+#### 11. Start operator service
 
-#### Generate a registration public and private key
-```bash
-sudo docker compose -f docker-compose-operator.yml up dvf_key_tool
-```
-Output:
-```
-...
-dvf-dvf_key_tool-1  | INFO: node public key AtzozvDHiWUpO+oJph2ikv+EyBN5pdBXsfgZqLi0+Yqd
-dvf-dvf_key_tool-1 exited with code 0
-```
-Save the public key, which will be used later. We need this key when registering Operator on the website.
-
-
-#### Start operator service
-
-Before running, modify the following env var：
-```bash
-WS_URL= #YOUR WSS URL
-OPERATOR_ID= #The Operator ID is the ID registered to the website
-BEACON_NODE_ENDPOINT=http://127.0.0.1:5052 # Depending on whether you are running single-node mode or multi-node mode, fill in the correct Lighthouse service url
-```
 
 ```bash
-sudo docker compose -f  docker-compose-operator.yml up -d
+sudo docker compose -f  docker-compose-operator.yml up -d operator
 ```
+
 ---
 
-### Run Operator Node(MultiNode Mode)
+### Running Lighthouse & Geth Service
 
-#### Generate a registration public and private key
-```bash
-sudo docker compose -f docker-compose-operator.yml up dvf_key_tool
-```
-Output:
-```
-...
-dvf-dvf_key_tool-1  | INFO: node public key AtzozvDHiWUpO+oJph2ikv+EyBN5pdBXsfgZqLi0+Yqd
-dvf-dvf_key_tool-1 exited with code 0
-```
-Save the public key, which will be used later. We need this key when registering Operator on the website.
-
-After we register on the Safestake website, we will be shown our OPERATOR ID, which is the unique identifier we need to start with. Then we need to update the OPERATOR ID to the `.env` file before running the operator service. 
-
-#### Start Lighthouse & Geth Service at Dedicated Host
-
-**Beacon Host**
 
 ```bash
 sudo docker compose -f docker-compose-operator.yml up geth -d
 sudo docker compose -f docker-compose-operator.yml up lighthouse -d
 ```
 
-Tips: Remember to open the 5052 firewall port for this host
+NOTE: Remember to open the `5052` firewall port for this host
 
-#### Start operator serivce
-
-**Operator Host**
-
-Before running, modify the following env var：
+Now that the service is running, you have your own `BEACON_NODE_ENDPOINT` to fill into the `.env` file. For example, if the service is running on the same machine where the operator software is running, then you can use a local IP:
 
 ```bash
-WS_URL= #YOUR WSS URL
-OPERATOR_ID= #The Operator ID is the ID registered to the website
-BEACON_NODE_ENDPOINT=http://10.1.2.8:5052 # Fill in the beacon host's IP address
+BEACON_NODE_ENDPOINT=http://127.0.0.1:5052
 ```
 
-Start operator container：
+Otherwise, suppose the host where you run the Lighthouse & Geth service has an IP `12.102.103.1`, then you can set:
 
 ```bash
-sudo docker compose -f docker-compose-operator.yml up operator -d
+BEACON_NODE_ENDPOINT=http://12.102.103.1:5052
 ```
+
+
 ---
-Congratulations, now that the OP program has been installed and deployed, the rest we can go to the website to register.
+
+Congratulations, now the Operator program has been installed and deployed.
  
 
-#### Obtain your operator public key
+### Some final notes about Operator's private/public keys
+
+You can always view your public key in case you forget it with the command:
 
 ```
 sudo docker compose -f docker-compose-operator.yml logs -f operator | grep "node public key"
@@ -338,18 +216,16 @@ output
 
 > dvf-operator-1 | \[2022-08-13T16:01:33.814Z INFO dvf::node::node] node public key Al0wMNz3JpkYDH7HVp93dZfLMt1GJHypLfhwOWS0NwC/
 
-#### Back up your operator private key file
+
+It is a good practice to back up your operator private key file
 
 > **Keep it safe and put it in a safe place!**
 
-path
-
 ```
-/data/operator/prater/node_key.json
+/data/operator/v1/prater/node_key.json
 ```
 
-{% hint style="success" %}
-**`<Your SafeStake Operator Node is now configured/>`**
-{% endhint %}
+**`Your SafeStake Operator Node is now configured`**
+
 
 ##

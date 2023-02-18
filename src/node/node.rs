@@ -225,7 +225,7 @@ impl<T: EthSpec> Node<T> {
                             }
                         }
                         ContractCommand::ActivateValidator(validator) => {
-                            info!("RemoveValidator");
+                            info!("ActivateValidator");
                             match activate_validator(node.clone(), validator).await {
                                 Ok(_) => {}
                                 Err(e) => {

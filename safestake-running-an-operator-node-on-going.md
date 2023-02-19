@@ -73,7 +73,34 @@ As a result, the deployment document is divided into two architectural patterns 
 
 Log in to your host cloud service provider, open the following firewall inbound rules:
 
-![](imgs/firewall_rule.png)
+| Type             | IpProtocol  | FromPort   | ToPort  | IpRanges |
+| ---------------- | ----------- | ---------- | ------- | -------- |
+| Inbound/Ingress  | tcp         | 80         | 80      | 0.0.0.0/0 |
+| Inbound/Ingress  | udp         | 8585       | 8585    | 0.0.0.0/0 |
+| Inbound/Ingress  | tcp         | 25000      | 25003   | 0.0.0.0/0 |
+| Inbound/Ingress  | udp         | 5052       | 5052    | 0.0.0.0/0 |
+| Inbound/Ingress  | udp         | 1234       | 1234    | 0.0.0.0/0 |
+| Inbound/Ingress  | tcp         | 5052       | 5052    | 0.0.0.0/0 |
+| Inbound/Ingress  | udp         | 9000       | 9000    | 0.0.0.0/0 |
+| Inbound/Ingress  | tcp         | 30303      | 30303   | 0.0.0.0/0 |
+| Inbound/Ingress  | tcp         | 8551       | 8551    | 0.0.0.0/0 |
+| Inbound/Ingress  | tcp         | 443        | 443     | 0.0.0.0/0 |
+| Inbound/Ingress  | udp         | 30303      | 30303   | 0.0.0.0/0 |
+| Inbound/Ingress  | tcp         | 9000       | 9000    | 0.0.0.0/0 |
+| Inbound/Ingress  | tcp         | 8545       | 8547    | 0.0.0.0/0 |
+| Inbound/Ingress  | udp         | 9005       | 9005    | 0.0.0.0/0 |
+| Inbound/Ingress  | tcp         | 8585       | 8585    | 0.0.0.0/0 |
+| Inbound/Ingress  | tcp         | 22         | 22      | 0.0.0.0/0 |
+| Inbound/Ingress  | tcp         | 26000      | 26005   | 0.0.0.0/0 |
+| Inbound/Ingress  | udp         | 25004      | 25004   | 0.0.0.0/0 |
+| Inbound/Ingress  | tcp         | 26000      | 26003   | 0.0.0.0/0 |
+| Inbound/Ingress  | tcp         | 25005      | 25005   | 0.0.0.0/0 |
+| Inbound/Ingress  | udp         | 26004      | 26004   | 0.0.0.0/0 |
+| Inbound/Ingress  | tcp         | 3456       | 3456    | 0.0.0.0/0 |
+| Inbound/Ingress  | tcp         | 3000       | 3001    | 0.0.0.0/0 |
+| Inbound/Ingress  | tcp         | 1234       | 1234    | 0.0.0.0/0 |
+
+
 
 #### 2. SSH Login to your server ([jumpserver](https://www.jumpserver.org/) recommand)
 

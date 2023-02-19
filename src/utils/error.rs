@@ -1,3 +1,5 @@
+use bls::Error as BlsError;
+use blst::BLST_ERROR as BlstError;
 
 pub fn require(status: bool, msg: &'static str) {
     if !status {
@@ -8,6 +10,8 @@ pub fn require(status: bool, msg: &'static str) {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum DvfError {
+    BlsError(BlsError),
+    BlstError(BlstError),
     /// The consensus protocol failed.
     ConsensusFailure(String),
     /// Key generation failed.
@@ -26,6 +30,20 @@ pub enum DvfError {
     InvalidLength,
     /// Should not call the function specified by the string
     UnexpectedCall(String),
-    ///
+    /// Dispute claim
+    InvalidDkgShare(Vec<(u64, u64)>),
+    /// Unknown error
     Unknown
+}
+
+impl From<BlsError> for DvfError {
+    fn from(e: BlsError) -> DvfError {
+        DvfError::BlsError(e)
+    }
+}
+
+impl From<BlstError> for DvfError {
+    fn from(e: BlstError) -> DvfError {
+        DvfError::BlstError(e)
+    }
 }

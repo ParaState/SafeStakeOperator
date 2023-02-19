@@ -3,6 +3,7 @@ use std::ops::{MulAssign, AddAssign, Index};
 use num_bigint::BigInt;
 use blst::{blst_p1, blst_scalar, blst_p1_affine};
 use bls::{PUBLIC_KEY_BYTES_LEN};
+use serde::{Serialize, Serializer, Deserialize, Deserializer};
 
 pub const BLST_SCALAR_LEN: usize = 32;
 
@@ -59,7 +60,7 @@ impl<T: Zero> Index<usize> for Polynomial<T> {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct CommittedPoly {
     commitments: Vec<blst_p1>,
 }
@@ -77,6 +78,10 @@ impl CommittedPoly {
             }
         }
         y
+    }
+
+    pub fn bytes_len(&self) -> usize {
+        std::mem::size_of::<u32>() + PUBLIC_KEY_BYTES_LEN * self.commitments.len()
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -98,7 +103,6 @@ impl CommittedPoly {
         let mut commitments = Vec::with_capacity(size as usize);
         for i in 0..size {
             let ser_cm = &bytes[index..index+PUBLIC_KEY_BYTES_LEN];
-            println!("bytes: {:?}", &ser_cm[0..4]);
             let mut cm = blst_p1::default();
             unsafe {
                 let mut cm_affine = blst_p1_affine::default();
@@ -111,6 +115,26 @@ impl CommittedPoly {
         Self {
             commitments,
         }
+    }
+}
+
+impl Serialize for CommittedPoly {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.to_bytes().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for CommittedPoly {
+    fn deserialize<D>(deserializer: D) -> Result<CommittedPoly, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(
+            CommittedPoly::from_bytes(Vec::<u8>::deserialize(deserializer)?.as_slice())
+        )
     }
 }
 

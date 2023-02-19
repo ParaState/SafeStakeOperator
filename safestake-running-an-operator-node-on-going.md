@@ -174,6 +174,11 @@ BEACON_NODE_ENDPOINT= # Depending on whether you are running single-node mode or
 sudo docker compose -f  docker-compose-operator.yml up -d operator
 ```
 
+*Congratulations, now the Operator program has been installed and deployed.*
+
+You can continue to the next section if you need to run Lighthouse & Geth service by yourself, otherwise, the operator tutorial ends here.
+
+
 ---
 
 ### Running Lighthouse & Geth Service
@@ -200,8 +205,6 @@ BEACON_NODE_ENDPOINT=http://12.102.103.1:5052
 
 
 ---
-
-Congratulations, now the Operator program has been installed and deployed.
  
 
 ### Some final notes about Operator's private/public keys

@@ -66,7 +66,7 @@ pub struct CommittedPoly {
 }
 
 impl CommittedPoly {
-    pub fn eval(&self, x: blst_scalar) -> blst_p1 {
+    pub fn eval(&self, x: &blst_scalar) -> blst_p1 {
         let mut y = self.commitments[0].clone();
         let mut x_power = x.clone();
         for i in 1..self.commitments.len() {
@@ -74,7 +74,7 @@ impl CommittedPoly {
                 let mut term = blst_p1::default();
                 blst::blst_p1_mult(&mut term, &self.commitments[i], x_power.b.as_ptr(), 255);
                 blst::blst_p1_add(&mut y, &y, &term);
-                blst::blst_sk_mul_n_check(&mut x_power, &x_power, &x);
+                blst::blst_sk_mul_n_check(&mut x_power, &x_power, x);
             }
         }
         y
@@ -166,7 +166,9 @@ impl Commitable<CommittedPoly, blst_p1> for Polynomial<BigInt> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::blst_utils::{u64_to_blst_scalar, bigint_to_blst_scalar, fixed_p1_generator, blst_p1_mult};
+    use crate::utils::blst_utils::{u64_to_blst_scalar, bigint_to_blst_scalar, 
+        fixed_p1_generator, blst_p1_mult, blst_scalar_to_bigint,
+        random_blst_scalar};
 
     #[test]
     fn test_commit() {
@@ -181,9 +183,34 @@ mod tests {
         assert_eq!(committed_poly, committed_poly_, "Serialization/Deserialization error");
 
         let x = u64_to_blst_scalar(7);
-        let y = committed_poly_.eval(x);
+        let y = committed_poly_.eval(&x);
 
         let exponent = bigint_to_blst_scalar(poly.eval(&(7.into())));
+
+        let y_ = blst_p1_mult(&g, &exponent);
+
+        assert_eq!(y, y_, "Verification failed");
+    }
+
+    fn test_commit2() {
+        let g = fixed_p1_generator();
+        let mut coeffs: Vec<BigInt> = vec![
+            blst_scalar_to_bigint(&random_blst_scalar()), 
+            blst_scalar_to_bigint(&random_blst_scalar()), 
+            blst_scalar_to_bigint(&random_blst_scalar()), 
+            blst_scalar_to_bigint(&random_blst_scalar())];
+        let poly = Polynomial::new(coeffs);
+        let committed_poly = poly.commit(g);
+
+        let ser = committed_poly.to_bytes();
+        let committed_poly_ = CommittedPoly::from_bytes(&ser);
+
+        assert_eq!(committed_poly, committed_poly_, "Serialization/Deserialization error");
+
+        let x = random_blst_scalar();
+        let y = committed_poly_.eval(&x);
+
+        let exponent = bigint_to_blst_scalar(poly.eval(&(blst_scalar_to_bigint(&x))));
 
         let y_ = blst_p1_mult(&g, &exponent);
 

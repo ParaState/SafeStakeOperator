@@ -1,7 +1,7 @@
 use blst::{blst_scalar, blst_p1, blst_p1_affine, blst_p2, blst_p2_affine};
-use num_bigint::BigInt;
+use num_bigint::{BigInt, Sign};
 use bytes::{Bytes, BytesMut};
-use bls::{PUBLIC_KEY_BYTES_LEN};
+use bls::{PUBLIC_KEY_BYTES_LEN, SecretKey as WrapSecretKey, PublicKey as WrapPublicKey};
 use rand::RngCore;
 use std::ptr;
 use blst::min_pk::{SecretKey, PublicKey};
@@ -27,6 +27,10 @@ pub fn bigint_to_blst_scalar (v: BigInt) -> blst_scalar {
         blst::blst_scalar_from_be_bytes(&mut x, v_bytes.as_ptr(), v_bytes.len());
     }
     x
+}
+
+pub fn blst_scalar_to_bigint (s: &blst_scalar) -> BigInt {
+    BigInt::from_bytes_le(Sign::Plus, &s.b)
 }
 
 pub fn fixed_p1_generator() -> blst_p1 {
@@ -214,12 +218,51 @@ pub fn bytes_to_blst_sk(b: Bytes) -> SecretKey {
     SecretKey::from_bytes(&be_bytes).unwrap()
 }
 
+/// Serialize a WrapSecretKey into bytes in little endian.
+pub fn blst_wrap_sk_to_bytes(sk: &WrapSecretKey) -> Bytes {
+    let mut ser = sk.serialize();
+    let bytes: &mut [u8] = ser.as_mut_bytes();
+    bytes.reverse();
+    Bytes::copy_from_slice(bytes)
+}
+
+/// Deserialize little-endian bytes into a WrapSecretKey
+pub fn bytes_to_blst_wrap_sk(bytes: Bytes) -> WrapSecretKey {
+    let mut be_bytes = bytes.to_vec();
+    be_bytes.reverse();
+    WrapSecretKey::deserialize(&be_bytes).unwrap()
+}
+
+pub fn blst_scalar_to_blst_wrap_sk(p: &blst_scalar) -> WrapSecretKey {
+    bytes_to_blst_wrap_sk(blst_scalar_to_bytes(p))
+}
+
+pub fn blst_wrap_sk_to_blst_scalar(p: &WrapSecretKey) -> blst_scalar {
+    bytes_to_blst_scalar(blst_wrap_sk_to_bytes(p))
+}
+
+
+
 pub fn bytes_to_blst_scalar(b: Bytes) -> blst_scalar {
     let mut x = blst_scalar::default();
     unsafe {
-        blst::blst_scalar_from_be_bytes(&mut x, b.as_ptr(), b.len());
+        blst::blst_scalar_from_le_bytes(&mut x, b.as_ptr(), b.len());
     }
     x
+}
+
+/// Serialize a WrapPublicKey into bytes
+pub fn blst_wrap_pk_to_bytes(pk: WrapPublicKey) -> Bytes {
+    Bytes::copy_from_slice(pk.serialize().as_slice())
+}
+
+/// Deserialize a WrapPublicKey into bytes
+pub fn bytes_to_blst_wrap_pk(bytes: Bytes) -> WrapPublicKey {
+    WrapPublicKey::deserialize(bytes.as_ref()).unwrap()
+}
+
+pub fn blst_p1_to_blst_wrap_pk(p: &blst_p1) -> WrapPublicKey {
+    bytes_to_blst_wrap_pk(blst_p1_to_bytes(p))
 }
 
 pub fn blst_scalar_to_bytes(x: &blst_scalar) -> Bytes {

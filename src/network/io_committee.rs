@@ -23,7 +23,7 @@ use rand::Rng;
 use crate::utils::blst_utils::{blst_sk_to_pk, 
     bytes_to_blst_p1, blst_p1_to_bytes, 
     blst_ecdh_shared_secret, blst_scalar_to_blst_sk,
-    blst_p1_to_pk, blst_p1_mult};
+    blst_p1_to_pk, blst_p1_mult, random_blst_scalar};
 use blst::{blst_scalar, blst_p1, BLST_ERROR};
 use blst::min_pk::{Signature};
 use bls::{INFINITY_SIGNATURE};
@@ -425,10 +425,10 @@ impl SecureNetIOCommittee {
     pub async fn new(
         party: u64, 
         port: u16,
-        sk: blst_scalar,
         ids: &[u64],
         addresses: &[SocketAddr]) -> SecureNetIOCommittee {
         let plain_committee = NetIOCommittee::new(party, port, ids, addresses).await;
+        let sk = random_blst_scalar();
         let pk = blst_sk_to_pk(&sk);
 
         let pk_bytes = blst_p1_to_bytes(&pk);
@@ -615,8 +615,7 @@ mod tests {
         let ports_ref = &ports;
         let addrs_ref = &addrs;
         let futs = (0..ids.len()).map(|i| async move {
-            let sk = random_blst_scalar();
-            let io = &Arc::new(SecureNetIOCommittee::new(ids[i], ports_ref[i], sk, ids.as_slice(), addrs_ref.as_slice()).await);
+            let io = &Arc::new(SecureNetIOCommittee::new(ids[i], ports_ref[i], ids.as_slice(), addrs_ref.as_slice()).await);
             io.broadcast(Bytes::copy_from_slice(format!("hello from {}", ids[i]).as_bytes())).await;
             for j in 0..ids.len() {
                 if i == j {

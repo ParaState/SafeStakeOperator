@@ -238,13 +238,15 @@ impl SigningMethod {
             SigningMethod::DistributedKeystore { dvf_signer, .. } => {
                 let _timer =
                     metrics::start_timer_vec(&metrics::SIGNING_TIMES, &[metrics::LOCAL_KEYSTORE]);
-                // Following LocalKeystore, if the code logic reaches here, then it has already passed all checks of this duty, and
-                // it is safe (from this operator's point of view) to sign it locally.
-                dvf_signer.local_sign_and_store(signing_root).await;
 
                 let (slot, duty, only_aggregator) = match signable_message {
                     SignableMessage::RandaoReveal(_) => {
-                        (Slot::new(0 as u64), "RANDAO", true)
+                        // Every operator should be able to get randao signature, 
+                        // otherwise if, e.g, only 2 out of 4 gets the randao signature,
+                        // then the committee wouldn't be able to get enough partial signatuers for
+                        // aggregation, because the other 2 operations who don't get the randao 
+                        // will NOT enter the next phase of signing block.
+                        (Slot::new(0 as u64), "RANDAO", false)
                     }
                     SignableMessage::AttestationData(a) => {
                         (a.slot, "ATTESTER", true)
@@ -256,6 +258,10 @@ impl SigningMethod {
                         (x.aggregate.data.slot, "AGGREGATE", true)
                     }
                     SignableMessage::SelectionProof(s) => {
+                        // Every operator should be able to get selection proof signature,
+                        // otherwise operators who don't get selection proof signature will
+                        // NOT be able to insert the ATTESTER duties into their local cache,
+                        // hence will NOT enter the corresponding phase of signing attestation.
                         (s, "SELECT", false)
                     }
                     SignableMessage::SyncSelectionProof(_) => {
@@ -278,7 +284,15 @@ impl SigningMethod {
                     signing_root
                 );
 
+                // Following LocalKeystore, if the code logic reaches here, then it has already passed all checks of this duty, and
+                // it is safe (from this operator's point of view) to sign it locally.
+                dvf_signer.local_sign_and_store(signing_root).await;
+
                 if !only_aggregator || (only_aggregator && dvf_signer.is_aggregator(signing_context.epoch.as_u64()).await) {
+                    log::info!("[Dvf {}/{}] Leader trying to achieve duty consensus and aggregate duty signatures",
+                        dvf_signer.operator_id, 
+                        dvf_signer.operator_committee.validator_id()
+                    );
                     // Should NOT take more than a slot duration for two reasons:
                     // 1. if longer than slot duration, it might affect duty retrieval for other VAs (for example, previously,
                     // I set this to be the epoch remaining time for selection proof, so bad committee (VA) might take several mintues

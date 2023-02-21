@@ -30,7 +30,7 @@ use hsconfig::{ConfigError, Secret};
 use hsutils::monitored_channel::{MonitoredChannel, MonitoredSender};
 use log::{error, info, warn};
 use mempool::{MempoolReceiverHandler, TxReceiverHandler};
-use network::{Receiver as NetworkReceiver, VERSION};
+use network::{Receiver as NetworkReceiver};
 use parking_lot::RwLock as ParkingRwLock;
 use slot_clock::SystemTimeSlotClock;
 use std::collections::HashMap;
@@ -73,7 +73,6 @@ impl<T: EthSpec> Node<T> {
         let secret = Node::<T>::open_or_create_secret(config.node_key_path.clone())?;
 
         info!("node public key {}", secret.name.encode_base64());
-        info!("dvf message version: {}", VERSION);
 
         let tx_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let mempool_handler_map = Arc::new(RwLock::new(HashMap::new()));
@@ -226,7 +225,7 @@ impl<T: EthSpec> Node<T> {
                             }
                         }
                         ContractCommand::ActivateValidator(validator) => {
-                            info!("RemoveValidator");
+                            info!("ActivateValidator");
                             match activate_validator(node.clone(), validator).await {
                                 Ok(_) => {}
                                 Err(e) => {

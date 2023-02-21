@@ -18,6 +18,9 @@ use std::path::PathBuf;
 use types::{Address, GRAFFITI_BYTES_LEN};
 use crate::node::config::{NodeConfig,API_ADDRESS, BOOT_ENR};
 use crate::node::contract::{DEFAULT_TRANSPORT_URL, SELF_OPERATOR_ID, NETWORK_CONTRACT, REGISTRY_CONTRACT};
+use dvf_version::{ROOT_VERSION};
+use dvf_directory::{get_default_base_dir};
+
 pub const DEFAULT_BEACON_NODE: &str = "http://localhost:5052/";
 
 /// Stores the core configuration for this validator instance.
@@ -110,22 +113,25 @@ impl Config {
     pub fn from_cli(cli_args: &ArgMatches, log: &Logger) -> Result<Config, String> {
         let mut config = Config::default();
 
-        let default_root_dir = dirs::home_dir()
-            .map(|home| home.join(DEFAULT_ROOT_DIR))
-            .unwrap_or_else(|| PathBuf::from("."));
+        let default_base_dir = get_default_base_dir(cli_args);
+
+
+        // let default_root_dir = dirs::home_dir()
+        //     .map(|home| home.join(DEFAULT_ROOT_DIR))
+        //     .unwrap_or_else(|| PathBuf::from("."));
 
         let (mut validator_dir, mut secrets_dir) = (None, None);
-        if cli_args.value_of("datadir").is_some() {
-            let base_dir: PathBuf = parse_required(cli_args, "datadir")?;
-            validator_dir = Some(base_dir.join(DEFAULT_VALIDATOR_DIR));
-            secrets_dir = Some(base_dir.join(DEFAULT_SECRET_DIR));
-        }
-        if cli_args.value_of("validators-dir").is_some() {
-            validator_dir = Some(parse_required(cli_args, "validators-dir")?);
-        }
-        if cli_args.value_of("secrets-dir").is_some() {
-            secrets_dir = Some(parse_required(cli_args, "secrets-dir")?);
-        }
+        // if cli_args.value_of("datadir").is_some() {
+        //     let base_dir: PathBuf = parse_required(cli_args, "datadir")?;
+        //     validator_dir = Some(base_dir.join(DEFAULT_VALIDATOR_DIR));
+        //     secrets_dir = Some(base_dir.join(DEFAULT_SECRET_DIR));
+        // }
+        // if cli_args.value_of("validators-dir").is_some() {
+        //     validator_dir = Some(parse_required(cli_args, "validators-dir")?);
+        // }
+        // if cli_args.value_of("secrets-dir").is_some() {
+        //     secrets_dir = Some(parse_required(cli_args, "secrets-dir")?);
+        // }
 
         if cli_args.value_of("boot-enr").is_some() {
             let boot_enr: String= parse_required(cli_args, "boot-enr")?;
@@ -146,7 +152,7 @@ impl Config {
 
         if cli_args.values_of("network-contract").is_some() {
             let network_contract: String= parse_required(cli_args, "network-contract")?;
-            info!(log, "read network contract"; "registry-contract" => &network_contract);
+            info!(log, "read network contract"; "network-contract" => &network_contract);
             NETWORK_CONTRACT.set(network_contract).unwrap();
         } else {
             warn!(log, "can't read network-contract, use old value, may be wrong");
@@ -204,24 +210,22 @@ impl Config {
         }
 
         config.validator_dir = validator_dir.unwrap_or_else(|| {
-            default_root_dir
-                .join(get_network_dir(cli_args))
+            default_base_dir
                 .join(DEFAULT_VALIDATOR_DIR)
         });
 
         config.secrets_dir = secrets_dir.unwrap_or_else(|| {
-            default_root_dir
-                .join(get_network_dir(cli_args))
+            default_base_dir
                 .join(DEFAULT_SECRET_DIR)
         });
 
         ensure_dir_exists(&config.validator_dir)?;
         ensure_dir_exists(&config.secrets_dir)?;
-        let base_dir = dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(DEFAULT_ROOT_DIR)
-            .join(get_network_dir(cli_args));
-        config.dvf_node_config = config.dvf_node_config.set_secret_dir(config.secrets_dir.clone()).set_validator_dir(config.validator_dir.clone()).set_node_key_path(base_dir.clone()).set_store_path(base_dir);
+        // let base_dir = dirs::home_dir()
+        //     .unwrap_or_else(|| PathBuf::from("."))
+        //     .join(DEFAULT_ROOT_DIR)
+        //     .join(get_network_dir(cli_args));
+        config.dvf_node_config = config.dvf_node_config.set_secret_dir(config.secrets_dir.clone()).set_validator_dir(config.validator_dir.clone()).set_node_key_path(default_base_dir.clone()).set_store_path(default_base_dir);
         if !config.validator_dir.exists() {
             fs::create_dir_all(&config.validator_dir)
                 .map_err(|e| format!("Failed to create {:?}: {:?}", config.validator_dir, e))?;

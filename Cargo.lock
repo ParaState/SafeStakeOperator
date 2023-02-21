@@ -1757,7 +1757,7 @@ checksum = "5caaa75cbd2b960ff1e5392d2cfb1f44717fffe12fc1f32b7b5d1267f99732a6"
 
 [[package]]
 name = "dvf"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "account_manager",
  "account_utils",
@@ -1782,6 +1782,8 @@ dependencies = [
  "dirs",
  "discv5",
  "downcast-rs",
+ "dvf_directory",
+ "dvf_version",
  "env_logger",
  "environment",
  "eth2",
@@ -1834,7 +1836,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-test",
- "tokio-util 0.6.10",
+ "tokio-util 0.7.7",
  "tracing-subscriber",
  "tree_hash",
  "types",
@@ -1846,6 +1848,20 @@ dependencies = [
  "web3",
  "zeroize",
 ]
+
+[[package]]
+name = "dvf_directory"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "directory",
+ "dirs",
+ "dvf_version",
+]
+
+[[package]]
+name = "dvf_version"
+version = "0.1.0"
 
 [[package]]
 name = "ecdsa"
@@ -2811,7 +2827,7 @@ dependencies = [
  "indexmap",
  "slab",
  "tokio",
- "tokio-util 0.7.3",
+ "tokio-util 0.7.7",
  "tracing",
 ]
 
@@ -3911,7 +3927,7 @@ dependencies = [
  "thiserror",
  "tinytemplate",
  "tokio",
- "tokio-util 0.7.3",
+ "tokio-util 0.7.7",
  "webrtc",
 ]
 
@@ -4629,6 +4645,7 @@ dependencies = [
  "async-trait",
  "bincode",
  "bytes",
+ "dvf_version",
  "exit-future",
  "futures",
  "log",
@@ -5817,7 +5834,7 @@ dependencies = [
  "serde_urlencoded",
  "tokio",
  "tokio-native-tls",
- "tokio-util 0.7.3",
+ "tokio-util 0.7.7",
  "tower-service",
  "url",
  "wasm-bindgen",
@@ -7250,9 +7267,9 @@ checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
 
 [[package]]
 name = "tokio"
-version = "1.24.1"
+version = "1.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d9f76183f91ecfb55e1d7d5602bd1d979e38a3a522fe900241cf195624d67ae"
+checksum = "c8e00990ebabbe4c14c08aca901caed183ecd5c09562a12c824bb53d3c3fd3af"
 dependencies = [
  "autocfg 1.1.0",
  "bytes",
@@ -7319,7 +7336,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite 0.2.9",
  "tokio",
- "tokio-util 0.7.3",
+ "tokio-util 0.7.7",
 ]
 
 [[package]]
@@ -7366,9 +7383,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.7.3"
+version = "0.7.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc463cd8deddc3770d20f9852143d50bf6094e640b485cb2e189a2099085ff45"
+checksum = "5427d89453009325de0d8f342c9490009f76e999cb7672d77e46267448f7e6b2"
 dependencies = [
  "bytes",
  "futures-core",

@@ -20,4 +20,7 @@ parking_lot = "0.12.0"
 utils = { path = "../utils" }
 exit-future = "0.2.0"
 
+# common
+dvf_version = { path = "../../common/dvf_version" }
+
 [dev-dependencies]

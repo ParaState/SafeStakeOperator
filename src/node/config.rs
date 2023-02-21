@@ -2,8 +2,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::fs::create_dir_all;
 use serde_derive::{Deserialize, Serialize};
-use crate::DEFAULT_DVF_ROOT_DIR;
-use directory::{DEFAULT_VALIDATOR_DIR, DEFAULT_SECRET_DIR};
+use directory::{DEFAULT_ROOT_DIR, DEFAULT_VALIDATOR_DIR, DEFAULT_SECRET_DIR};
 use tokio::sync::OnceCell;
 /// The file name for the serialized `OperatorCommitteeDefinition` struct.
 pub const NODE_KEY_FILENAME: &str = "node_key.json";
@@ -57,7 +56,7 @@ impl NodeConfig {
 
         let base_dir = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join(DEFAULT_DVF_ROOT_DIR);
+            .join(DEFAULT_ROOT_DIR);
 
         let base_store_path = base_dir.join(DB_FILENAME);
         let node_key_path = base_dir.join(NODE_KEY_FILENAME);

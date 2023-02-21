@@ -41,12 +41,13 @@ where T: Send + 'static {
             if sender.is_closed() {
                 break;
             }
-            if level == "debug" {
-                debug!("[{}] remaining capacity: {}", tag, sender.capacity());
-            }
-            else {
-                info!("[{}] remaining capacity: {}", tag, sender.capacity());
-            }
+            // if level == "debug" {
+            //     debug!("[{}] remaining capacity: {}", tag, sender.capacity());
+            // }
+            // else {
+            //     info!("[{}] remaining capacity: {}", tag, sender.capacity());
+            // }
+            debug!("[{}] remaining capacity: {}", tag, sender.capacity());
         }
     }
 }

@@ -549,7 +549,7 @@ impl<T: EthSpec> InitializedValidators<T> {
         self.definitions.push(def);
 
         self.update_validators().await?;
-
+        info!(self.log, "update_validators returned");
         self.definitions
             .save(&self.validators_dir)
             .map_err(Error::UnableToSaveDefinitions)?;
@@ -1341,7 +1341,7 @@ impl<T: EthSpec> InitializedValidators<T> {
         } else {
             debug!(log, "Key cache not modified");
         }
-
+        info!(self.log, "After Modified key_cache saved successfully");
         // Update the enabled and total validator counts
         set_gauge(
             &crate::validation::http_metrics::metrics::ENABLED_VALIDATORS_COUNT,
@@ -1351,6 +1351,7 @@ impl<T: EthSpec> InitializedValidators<T> {
             &crate::validation::http_metrics::metrics::TOTAL_VALIDATORS_COUNT,
             self.num_total() as i64,
         );
+        info!(self.log, "update Modified key_cache returned");
         Ok(())
     }
 

@@ -168,17 +168,17 @@ Now that we have open the `.env` file, we will update the values based on our ow
 
 **Leave these variables unchanged**:
 ```bash
-ENR=enr:-IS4QKIF_55zNM3o29E91Rj2gwjTQJHvnGVW8e--2nvsixCXCKbS0vhuBILafB1qv3AyR2GhKt611zf_x5V6zwGEmEwBgmlkgnY0gmlwhBKIH16Jc2VjcDI1NmsxoQNsOWU-IpJ0fRj4WlVELfC5HLLhzhHZr9HMsN401NGJdYN1ZHCCIy0
+ENR=enr:-IS4QMOVF32mO7kgr1-vHjHEQAqmuthEn3_xbDXAfbrkkpUeSfRVoEjkVo3Sj_Q0LyAxw0jiBNVP0Y5EfGsfn-k4PuQBgmlkgnY0gmlwhA3Vb9GJc2VjcDI1NmsxoQOfyzH4QUhiHcN11QC9xTo-SQIjiKmbHkwOuMfqhiJQqIN1ZHCCIy0
 GETH_NETWORK=goerli
 LIGHTHOUSE_NETWORK=prater
 OPERATOR_NETWORK=prater
 IMAGE_TAG=staging
-CONTRACT_ADDRESS=e1aF811cDE633a1655c84D728124458587B730B9
 REGISTRY_CONTRACT_ADDRESS=c5e19f5f5EB1E051b3A0c2Ea0C00d6DDCBD9662a
 NETWORK_CONTRACT_ADDRESS=Cd22Bd1E42e0BD56Fc21900EDB38268F451d59B3
-API_SERVER=https://api-testnet.safestake.xyz/v1/collect_performance
+API_SERVER=https://api-testnet.safestake.xyz/v1/
 # different chain has different ttd
 TTD=10790000
+# The beacon node endpoint, e.g., http://127.0.0.1:5052 for a local node
 # separated by ',' for multiple relays, such as MEV_BOOST_RELAYS=xxx,xxx,xxx
 MEV_BOOST_RELAYS=https://0xafa4c6985aa049fb79dd37010438cfebeb0f2bd42b115b89dd678dab0670c1de38da0c4e9138c9290a398ecd9a0b3110@boost-relay-goerli.flashbots.net
 #gas limit. [default: 30,000,000]

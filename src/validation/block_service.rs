@@ -22,7 +22,8 @@ use types::{
 pub enum BlockError {
     Recoverable(String),
     Irrecoverable(String),
-    Negligible,
+    RandaoNotLeader,
+    SignBlockNotLeader,
 }
 
 impl From<AllErrored<BlockError>> for BlockError {
@@ -276,7 +277,18 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
                     };
                     if let Err(e) = publish_result {
                         match e {
-                            BlockError::Negligible => {},
+                            BlockError::RandaoNotLeader => {
+                                error!(log,
+                                    "Error whilst producing block";
+                                    "message" => ?e
+                                );
+                            },
+                            BlockError::SignBlockNotLeader => {
+                                info!(log,
+                                    "Not a leader for proposing this block";
+                                    "message" => ?e
+                                );
+                            },
                             _ => {
                                 crit!(
                                     log,
@@ -314,7 +326,7 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
             .await
             .map_err(|e| {
                 match e {
-                    VSError::UnableToSign(SigningError::NotLeader) => BlockError::Negligible,
+                    VSError::UnableToSign(SigningError::NotLeader) => BlockError::RandaoNotLeader,
                     _ => BlockError::Recoverable(format!("Unable to produce randao reveal signature: {:?}", e))
                 }
             })?
@@ -393,7 +405,7 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
                     .await
                     .map_err(|e| {
                         match e {
-                            VSError::UnableToSign(SigningError::NotLeader) => BlockError::Negligible,
+                            VSError::UnableToSign(SigningError::NotLeader) => BlockError::SignBlockNotLeader,
                             _ => BlockError::Recoverable(format!("Unable to sign block: {:?}", e))
                         }
                     })?;

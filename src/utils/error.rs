@@ -30,8 +30,17 @@ pub enum DvfError {
     InvalidLength,
     /// Should not call the function specified by the string
     UnexpectedCall(String),
+    /// Vss share verification
+    VssShareVerificationFailed,
     /// Dispute claim
     InvalidDkgShare(Vec<(u64, u64)>),
+    /// Commitment
+    CommitmentVerificationFailed,
+    /// Zero knowledge proof
+    ZKProofInvalidInput,
+    /// Zero knowledge proof verification
+    ZKVerificationFailed,
+    InsufficientValidPks,
     /// Unknown error
     Unknown
 }

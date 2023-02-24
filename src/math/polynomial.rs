@@ -62,7 +62,7 @@ impl<T: Zero> Index<usize> for Polynomial<T> {
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct CommittedPoly {
-    commitments: Vec<blst_p1>,
+    pub commitments: Vec<blst_p1>,
 }
 
 impl CommittedPoly {
@@ -139,11 +139,11 @@ impl<'de> Deserialize<'de> for CommittedPoly {
 }
 
 pub trait Commitable<T, G> {
-    fn commit(&self, g: G) -> T;
+    fn commit(&self, g: &G) -> T;
 }
 
 impl Commitable<CommittedPoly, blst_p1> for Polynomial<BigInt> {
-    fn commit(&self, g: blst_p1) -> CommittedPoly {
+    fn commit(&self, g: &blst_p1) -> CommittedPoly {
         let mut commitments = Vec::with_capacity(self.len());
         for i in 0..self.len() {
             let coeff = &self[i];
@@ -153,7 +153,7 @@ impl Commitable<CommittedPoly, blst_p1> for Polynomial<BigInt> {
             }
             let mut cm = blst_p1::default();
             unsafe {
-                blst::blst_p1_mult(&mut cm, &g, coeff_bytes.as_ptr(), 255);
+                blst::blst_p1_mult(&mut cm, g, coeff_bytes.as_ptr(), 255);
             }
             commitments.push(cm);
         }
@@ -175,7 +175,7 @@ mod tests {
         let g = fixed_p1_generator();
         let mut coeffs: Vec<BigInt> = vec![3.into(), 5.into(), 4.into(), 2.into()];
         let poly = Polynomial::new(coeffs);
-        let committed_poly = poly.commit(g);
+        let committed_poly = poly.commit(&g);
 
         let ser = committed_poly.to_bytes();
         let committed_poly_ = CommittedPoly::from_bytes(&ser);
@@ -200,7 +200,7 @@ mod tests {
             blst_scalar_to_bigint(&random_blst_scalar()), 
             blst_scalar_to_bigint(&random_blst_scalar())];
         let poly = Polynomial::new(coeffs);
-        let committed_poly = poly.commit(g);
+        let committed_poly = poly.commit(&g);
 
         let ser = committed_poly.to_bytes();
         let committed_poly_ = CommittedPoly::from_bytes(&ser);

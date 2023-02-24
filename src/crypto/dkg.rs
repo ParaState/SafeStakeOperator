@@ -41,22 +41,6 @@ impl VssSharePayload {
     pub fn from_bytes(bytes: &Bytes) -> Self {
         bincode::deserialize::<Self>(bytes.as_ref()).unwrap()
     }
-
-    // pub async fn to_channel<T: IOChannel>(&self, channel: &T) {
-    //     channel.send(self.enc_share.clone()).await;
-    //     channel.send(Bytes::copy_from_slice(&self.sig.serialize())).await;
-    //     channel.send(self.committed_poly.to_bytes().into()).await;
-    // }
-    // pub async fn from_channel<T: IOChannel>(channel: &T) -> Result<Self, DvfError> {
-    //     let enc_share = channel.recv().await;
-    //     let sig = Signature::deserialize(&channel.recv().await).map_err(Into::<DvfError>::into)?;
-    //     let committed_poly = CommittedPoly::from_bytes(&channel.recv().await);
-    //     Ok(Self {
-    //         enc_share,
-    //         sig,
-    //         committed_poly,
-    //     })
-    // }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -72,34 +56,9 @@ impl VerificationResult {
     pub fn from_bytes(bytes: &Bytes) -> Self {
         bincode::deserialize::<Self>(bytes.as_ref()).unwrap()
     }
-
-    // pub async fn to_channel<T: IOChannel>(&self, channel: &T) {
-    //     let mut keys = Vec::<u8>::with_capacity(self.results.len() * 8);
-    //     let mut values = Vec::<u8>::with_capacity(self.results.len());
-    //     for (key, val) in self.results.iter() {
-    //         keys.extend_from_slice(key.to_le_bytes().as_slice());
-    //         values.extend_from_slice([*val as u8].as_slice());
-    //     }
-    //     channel.send(keys.into()).await;
-    //     channel.send(values.into()).await;
-        
-    // }
-    // pub async fn from_channel<T: IOChannel>(channel: &T) -> Result<Self, DvfError> {
-    //     let keys = channel.recv().await;
-    //     let values = channel.recv().await;
-    //     let mut results: HashMap<u64, bool> = Default::default();
-    //     for i in 0..values.len() {
-    //         let key = u64::from_le_bytes(<[u8; 8]>::try_from(keys.slice(i*8..(i+1)*8).as_ref()).unwrap());
-    //         let val = values.as_ref()[i] != 0;
-    //         results.insert(key, val);
-    //     }
-    //     Ok (Self {
-    //         results,
-    //     })
-    // }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DleqProof {
     c: blst_scalar,
     r: blst_scalar,
@@ -110,9 +69,7 @@ impl SerializeTrait for DleqProof {
     where
         S: Serializer,
     {
-        let mut vec = blst_scalar_to_bytes(&self.c).to_vec();
-        vec.extend_from_slice(blst_scalar_to_bytes(&self.c).as_ref());
-        vec.serialize(serializer)
+        (blst_scalar_to_bytes(&self.c), blst_scalar_to_bytes(&self.r)).serialize(serializer)
     }
 }
 
@@ -121,9 +78,9 @@ impl<'de> DeserializeTrait<'de> for DleqProof {
     where
         D: Deserializer<'de>,
     {
-        let vec = Vec::<u8>::deserialize(deserializer)?;
-        let c = bytes_to_blst_scalar(Bytes::copy_from_slice(&vec[0..32]));
-        let r = bytes_to_blst_scalar(Bytes::copy_from_slice(&vec[32..]));
+        let (c, r) = <(Bytes, Bytes)>::deserialize(deserializer)?;
+        let c = bytes_to_blst_scalar(c);
+        let r = bytes_to_blst_scalar(r);
         Ok(
             Self {
                 c,
@@ -152,28 +109,49 @@ impl DisputeClaim {
     pub fn from_bytes(bytes: &Bytes) -> Self {
         bincode::deserialize::<Self>(bytes.as_ref()).unwrap()
     }
-
-    // pub async fn to_channel<T: IOChannel>(&self, channel: &T) {
-    //     channel.send(self.enc_share.clone()).await;
-    //     channel.send(self.key.clone()).await;
-    //     channel.send(Bytes::copy_from_slice(&self.sig.serialize())).await;
-    //     channel.send(self.committed_poly.to_bytes().into()).await;
-    //     // channel.send(self.proof.to_bytes().into()).await;
-    // }
-    // pub async fn from_channel<T: IOChannel>(channel: &T) -> Result<Self, DvfError> {
-    //     let enc_share = channel.recv().await;
-    //     let key = channel.recv().await;
-    //     let sig = Signature::deserialize(&channel.recv().await).map_err(Into::<DvfError>::into)?;
-    //     let committed_poly = CommittedPoly::from_bytes(&channel.recv().await);
-    //     // let proof = DleqProof::from_bytes(&channel.recv().await);
-    //     Ok(Self {
-    //         enc_share,
-    //         key,
-    //         sig,
-    //         committed_poly,
-    //     })
-    // }
 }
+
+#[derive(Debug)]
+pub struct PkPayload {
+    pub pk: blst_p1,
+    pub proof: DleqProof,
+}
+
+impl PkPayload {
+    pub fn to_bytes(&self) -> Bytes {
+        bincode::serialize(self).unwrap().into()
+    }
+
+    pub fn from_bytes(bytes: &Bytes) -> Self {
+        bincode::deserialize::<Self>(bytes.as_ref()).unwrap()
+    }
+}
+
+impl SerializeTrait for PkPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        (blst_p1_to_bytes(&self.pk), self.proof.clone()).serialize(serializer)
+    }
+}
+
+impl<'de> DeserializeTrait<'de> for PkPayload {
+    fn deserialize<D>(deserializer: D) -> Result<PkPayload, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let (pk, proof) = <(Bytes, DleqProof)>::deserialize(deserializer)?;
+        let pk = bytes_to_blst_p1(pk);
+        Ok(
+            Self {
+                pk,
+                proof,
+            }
+        )
+    }
+}
+
 
 pub struct GpkPayload {
     pub gpk: blst_p1,
@@ -217,6 +195,7 @@ impl<'de> DeserializeTrait<'de> for GpkPayload {
         )
     }
 }
+
 
 /// Distributed key generation.
 /// NOTE: DKG and the corresponding IO committee are not thread-safe if multiple instances for
@@ -275,22 +254,16 @@ where
         let mut threshold_sig = ThresholdSignature::new(self.threshold);
         let ids = self.io.ids();
         let (kp, kps, poly) = threshold_sig.key_gen_with_poly(ids)?;
-        // Generator g
-        let g = fixed_p1_generator();
-        let committed_poly = poly.commit(g);
 
         // 0. Broadcast shares and commitments
         let kps_ref = &kps; // Take reference so that it can be used in async move
         let kp_ref = &kp;
-        let committed_poly_ref = &committed_poly;
-        let g_ref = &g;
         let futs = ids.iter().map(|id| async move {
             let s_ij = Bytes::copy_from_slice(kps_ref.get(id).unwrap().sk.serialize().as_bytes());
             let pk_i = Bytes::copy_from_slice(kp_ref.pk.serialize().as_slice());
-            let commitments = committed_poly_ref.to_bytes().into();
-            let (s_ji, pk_j, commitments_j) = {
+            let (s_ji, pk_j) = {
                 if *id == self.party {
-                    (s_ij, pk_i, commitments)
+                    (s_ij, pk_i)
                 }
                 else {
                     let send_channel = self.io.channel(self.party, *id);
@@ -303,11 +276,7 @@ where
                     send_channel.send(pk_i).await;
                     // Recv public key corresponding to the secret of party `id`
                     let pk_bytes = recv_channel.recv().await;
-                    // Send commitments to party `id`
-                    send_channel.send(commitments).await;
-                    // Recv commitments from party `id`
-                    let commitments_bytes = recv_channel.recv().await;
-                    (s, pk_bytes, commitments_bytes)
+                    (s, pk_bytes)
                 }
             };
 
@@ -405,9 +374,7 @@ where
         let mut threshold_sig = ThresholdSignature::new(self.threshold);
         let ids = self.io.ids();
         let (kp, kps, poly) = threshold_sig.key_gen_with_poly(ids)?;
-        // Generator g
-        let g = fixed_p1_generator();
-        let committed_poly = poly.commit(g);
+        let committed_poly = poly.commit(&self.h);
 
         Ok((kp, kps, poly, committed_poly))
     }
@@ -418,7 +385,6 @@ where
         committed_poly: &CommittedPoly,
         poly: &Polynomial<BigInt>,
     ) -> Result<HashMap<u64, VssSharePayload>, DvfError> {
-        let g = fixed_p1_generator();
 
         let mut futs: Vec<_> = Default::default();
         for id in self.io.ids().iter() {
@@ -474,7 +440,6 @@ where
 
     pub fn share_verification(&self, shares: &HashMap<u64, VssSharePayload>) -> VerificationResult {
         let mut results: HashMap<u64, bool> = Default::default();
-        let g = fixed_p1_generator();
         for (id, share) in shares.iter() {
             if *id == self.party {
                 continue;
@@ -482,9 +447,8 @@ where
             let send_channel = self.io.channel(self.party, *id);
             let s = send_channel.decrypt(share.enc_share.clone());
             let s = bytes_to_blst_scalar(s);
-            println!("Recv {:?}-->{:?} share: {:?}", *id, self.party, s);
 
-            let y = blst_p1_mult(&g, &s);
+            let y = blst_p1_mult(&self.h, &s);
             let y_ = share.committed_poly.eval(&u64_to_blst_scalar(self.party));
 
             results.insert(*id, y == y_);
@@ -510,14 +474,14 @@ where
         others
     }
 
-    pub async fn issude_dispute_claim(&self, corrupted_party_id: u64, share: &VssSharePayload) {
+    pub async fn issude_dispute_claim(&self, corrupted_party_id: u64, share: &VssSharePayload) -> Result<(), DvfError> {
         let channel = self.io.channel(self.party, corrupted_party_id);
         let g = fixed_p1_generator();
         let pk_j = channel.self_public_key();
         let pk_i = channel.partner_public_key();
         let kij = channel.shared_secret();
         let sk_j = channel.self_private_key();
-        let proof = Self::dleq_prove(&g, &pk_j, &pk_i, &kij, &sk_j);
+        let proof = Self::dleq_prove(&g, &pk_j, &pk_i, &kij, &sk_j)?;
         
         let claim = DisputeClaim {
             issue_party: self.party,
@@ -530,6 +494,7 @@ where
         };
 
         self.io.broadcast(claim.to_bytes()).await;
+        Ok(())
     }
 
     pub async fn verify_dispute_claim(&self, claim: &DisputeClaim) -> bool {
@@ -555,26 +520,65 @@ where
         // Verify whether the VSS verification condition holds
         let s = <U>::decrypt_with_key(claim.enc_share.clone(), blst_p1_to_bytes(&kij));
         let s = bytes_to_blst_scalar(s);
-        let y = blst_p1_mult(&g, &s);
+        let y = blst_p1_mult(&self.h, &s);
         let y_ = claim.committed_poly.eval(&u64_to_blst_scalar(claim.issue_party));
 
         y != y_
     }
 
-    pub async fn exchange_public_keys(&self, pk: &blst_p1_affine) -> HashMap<u64, blst_p1_affine> {
-        self.io.broadcast(blst_p1_affine_to_bytes(pk)).await;
-        let mut others = HashMap::<u64, blst_p1_affine>::default();
-        // TODO: parallelize
+    pub async fn exchange_public_keys(&self, 
+        pk: &blst_p1,
+        sk: &blst_scalar,
+        committed_polys: &HashMap<u64, CommittedPoly>,
+    ) -> Result<HashMap<u64, blst_p1>, DvfError> {
+
+        let g = fixed_p1_generator();
+        let aux_pk = &committed_polys[&self.party].commitments[0];
+        let proof = Self::dleq_prove(&g, pk, &self.h, aux_pk, sk)?;
+        let pk_payload = PkPayload {
+            pk: *pk,
+            proof
+        };
+        self.io.broadcast(pk_payload.to_bytes()).await;
+
+        let mut futs: Vec<_> = Default::default();
         for id in self.io.ids().iter() {
             if *id == self.party {
                 continue;
             }
-            let recv_channel = self.io.channel(*id, self.party);
-            let msg = recv_channel.recv().await;
-            let other_pk = bytes_to_blst_p1_affine(msg);
-            others.insert(*id, other_pk);
+            let fut = async move {
+                let recv_channel = self.io.channel(*id, self.party);
+                let msg = recv_channel.recv().await;
+                let other_pk_payload = PkPayload::from_bytes(&msg);
+                let other_aux_pk = &committed_polys[id].commitments[0];
+                let zk_verified = Self::dleq_verify(
+                    &g, 
+                    &other_pk_payload.pk, 
+                    &self.h, 
+                    other_aux_pk, 
+                    &other_pk_payload.proof
+                );
+                if !zk_verified {
+                    return None;
+                }
+
+                Some((*id, other_pk_payload.pk))
+            };
+            futs.push(fut);
         }
-        others
+
+        let mut results = join_all(futs)
+            .await
+            .into_iter()
+            .flatten()
+            .collect::<HashMap<u64, blst_p1>>();
+        results.insert(self.party, *pk);
+        if results.len() < self.io.ids().len() {
+            Err(DvfError::InsufficientValidPks)
+        }
+        else {
+            Ok(results)
+        }
     }
 
     pub fn construct_group_key(&self, shares: &HashMap<u64, blst_scalar>) -> (blst_scalar, blst_p1) {
@@ -587,20 +591,19 @@ where
     }
 
     pub async fn exchange_group_public_keys(&self, 
-        gsk: &blst_scalar, 
         gpk: &blst_p1, 
+        gsk: &blst_scalar, 
         committed_polys: &HashMap<u64, CommittedPoly>
     ) -> Result<HashMap<u64, blst_p1>, DvfError> {
         let g = fixed_p1_generator();
         let aux_gpk = blst_p1_mult(&self.h, gsk);
-        let proof = Self::dleq_prove(&g, gpk, &self.h, &aux_gpk, gsk);
+        let proof = Self::dleq_prove(&g, gpk, &self.h, &aux_gpk, gsk)?;
         let gpk_payload = GpkPayload {
             gpk: *gpk,
             aux_gpk,
             proof
         };
         self.io.broadcast(gpk_payload.to_bytes()).await;
-        println!("Party {} broadcast gpk payload", self.party);
 
         let mut futs: Vec<_> = Default::default();
         for id in self.io.ids().iter() {
@@ -610,9 +613,7 @@ where
             let fut = async move {
                 let recv_channel = self.io.channel(*id, self.party);
                 let msg = recv_channel.recv().await;
-                println!("recv gpk payload");
                 let other_gpk_payload = GpkPayload::from_bytes(&msg);
-                println!("decode gpk payload");
                 let zk_verified = Self::dleq_verify(
                     &g, 
                     &other_gpk_payload.gpk, 
@@ -629,7 +630,7 @@ where
                     .collect::<Vec<blst_p1>>();
                 let f = blst_p1s_add(&evals);
 
-                let commit_verified = other_gpk_payload.gpk == f;
+                let commit_verified = other_gpk_payload.aux_gpk == f;
 
                 if !commit_verified {
                     return None;
@@ -646,8 +647,12 @@ where
             .flatten()
             .collect::<HashMap<u64, blst_p1>>();
         results.insert(self.party, *gpk);
-        
-        Ok(results)
+        if results.len() < self.io.ids().len() {
+            Err(DvfError::InsufficientValidPks)
+        }
+        else {
+            Ok(results)
+        }
     }
 
     pub fn dleq_prove(
@@ -656,7 +661,12 @@ where
         x2: &blst_p1,
         y2: &blst_p1,
         alpha: &blst_scalar,
-    ) -> DleqProof {
+    ) -> Result<DleqProof, DvfError> {
+        let y1_ = blst_p1_mult(x1, alpha);
+        let y2_ = blst_p1_mult(x2, alpha);
+        if y1_ != *y1 || y2_ != *y2 {
+            return Err(DvfError::ZKProofInvalidInput);
+        }
         let w = random_blst_scalar();
         let t1 = blst_p1_mult(x1, &w);
         let t2 = blst_p1_mult(x2, &w);
@@ -665,10 +675,10 @@ where
             &w,
             &blst_scalar_mult(alpha, &c)
         );
-        DleqProof {
+        Ok(DleqProof {
             c,
             r,
-        }
+        })
     }
 
     pub fn dleq_verify(
@@ -709,10 +719,12 @@ where
         let other_vrfy_results = self.exchange_verification_results(&vrfy_result).await;
 
         // Issue dispute claim if any verification fails
+        let mut self_abort = false;
         for (id, valid) in vrfy_result.results.iter() {
             if *valid {
                 continue;
             }
+            self_abort = true;
             self.issude_dispute_claim(*id, payloads.get(&id).unwrap()).await;
         }
         let mut futs: Vec<_> = Default::default();
@@ -737,14 +749,24 @@ where
             .map(|(a, b, c)| (a, b))
             .collect::<Vec<(u64, u64)>>();
         if valid_claims.len() > 0 {
-            return Err(DvfError::InvalidDkgShare(valid_claims))
+            return Err(DvfError::InvalidDkgShare(valid_claims));
+        }
+        if self_abort {
+            return Err(DvfError::VssShareVerificationFailed);
+        }
+
+        let mut committed_polys = HashMap::<u64, CommittedPoly>::default();
+        committed_polys.insert(self.party, committed_poly);
+        for (id, share) in payloads.iter() {
+            committed_polys.insert(*id, share.committed_poly.clone());
         }
         
         // Derive master public key
-        let self_pk = bytes_to_blst_p1_affine(Bytes::copy_from_slice(kp.pk.serialize().as_slice()));
-        let mut pks = self.exchange_public_keys(&self_pk).await;
+        let self_pk = bytes_to_blst_p1(Bytes::copy_from_slice(kp.pk.serialize().as_slice()));
+        let self_sk = blst_wrap_sk_to_blst_scalar(&kp.sk);
+        let mut pks = self.exchange_public_keys(&self_pk, &self_sk, &committed_polys).await?;
         pks.insert(self.party, self_pk);
-        let mpk = blst_p1_affines_add(&pks.into_values().collect::<Vec<blst_p1_affine>>());
+        let mpk = blst_p1s_add(&pks.into_values().collect::<Vec<blst_p1>>());
 
         // Derive group secret key and group public key 
         let mut shares = self.reveal_shares(&payloads);
@@ -753,12 +775,7 @@ where
         let (gsk, gpk) = self.construct_group_key(&shares);
 
         // Exchange and verify group public keys
-        let mut committed_polys = HashMap::<u64, CommittedPoly>::default();
-        committed_polys.insert(self.party, committed_poly);
-        for (id, share) in payloads.iter() {
-            committed_polys.insert(*id, share.committed_poly.clone());
-        }
-        let gpks = self.exchange_group_public_keys(&gsk, &gpk, &committed_polys).await?;
+        let gpks = self.exchange_group_public_keys(&gpk, &gsk, &committed_polys).await?;
 
         // Convert to desired structs
         let gsk = blst_scalar_to_blst_wrap_sk(&gsk);

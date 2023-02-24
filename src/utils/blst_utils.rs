@@ -141,7 +141,7 @@ pub fn blst_p1_affines_add(points: &[blst_p1_affine]) -> blst_p1 {
 
 pub fn blst_p1s_add(points: &[blst_p1]) -> blst_p1 {
     let mut res = blst_p1::default();
-    let mut affine_points = Vec::<blst_p1_affine>::with_capacity(points.len());
+    let mut affine_points = vec![blst_p1_affine::default(); points.len()];
     unsafe {
         let pks = points.iter().map(|x| ptr::addr_of!(*x)).collect::<Vec<*const blst_p1>>();
         blst::blst_p1s_to_affine(affine_points.as_mut_ptr(), pks.as_ptr(), pks.len());

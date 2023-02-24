@@ -235,39 +235,6 @@ impl IOChannel for NetIOChannel {
     }
 }
 
-// impl PrivateChannel for NetIOChannel {
-//     fn encrypt_with_key(message: Bytes, key: Bytes) -> Bytes {
-//         message
-//     }
-//     fn encrypt(&self, message: Bytes) -> Bytes {
-//         message
-//     }
-//     fn decrypt_with_key(message: Bytes, key: Bytes) -> Bytes {
-//         message
-//     }
-//     fn decrypt(&self, enc_msg: Bytes) -> Bytes {
-//         enc_msg
-//     }
-//     fn shared_secret(&self) -> blst_p1 {
-//         Default::default()
-//     }
-//     fn self_private_key(&self) -> blst_scalar {
-//         Default::default()
-//     }
-//     fn self_public_key(&self) -> blst_p1 {
-//         Default::default()
-//     }
-//     fn partner_public_key(&self) -> blst_p1 {
-//         Default::default()
-//     }
-
-//     fn sign(&self, message: Bytes) -> Signature {
-//         Signature::from_bytes(&INFINITY_SIGNATURE).unwrap()
-//     }
-//     fn verify_partner(&self, message: Bytes, sig: Signature) -> bool {
-//         Default::default()
-//     }
-// }
 
 #[async_trait]
 pub trait IOCommittee<T>: Sync + Send {
@@ -455,16 +422,6 @@ impl SecureNetIOCommittee {
             channels: sec_channels,
         }
     }
-
-    // pub async fn broadcast(&self, message: Bytes) {
-    //     for i in 0..self.ids.len() {
-    //         if self.ids[i] == self.party {
-    //             continue;
-    //         }
-    //         let send_channel = self.channel(self.party, self.ids[i]);
-    //         send_channel.send(message.clone()).await;
-    //     }
-    // }
 }
 
 pub struct SecureNetIOChannel {

@@ -45,7 +45,7 @@ pub trait PrivateChannel {
 }
 
 #[async_trait]
-pub trait IOChannel {
+pub trait IOChannel: Sync + Send  {
     async fn send(&self, message: Bytes);
     async fn recv(&self) -> Bytes;
 }
@@ -235,42 +235,42 @@ impl IOChannel for NetIOChannel {
     }
 }
 
-impl PrivateChannel for NetIOChannel {
-    fn encrypt_with_key(message: Bytes, key: Bytes) -> Bytes {
-        message
-    }
-    fn encrypt(&self, message: Bytes) -> Bytes {
-        message
-    }
-    fn decrypt_with_key(message: Bytes, key: Bytes) -> Bytes {
-        message
-    }
-    fn decrypt(&self, enc_msg: Bytes) -> Bytes {
-        enc_msg
-    }
-    fn shared_secret(&self) -> blst_p1 {
-        Default::default()
-    }
-    fn self_private_key(&self) -> blst_scalar {
-        Default::default()
-    }
-    fn self_public_key(&self) -> blst_p1 {
-        Default::default()
-    }
-    fn partner_public_key(&self) -> blst_p1 {
-        Default::default()
-    }
+// impl PrivateChannel for NetIOChannel {
+//     fn encrypt_with_key(message: Bytes, key: Bytes) -> Bytes {
+//         message
+//     }
+//     fn encrypt(&self, message: Bytes) -> Bytes {
+//         message
+//     }
+//     fn decrypt_with_key(message: Bytes, key: Bytes) -> Bytes {
+//         message
+//     }
+//     fn decrypt(&self, enc_msg: Bytes) -> Bytes {
+//         enc_msg
+//     }
+//     fn shared_secret(&self) -> blst_p1 {
+//         Default::default()
+//     }
+//     fn self_private_key(&self) -> blst_scalar {
+//         Default::default()
+//     }
+//     fn self_public_key(&self) -> blst_p1 {
+//         Default::default()
+//     }
+//     fn partner_public_key(&self) -> blst_p1 {
+//         Default::default()
+//     }
 
-    fn sign(&self, message: Bytes) -> Signature {
-        Signature::from_bytes(&INFINITY_SIGNATURE).unwrap()
-    }
-    fn verify_partner(&self, message: Bytes, sig: Signature) -> bool {
-        Default::default()
-    }
-}
+//     fn sign(&self, message: Bytes) -> Signature {
+//         Signature::from_bytes(&INFINITY_SIGNATURE).unwrap()
+//     }
+//     fn verify_partner(&self, message: Bytes, sig: Signature) -> bool {
+//         Default::default()
+//     }
+// }
 
 #[async_trait]
-pub trait IOCommittee<T> {
+pub trait IOCommittee<T>: Sync + Send {
     /// Return a channel that is used to for transmitting message from `from` to `to`.
     fn channel(&self, from: u64, to: u64) -> &T;
     fn ids(&self) -> &[u64];

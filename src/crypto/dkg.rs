@@ -19,6 +19,7 @@ use crate::math::polynomial::{Commitable, CommittedPoly, Polynomial};
 use serde_derive::{Serialize, Deserialize};
 use serde::{Serialize as SerializeTrait, Deserialize as DeserializeTrait, Serializer, Deserializer, 
     ser::{SerializeStruct}};
+use async_trait::async_trait;
 
 pub struct PlainVssShare {
     pub share: blst_scalar,
@@ -229,7 +230,12 @@ impl<'de> DeserializeTrait<'de> for GpkPayload {
 /// 
 /// Such a restriction is mainly due to the fact that each party is listening on a single port for DKG, 
 /// so multiple concurrent DKG instances would cause chaos in the connections among parties.
-pub struct DKG<T, U> {
+#[async_trait]
+pub trait DKGTrait : Sync + Send{
+    async fn run(&self) -> Result<(WrapKeypair, WrapPublicKey, HashMap<u64, WrapPublicKey>), DvfError>;
+}
+
+pub struct DKGSemiHonest<T, U> {
     party: u64,
     io: Arc<T>,
     threshold: usize,
@@ -237,9 +243,9 @@ pub struct DKG<T, U> {
     _phantom: PhantomData<U>, // Allow to use generic type U when no concrete member is related to U
 }
 
-impl<T, U> DKG<T, U> 
+impl<T, U> DKGSemiHonest<T, U> 
 where 
-    U: IOChannel + PrivateChannel,
+    U: IOChannel,
     T: IOCommittee<U> {
 
     pub fn new(party: u64, io: Arc<T>, threshold: usize) -> Self {
@@ -253,12 +259,19 @@ where
             _phantom: PhantomData,
         }
     }
+}
+
+#[async_trait]
+impl<T, U> DKGTrait for DKGSemiHonest<T, U> 
+where 
+    U: IOChannel,
+    T: IOCommittee<U> {
 
     /// Returns:
     /// 1. Self's key pair
     /// 2. Master public key
     /// 3. A hashmap from a party's ID to its shared public key
-    pub async fn run_semihonest(&self) -> Result<(WrapKeypair, WrapPublicKey, HashMap<u64, WrapPublicKey>), DvfError> {
+    async fn run(&self) -> Result<(WrapKeypair, WrapPublicKey, HashMap<u64, WrapPublicKey>), DvfError> {
         let mut threshold_sig = ThresholdSignature::new(self.threshold);
         let ids = self.io.ids();
         let (kp, kps, poly) = threshold_sig.key_gen_with_poly(ids)?;
@@ -361,78 +374,31 @@ where
 
         Ok((kp, mpk, pks))
     }
+}
 
-    /// Returns:
-    /// 1. Self's key pair
-    /// 2. Master public key
-    /// 3. A hashmap from a party's ID to its shared public key
-    pub async fn run(&self) -> Result<(WrapKeypair, WrapPublicKey, HashMap<u64, WrapPublicKey>), DvfError> {
-        let (kp, kps, poly, committed_poly) = self.share_generation()?;
-        let payloads: HashMap<u64, VssSharePayload> = self.share_transmission(&kps, &committed_poly, &poly).await?;
-        let vrfy_result = self.share_verification(&payloads);
-        let other_vrfy_results = self.exchange_verification_results(&vrfy_result).await;
+pub struct DKGMalicious<T, U> {
+    party: u64,
+    io: Arc<T>,
+    threshold: usize,
+    h: blst_p1,
+    _phantom: PhantomData<U>, // Allow to use generic type U when no concrete member is related to U
+}
 
-        // Issue dispute claim if any verification fails
-        for (id, valid) in vrfy_result.results.iter() {
-            if *valid {
-                continue;
-            }
-            self.issude_dispute_claim(*id, payloads.get(&id).unwrap()).await;
+impl<T, U> DKGMalicious<T, U> 
+where 
+    U: IOChannel + PrivateChannel,
+    T: IOCommittee<U> {
+
+    pub fn new(party: u64, io: Arc<T>, threshold: usize) -> Self {
+        let h = another_p1_generator();
+
+        Self {
+            party,
+            io,
+            threshold,
+            h,
+            _phantom: PhantomData,
         }
-        let mut futs: Vec<_> = Default::default();
-        for (id1, other_vrfy_result) in other_vrfy_results.iter() {
-            let channel = self.io.channel(*id1, self.party);
-            for (id2, valid) in other_vrfy_result.results.iter() {
-                if *valid {
-                    continue;
-                }
-                let fut = async move {
-                    let claim = DisputeClaim::from_bytes(&channel.recv().await);
-                    let claim_is_valid = self.verify_dispute_claim(&claim).await;
-                    (*id1, *id2, claim_is_valid)
-                };
-                futs.push(fut);
-            }
-        }
-        let valid_claims = join_all(futs)
-            .await
-            .into_iter()
-            .filter(|(_, _, x)| *x)
-            .map(|(a, b, c)| (a, b))
-            .collect::<Vec<(u64, u64)>>();
-        if valid_claims.len() > 0 {
-            return Err(DvfError::InvalidDkgShare(valid_claims))
-        }
-        
-        // Derive master public key
-        let self_pk = bytes_to_blst_p1_affine(Bytes::copy_from_slice(kp.pk.serialize().as_slice()));
-        let mut pks = self.exchange_public_keys(&self_pk).await;
-        pks.insert(self.party, self_pk);
-        let mpk = blst_p1_affines_add(&pks.into_values().collect::<Vec<blst_p1_affine>>());
-
-        // Derive group secret key and group public key 
-        let mut shares = self.reveal_shares(&payloads);
-        let self_share = blst_wrap_sk_to_blst_scalar(&kps[&self.party].sk);
-        shares.insert(self.party, self_share);
-        let (gsk, gpk) = self.construct_group_key(&shares);
-
-        // Exchange and verify group public keys
-        let mut committed_polys = HashMap::<u64, CommittedPoly>::default();
-        committed_polys.insert(self.party, committed_poly);
-        for (id, share) in payloads.iter() {
-            committed_polys.insert(*id, share.committed_poly.clone());
-        }
-        let gpks = self.exchange_group_public_keys(&gsk, &gpk, &committed_polys).await?;
-
-        // Convert to desired structs
-        let gsk = blst_scalar_to_blst_wrap_sk(&gsk);
-        let gkp = WrapKeypair::from_components(gsk.public_key(), gsk);
-        let mpk = blst_p1_to_blst_wrap_pk(&mpk);
-        let gpks = gpks.iter()
-            .map(|(id, gpk)| (*id, blst_p1_to_blst_wrap_pk(&gpk)))
-            .collect::<HashMap<u64, WrapPublicKey>>();
-
-        Ok((gkp, mpk, gpks))
     }
 
     pub fn share_generation(&self) -> Result<(WrapKeypair, HashMap<u64, WrapKeypair>, Polynomial<BigInt>, CommittedPoly), DvfError> {
@@ -726,6 +692,86 @@ where
 
 }
 
+#[async_trait]
+impl<T, U> DKGTrait for DKGMalicious<T, U> 
+where 
+    U: IOChannel + PrivateChannel,
+    T: IOCommittee<U> {
+
+    /// Returns:
+    /// 1. Self's key pair
+    /// 2. Master public key
+    /// 3. A hashmap from a party's ID to its shared public key
+    async fn run(&self) -> Result<(WrapKeypair, WrapPublicKey, HashMap<u64, WrapPublicKey>), DvfError> {
+        let (kp, kps, poly, committed_poly) = self.share_generation()?;
+        let payloads: HashMap<u64, VssSharePayload> = self.share_transmission(&kps, &committed_poly, &poly).await?;
+        let vrfy_result = self.share_verification(&payloads);
+        let other_vrfy_results = self.exchange_verification_results(&vrfy_result).await;
+
+        // Issue dispute claim if any verification fails
+        for (id, valid) in vrfy_result.results.iter() {
+            if *valid {
+                continue;
+            }
+            self.issude_dispute_claim(*id, payloads.get(&id).unwrap()).await;
+        }
+        let mut futs: Vec<_> = Default::default();
+        for (id1, other_vrfy_result) in other_vrfy_results.iter() {
+            let channel = self.io.channel(*id1, self.party);
+            for (id2, valid) in other_vrfy_result.results.iter() {
+                if *valid {
+                    continue;
+                }
+                let fut = async move {
+                    let claim = DisputeClaim::from_bytes(&channel.recv().await);
+                    let claim_is_valid = self.verify_dispute_claim(&claim).await;
+                    (*id1, *id2, claim_is_valid)
+                };
+                futs.push(fut);
+            }
+        }
+        let valid_claims = join_all(futs)
+            .await
+            .into_iter()
+            .filter(|(_, _, x)| *x)
+            .map(|(a, b, c)| (a, b))
+            .collect::<Vec<(u64, u64)>>();
+        if valid_claims.len() > 0 {
+            return Err(DvfError::InvalidDkgShare(valid_claims))
+        }
+        
+        // Derive master public key
+        let self_pk = bytes_to_blst_p1_affine(Bytes::copy_from_slice(kp.pk.serialize().as_slice()));
+        let mut pks = self.exchange_public_keys(&self_pk).await;
+        pks.insert(self.party, self_pk);
+        let mpk = blst_p1_affines_add(&pks.into_values().collect::<Vec<blst_p1_affine>>());
+
+        // Derive group secret key and group public key 
+        let mut shares = self.reveal_shares(&payloads);
+        let self_share = blst_wrap_sk_to_blst_scalar(&kps[&self.party].sk);
+        shares.insert(self.party, self_share);
+        let (gsk, gpk) = self.construct_group_key(&shares);
+
+        // Exchange and verify group public keys
+        let mut committed_polys = HashMap::<u64, CommittedPoly>::default();
+        committed_polys.insert(self.party, committed_poly);
+        for (id, share) in payloads.iter() {
+            committed_polys.insert(*id, share.committed_poly.clone());
+        }
+        let gpks = self.exchange_group_public_keys(&gsk, &gpk, &committed_polys).await?;
+
+        // Convert to desired structs
+        let gsk = blst_scalar_to_blst_wrap_sk(&gsk);
+        let gkp = WrapKeypair::from_components(gsk.public_key(), gsk);
+        let mpk = blst_p1_to_blst_wrap_pk(&mpk);
+        let gpks = gpks.iter()
+            .map(|(id, gpk)| (*id, blst_p1_to_blst_wrap_pk(&gpk)))
+            .collect::<HashMap<u64, WrapPublicKey>>();
+
+        Ok((gkp, mpk, gpks))
+    }
+}
+
 pub struct SimpleDistributedSigner<T, U> {
     party: u64,  // self id
     kp: WrapKeypair,  // individual shared private key
@@ -847,22 +893,29 @@ mod tests {
         assert!(status1, "Signature verification failed");
     }
 
-    // #[test]
-    // fn test_dkg() {
-    //     // Use dkg to generate secret-shared keys
-    //     let io = &Arc::new(MemIOCommittee::new(ids.as_slice()));
-    //     let futs = ids.iter().map(|id| async move {
-    //         let mut dkg = DKG::new(*id, io.clone(), t);
-    //         dkg.run().await
-    //     });
+    #[test]
+    fn test_dkg() {
+        // Use dkg to generate secret-shared keys
+        let io = &Arc::new(MemIOCommittee::new(ids.as_slice()));
+        let futs = ids.iter().map(|id| async move {
+            let mut dkg = DKGSemiHonest::new(*id, io.clone(), t);
+            let result = dkg.run().await;
+            match result {
+                Ok(v) => Ok((*id, v)),
+                Err(e) => {
+                    println!("Error in Dkg of party {}: {:?}", id, e);
+                    Err(e)
+                }
+            }
+        });
 
-    //     let results = block_on(join_all(futs))
-    //         .into_iter()
-    //         .flatten()
-    //         .collect::<Vec<(Keypair, PublicKey, HashMap<u64, PublicKey>)>>();
+        let results = block_on(join_all(futs))
+            .into_iter()
+            .flatten()
+            .collect::<HashMap<u64, (Keypair, PublicKey, HashMap<u64, PublicKey>)>>();
         
-    //     verify_dkg_results(results);
-    // }
+        verify_dkg_results(results);
+    }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_dkg_net() {
@@ -874,12 +927,12 @@ mod tests {
         // Use dkg to generate secret-shared keys
         let futs = (0..ids.len()).map(|i| async move {
             let io = &Arc::new(NetIOCommittee::new(ids[i], ports_ref[i], ids.as_slice(), addrs_ref.as_slice()).await);
-            let mut dkg = DKG::new(ids[i], io.clone(), t);
+            let mut dkg = DKGSemiHonest::new(ids[i], io.clone(), t);
             let result = dkg.run().await;
             match result {
                 Ok(v) => Ok((ids[i], v)),
                 Err(e) => {
-                    println!("Error in Dkg of party {}: {:?}", i, e);
+                    println!("Error in Dkg of party {}: {:?}", ids[i], e);
                     Err(e)
                 }
             }
@@ -907,7 +960,7 @@ mod tests {
         let futs = (0..ids.len()).map(|i| async move {
             println!("Enter thread for party {}", ids[i]);
             let io = &Arc::new(SecureNetIOCommittee::new(ids[i], ports_ref[i], ids.as_slice(), addrs_ref.as_slice()).await);
-            let mut dkg = DKG::new(ids[i], io.clone(), t);
+            let mut dkg = DKGMalicious::new(ids[i], io.clone(), t);
             let result = dkg.run().await;
             match result {
                 Ok(v) => Ok((ids[i], v)),
@@ -944,7 +997,7 @@ mod tests {
         // Use dkg to generate secret-shared keys
         let futs = (0..ids.len()).map(|i| async move {
             let io = &Arc::new(NetIOCommittee::new(ids[i], ports_ref[i], ids.as_slice(), addrs_ref.as_slice()).await);
-            let mut dkg = DKG::new(ids[i], io.clone(), t);
+            let mut dkg = DKGSemiHonest::new(ids[i], io.clone(), t);
             let (kp, mpk, pks) = dkg.run().await?;
 
             // Sign with dkg result

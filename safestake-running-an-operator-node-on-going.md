@@ -42,8 +42,6 @@ Light mode contains only the OperatorNode service, the following list of program
 
 > Geth service and Lighthouse service can run on other hosts. Users should configure the `beacon node endpoint` (discussed later) in order to connect to Lighthouse's beacon node instance.
 The purpose of this is to make the architecture clearer and easier to scale operator nodes. And the cost efficiency ratio of infrastructure will be higher.
-As a result, the deployment document is divided into two architectural patterns of deployment
-
 
 ### Preparation: Get your Infura WS\_URL
 
@@ -182,6 +180,10 @@ TTD=10790000
 MEV_BOOST_RELAYS=https://0xafa4c6985aa049fb79dd37010438cfebeb0f2bd42b115b89dd678dab0670c1de38da0c4e9138c9290a398ecd9a0b3110@boost-relay-goerli.flashbots.net
 #gas limit. [default: 30,000,000]
 GAS_LIMIT_INTEGER=30000000
+WS_URL=<infura_ws_url>
+OPERATOR_ID=<YOUR_OPERATOR_ID>
+# The beacon node endpoint, e.g., http://127.0.0.1:5052 for a local node
+BEACON_NODE_ENDPOINT=<FILLED_WITH_YOUR_CHOICE>
 ```
 
 **Update these variables with yours**
@@ -197,7 +199,7 @@ BEACON_NODE_ENDPOINT= # Depending on whether you are running single-node mode or
 
 
 ```bash
-sudo docker compose -f  docker-compose-operator.yml up -d operator
+sudo docker compose -f  docker-compose-operator.yml force-recreate up -d operator
 ```
 
 *Congratulations, now the Operator program has been installed and deployed.*

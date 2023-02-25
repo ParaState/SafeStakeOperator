@@ -199,7 +199,7 @@ BEACON_NODE_ENDPOINT= # Depending on whether you are running single-node mode or
 
 
 ```bash
-sudo docker compose -f  docker-compose-operator.yml up force-recreate -d operator
+sudo docker compose -f  docker-compose-operator.yml up --force-recreate -d operator
 ```
 
 *Congratulations, now the Operator program has been installed and deployed.*

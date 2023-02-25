@@ -62,7 +62,7 @@ services:
         "--subscribe-all-subnets",
         "--import-all-attestations",
         "--validator-monitor-auto",
-        "--checkpoint-sync-url=https://prater.checkpoint.sigp.io",
+        "--checkpoint-sync-url=https://prater-checkpoint-sync.stakely.io",
         "--terminal-total-difficulty-override=${TTD}"
       ]
     expose:

@@ -9,8 +9,15 @@ services:
       - -c
       - |
         node_ip=$$(curl -s ifconfig.me) 
-        dvf_root_node $$node_ip 9005 2>&1
+        dvf_root_node ${OPERATOR_NETWORK} $$node_ip 9005 2>&1
     expose:
       - "9005"
-    ports:
-      - "9005:9005/udp"
+    volumes:
+      - boot-data:/root/.lighthouse
+volumes:
+  boot-data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /data/boot

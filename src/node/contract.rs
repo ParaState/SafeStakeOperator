@@ -484,7 +484,7 @@ impl Contract {
                                         None => false,
                                     };
                                     if listened {
-                                        info!("This log has been lestened, continue");
+                                        info!("This log has been listened, continue");
                                         continue;
                                     }
                                     let topic = log.topics[0].clone();

@@ -105,7 +105,7 @@ pub async fn get_operator_ips(
             let op_pk_str = base64::encode(op_pk);
             key_ip_map.get(&op_pk_str).map_or_else(
                 || {
-                    warn!("Can't discovery operator {} locally, querying from boot node", op_pk_str);
+                    warn!("Can't discover operator {} locally, querying from boot node", op_pk_str);
                     ip_not_founds.push(i);
                     None
                 },

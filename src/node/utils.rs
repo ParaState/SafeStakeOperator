@@ -17,7 +17,7 @@ use types::DepositData;
 use bytes::Bytes;
 use std::time::Duration;
 use tokio::time::timeout;
-use futures::executor::block_on;
+
 pub trait FromFile<T: DeserializeOwned> {
     fn from_file<P: AsRef<Path>>(path: P) -> Result<T, String> {
         let file = File::options()
@@ -97,20 +97,27 @@ pub async fn get_operator_ips(
     base_port: u16
 ) -> Result<Vec<SocketAddr>, String> {
     let key_ip_map = operator_key_ip_map.read().await;
-
-    let operator_base_address: Vec<Option<IpAddr>> = operator_public_keys
+    let mut ip_not_founds: Vec<usize> = vec![];
+    let mut operator_base_address: Vec<Option<IpAddr>> = operator_public_keys
         .iter()
-        .map(|op_pk| {
+        .enumerate()
+        .map(|(i, op_pk)| {
             let op_pk_str = base64::encode(op_pk);
             key_ip_map.get(&op_pk_str).map_or_else(
                 || {
                     warn!("Can't discovery operator {} locally, querying from boot node", op_pk_str);
-                    block_on(query_ip_from_boot(op_pk))
+                    ip_not_founds.push(i);
+                    None
                 },
-                |ip| Some(ip.clone()),
+                |ip| {
+                    Some(ip.clone())
+                },
             )
         })
         .collect();
+    for index in ip_not_founds {
+        operator_base_address[index] = query_ip_from_boot(&operator_public_keys[index]).await;
+    }
     if operator_base_address.iter().any(|x| x.is_none()) {
         return Err("Insufficient operators discovered".to_string());
     }
@@ -145,7 +152,7 @@ pub async fn query_ip_from_boot(op_pk: &Vec<u8>) -> Option<IpAddr>{
     let dvf_message = DvfMessage { 
         version: VERSION, validator_id: 0, message: op_pk.to_vec() 
     };
-    let timeout_mill :u64 = 2000;
+    let timeout_mill :u64 = 3000;
     let serialized_msg = bincode::serialize(&dvf_message).unwrap();
     let network_sender = ReliableSender::new();
     let socketaddr = BOOT_SOCKETADDR.get().unwrap().clone();

@@ -25,7 +25,6 @@ pub struct Proposer {
     rx_message: Receiver<ProposerMessage>,
     tx_loopback: MonitoredSender<Block>,
     buffer: HashSet<Digest>,
-    // network: ReliableSender,
     network: SimpleSender,
     validator_id: u64, 
     exit: exit_future::Exit
@@ -51,7 +50,6 @@ impl Proposer {
                 rx_message,
                 tx_loopback,
                 buffer: HashSet::new(),
-                // network: ReliableSender::new(),
                 network: SimpleSender::new(),
                 validator_id,
                 exit

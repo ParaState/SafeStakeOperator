@@ -592,7 +592,7 @@ pub async fn remove_validator<T: EthSpec>(
     cleanup_validator_dir(&validator_dir, &validator_pk, validator_id)?;
     cleanup_password_dir(&secret_dir, &validator_pk, validator_id)?;
 
-    info!("[VA {}] removeed validator {}", validator_id, validator_pk);
+    info!("[VA {}] removed validator {}", validator_id, validator_pk);
     Ok(())
 }
 

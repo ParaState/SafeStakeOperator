@@ -13,10 +13,10 @@ pub async fn func1(v: Arc<RwLock<i64>>) {
 }
 
 pub async fn func2(v: Arc<RwLock<i64>>) {
-    println!("func2 try to acquire write lock");
-    let mut x = v.write();
-    println!("func2 has write lock");
-    *x = 2;
+    println!("func2 try to acquire read lock");
+    let mut x = v.read();
+    println!("func2 has read lock");
+    println!("func2 x: {}", *x);
 }
 
 pub async fn func3(v: Arc<RwLock<i64>>) {

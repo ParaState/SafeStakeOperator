@@ -1114,6 +1114,13 @@ impl<T: EthSpec> InitializedValidators<T> {
         let mut key_cache = self.decrypt_key_cache(cache, &mut key_stores).await?;
 
         let mut disabled_uuids = HashSet::new();
+        let mut i: u32 = 0;
+        let log1 = self.log.clone();
+        tokio::task::spawn_blocking(move || {
+            info!(log1, "Start processing va definitions");
+        })
+        .await
+        .map_err(Error::TokioJoin)?;
         for def in self.definitions.as_slice() {
             if def.enabled {
                 match &def.signing_definition {
@@ -1317,10 +1324,35 @@ impl<T: EthSpec> InitializedValidators<T> {
                     "voting_pubkey" => format!("{:?}", def.voting_public_key)
                 );
             }
+
+            let log2 = self.log.clone();
+            tokio::task::spawn_blocking(move || {
+                info!(log2, 
+                    "Finish processing va definition";
+                    "#: " => i,
+                );
+            })
+            .await
+            .map_err(Error::TokioJoin)?;
+            i = i+1;
         }
+        let log3 = self.log.clone();
+        tokio::task::spawn_blocking(move || {
+            info!(log3, "Try to disable uuids in key cache");
+        })
+        .await
+        .map_err(Error::TokioJoin)?;
+
         for uuid in disabled_uuids {
             key_cache.remove(&uuid);
         }
+
+        let log4 = self.log.clone();
+        tokio::task::spawn_blocking(move || {
+            info!(log4, "Starting saving key cache");
+        })
+        .await
+        .map_err(Error::TokioJoin)?;
 
         let validators_dir = self.validators_dir.clone();
         let log = self.log.clone();

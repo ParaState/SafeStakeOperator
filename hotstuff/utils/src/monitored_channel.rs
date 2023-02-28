@@ -1,7 +1,7 @@
 use tokio::sync::mpsc::{channel, Sender, Receiver};
 use tokio::sync::mpsc::error::SendError;
 use tokio::time::{sleep, Duration};
-use log::{info, debug};
+use log::{info, debug, warn};
 
 #[derive(Clone)]
 pub struct MonitoredSender<T> {
@@ -47,7 +47,9 @@ where T: Send + 'static {
             // else {
             //     info!("[{}] remaining capacity: {}", tag, sender.capacity());
             // }
-            debug!("[{}] remaining capacity: {}", tag, sender.capacity());
+            if sender.capacity() == 0 {
+                warn!("[{}] Low remaining capacity: {}", tag, sender.capacity());
+            }
         }
     }
 }

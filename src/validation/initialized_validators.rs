@@ -1354,6 +1354,14 @@ impl<T: EthSpec> InitializedValidators<T> {
         .await
         .map_err(Error::TokioJoin)?;
 
+        let log5 = self.log.clone();
+        tokio::task::spawn_blocking(move || {
+            std::thread::sleep(std::time::Duration::from_millis(1000));
+            info!(log5, "Slept successfully");
+        })
+        .await
+        .map_err(Error::TokioJoin)?;
+
         let validators_dir = self.validators_dir.clone();
         let log = self.log.clone();
         if key_cache.is_modified() {

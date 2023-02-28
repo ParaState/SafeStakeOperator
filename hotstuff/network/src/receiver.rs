@@ -76,7 +76,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
             let mut handler_opt: Option<Handler> = None;
             let transport = Framed::new(socket, LengthDelimitedCodec::new());
             let (mut writer, mut reader) = transport.split();
-            let printed = false;
+            let mut printed = false;
             while let Some(frame) = reader.next().await {
                 match frame.map_err(|e| NetworkError::FailedToReceiveMessage(peer, e)) {
                     Ok(message) => {

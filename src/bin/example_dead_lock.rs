@@ -10,6 +10,7 @@ pub async fn func1(v: Arc<RwLock<i64>>) {
         println!("Slept successfully");
     })
     .await;
+    println!("func1 after spawn blocking");
 }
 
 pub async fn func2(v: Arc<RwLock<i64>>) {

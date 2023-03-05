@@ -86,8 +86,6 @@ services:
     depends_on:
       geth:
         condition: service_started
-      mev-boost:
-        condition: service_started
 
   operator:
     network_mode: "host"

@@ -8,7 +8,6 @@ use crate::{
     validation::Config,
 };
 use crate::validation::account_utils::{validator_definitions::ValidatorDefinition, ZeroizeString};
-// use parking_lot::{Mutex, RwLock};
 use tokio::sync::{Mutex, RwLock};
 use slashing_protection::{
     interchange::Interchange, InterchangeError, NotSafe, Safe, SlashingDatabase,

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use hscrypto::PublicKey;
 use hsutils::monitored_channel::MonitoredSender;
 use log::{error, info, warn};
-use parking_lot::RwLock;
+use tokio::sync::RwLock;
 use serde_derive::{Deserialize as DeriveDeserialize, Serialize as DeriveSerialize};
 use serde_json::Value;
 use core::panic;
@@ -321,15 +321,15 @@ impl Contract {
                     error!("contract error: {}", e);
                 })
                 .unwrap();
-            contract.construct_filter();
+            contract.construct_filter().await;
             contract.check_operator_id().await;
-            contract.get_logs_from_contract(tx.clone());
+            contract.get_logs_from_contract(tx.clone()).await;
             contract.monitor_validator_paidblock(tx.clone());
-            contract.listen_logs(tx);
+            contract.listen_logs(tx).await;
         });
     }
 
-    pub fn construct_filter(&mut self) {
+    pub async fn construct_filter(&mut self) {
         let config = &self.config;
         let va_reg_topic =
             H256::from_slice(&hex::decode(&config.validator_registration_topic).unwrap());
@@ -362,7 +362,7 @@ impl Contract {
                 None,
             );
         self.filter_builder = Some(filter_builder);
-        let mut handlers = self.handlers.write();
+        let mut handlers = self.handlers.write().await;
         handlers.insert(va_reg_topic, Box::new(ValidatorRegistrationHandler {}));
         handlers.insert(va_rm_topic, Box::new(ValidatorRemovalHandler {}));
         handlers.insert(ini_reg_topic, Box::new(InitializerRegistrationHandler {}));
@@ -432,7 +432,7 @@ impl Contract {
     }
 
 
-    pub fn get_logs_from_contract(&mut self, sender: MonitoredSender<ContractCommand>) {
+    pub async fn get_logs_from_contract(&mut self, sender: MonitoredSender<ContractCommand>) {
         let mut record = self.record.clone();
         let config = self.config.clone();
         let record_path = self.base_dir.join(CONTRACT_RECORD_FILE);
@@ -488,7 +488,7 @@ impl Contract {
                                         continue;
                                     }
                                     let topic = log.topics[0].clone();
-                                    match handlers.read().get(&topic) {
+                                    match handlers.read().await.get(&topic) {
                                         Some(handler) => {
                                             match handler
                                                 .process(
@@ -525,7 +525,7 @@ impl Contract {
         });
     }
 
-    pub fn listen_logs(&self, sender: MonitoredSender<ContractCommand>) {
+    pub async fn listen_logs(&self, sender: MonitoredSender<ContractCommand>) {
         let config = self.config.clone();
         let store = self.store.clone();
         let db = self.db.clone();
@@ -557,7 +557,7 @@ impl Contract {
                         Some(log) => {
                             let topic = log.topics[0].clone();
                             let transaction_hash = log.transaction_hash.clone();
-                            match handlers.read().get(&topic) {
+                            match handlers.read().await.get(&topic) {
                                 Some(handler) => {
                                     match handler
                                         .process(

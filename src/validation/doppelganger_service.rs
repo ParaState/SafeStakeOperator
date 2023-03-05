@@ -31,7 +31,7 @@
 //!
 //! Doppelganger protection is a best-effort, last-line-of-defence mitigation. Do not rely upon it.
 
-use crate::validation::beacon_node_fallback::{BeaconNodeFallback, RequireSynced};
+use crate::validation::beacon_node_fallback::{BeaconNodeFallback, OfflineOnFailure, RequireSynced};
 use crate::validation::validator_store::ValidatorStore;
 use environment::RuntimeContext;
 use eth2::types::LivenessResponseData;
@@ -44,6 +44,7 @@ use std::sync::Arc;
 use task_executor::ShutdownReason;
 use tokio::time::sleep;
 use types::{Epoch, EthSpec, PublicKeyBytes, Slot};
+use futures::executor::block_on;
 
 /// A wrapper around `PublicKeyBytes` which encodes information about the status of a validator
 /// pubkey with regards to doppelganger protection.
@@ -178,7 +179,7 @@ async fn beacon_node_liveness<'a, T: 'static + SlotClock, E: EthSpec>(
     } else {
         // Request the previous epoch liveness state from the beacon node.
         beacon_nodes
-            .first_success(RequireSynced::Yes, |beacon_node| async move {
+            .first_success(RequireSynced::Yes, OfflineOnFailure::Yes, |beacon_node| async move {
                 beacon_node
                     .post_lighthouse_liveness(validator_indices, previous_epoch)
                     .await
@@ -201,7 +202,7 @@ async fn beacon_node_liveness<'a, T: 'static + SlotClock, E: EthSpec>(
 
     // Request the current epoch liveness state from the beacon node.
     let current_epoch_responses = beacon_nodes
-        .first_success(RequireSynced::Yes, |beacon_node| async move {
+        .first_success(RequireSynced::Yes, OfflineOnFailure::Yes, |beacon_node| async move {
             beacon_node
                 .post_lighthouse_liveness(validator_indices, current_epoch)
                 .await
@@ -266,7 +267,9 @@ impl DoppelgangerService {
         slot_clock: T,
     ) -> Result<(), String> {
         // Define the `get_index` function as one that uses the validator store.
-        let get_index = move |pubkey| validator_store.validator_index(&pubkey);
+        // [TODO] Zico: using `block_on` here may block tokio's core thread because `get_index` will be used 
+        // in async context
+        let get_index = move |pubkey| block_on(validator_store.validator_index(&pubkey));
 
         // Define the `get_liveness` function as one that queries the beacon node API.
         let log = service.log.clone();
@@ -453,9 +456,9 @@ impl DoppelgangerService {
     /// further doppelganger checks.
     ///
     /// Any validator with an unknown index will be omitted from these results.
-    fn compute_detection_indices_map<F>(&self, get_index: &F) -> HashMap<u64, PublicKeyBytes>
+    fn compute_detection_indices_map<I>(&self, get_index: &I) -> HashMap<u64, PublicKeyBytes>
     where
-        F: Fn(PublicKeyBytes) -> Option<u64>,
+        I: Fn(PublicKeyBytes) -> Option<u64>,
     {
         let detection_pubkeys = self
             .doppelganger_states

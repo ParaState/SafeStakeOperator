@@ -2,6 +2,7 @@ use crate::validation::{
     doppelganger_service::DoppelgangerStatus,
     duties_service::{DutiesService, Error},
 };
+use crate::validation::beacon_node_fallback::OfflineOnFailure;
 use futures::future::join_all;
 use itertools::Itertools;
 use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -297,13 +298,14 @@ pub async fn poll_sync_committee_duties<T: SlotClock + 'static, E: EthSpec>(
     // protection.
     let local_pubkeys: HashSet<_> = duties_service
         .validator_store
-        .voting_pubkeys(DoppelgangerStatus::ignored);
+        .voting_pubkeys(DoppelgangerStatus::ignored)
+        .await;
 
     let local_indices = {
         let mut local_indices = Vec::with_capacity(local_pubkeys.len());
 
         let vals_ref = duties_service.validator_store.initialized_validators();
-        let vals = vals_ref.read();
+        let vals = vals_ref.read().await;
         for &pubkey in &local_pubkeys {
             if let Some(validator_index) = vals.get_index(&pubkey) {
                 local_indices.push(validator_index)
@@ -420,7 +422,7 @@ pub async fn poll_sync_committee_duties_for_period<T: SlotClock + 'static, E: Et
 
     let duties_response = duties_service
         .beacon_nodes
-        .first_success(duties_service.require_synced, |beacon_node| async move {
+        .first_success(duties_service.require_synced, OfflineOnFailure::Yes, |beacon_node| async move {
             beacon_node
                 .post_validator_duties_sync(period_start_epoch, local_indices)
                 .await

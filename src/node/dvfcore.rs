@@ -20,11 +20,9 @@ use types::{Keypair, EthSpec};
 use crate::validation::operator::{LocalOperator, TOperator};
 use futures::SinkExt;
 use crate::node::node::Node;
-use futures::executor::block_on;
 use crate::utils::error::DvfError;
 use crate::validation::{OperatorCommittee};
 use tokio::sync::{RwLock};
-use parking_lot::{RwLock as ParkingRwLock};
 use crate::validation::operator_committee_definitions::OperatorCommitteeDefinition; 
 use crate::node::config::{TRANSACTION_PORT_OFFSET, MEMPOOL_PORT_OFFSET, CONSENSUS_PORT_OFFSET, SIGNATURE_PORT_OFFSET};
 use std::net::SocketAddr;
@@ -142,13 +140,13 @@ impl Drop for DvfSigner {
 
 impl DvfSigner {
     pub async fn spawn<T: EthSpec>(
-        node_para: Arc<ParkingRwLock<Node<T>>>,
+        node_para: Arc<RwLock<Node<T>>>,
         validator_id: u64,
         keypair: Keypair,
         committee_def: OperatorCommitteeDefinition,
     ) -> Self {
         let node_tmp = Arc::clone(&node_para);
-        let node = node_tmp.read();
+        let node = node_tmp.read().await;
         // find operator id from operatorCommitteeDefinition
         let operator_index : Vec<usize> = committee_def.node_public_keys.iter().enumerate().filter(|&(_i, x)| {
             node.secret.name == *x
@@ -211,7 +209,7 @@ impl DvfSigner {
             keypair.clone(),
             tx_consensus,
             store.clone(),
-        );
+        ).await;
 
         Self {
             signal: Some(signal),
@@ -221,14 +219,6 @@ impl DvfSigner {
             store,
         }
     }
-
-    // pub async fn sign_str(&self, message: &str) -> Result<Signature, DvfError> {
-    //     let mut context = Context::new();
-    //     context.update(message.as_bytes());
-    //     let message_hash = Hash256::from_slice(&context.finalize());
-
-    //     self.operator_committee.sign(message_hash).await
-    // }
 
     pub async fn threshold_sign(&self, message: Hash256) -> Result<(Signature, Vec<u64>), DvfError> {
         self.operator_committee.sign(message).await
@@ -288,19 +278,16 @@ unsafe impl Send for DvfCore {}
 unsafe impl Sync for DvfCore {}
 
 impl DvfCore {
-    pub fn spawn<T: EthSpec> (
+    pub async fn spawn<T: EthSpec> (
         operator_id: u64,
-        node: Arc<ParkingRwLock<Node<T>>>,
+        node: Arc<RwLock<Node<T>>>,
         validator_id: u64,
         committee: HotstuffCommittee,
         keypair: Keypair,
         tx_consensus: MonitoredSender<Hash256>,
         store: Store,
     ) -> exit_future::Signal {
-        let node = node.read();
-        // let (tx_commit, rx_commit) = channel(CHANNEL_CAPACITY);
-        // let (tx_consensus_to_mempool, rx_consensus_to_mempool) = channel(CHANNEL_CAPACITY);
-        // let (tx_mempool_to_consensus, rx_mempool_to_consensus) = channel(CHANNEL_CAPACITY);
+        let node = node.read().await;
 
         let (tx_commit, rx_commit) = MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "dvf-commit".to_string(), "info");
         let (tx_consensus_to_mempool, rx_consensus_to_mempool) = MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "dvf-cs2mp".to_string(), "info");
@@ -314,11 +301,11 @@ impl DvfCore {
         let signature_service = SignatureService::new(node.secret.secret.clone());
 
 
-        {
-            block_on(node.signature_handler_map.write())
-                .insert(validator_id, DvfSignatureReceiverHandler{store : store.clone()});
-            info!("Insert signature handler for validator: {}", validator_id);
-        }
+        node.signature_handler_map
+            .write()
+            .await
+            .insert(validator_id, DvfSignatureReceiverHandler{store : store.clone()});
+        info!("Insert signature handler for validator: {}", validator_id);
 
         let (signal, exit) = exit_future::signal();
         Mempool::spawn(
@@ -332,7 +319,7 @@ impl DvfCore {
             Arc::clone(&node.tx_handler_map),
             Arc::clone(&node.mempool_handler_map),
             exit.clone()
-        );
+        ).await;
 
         Consensus::spawn(
             node.secret.name,
@@ -346,7 +333,7 @@ impl DvfCore {
             validator_id,
             Arc::clone(&node.consensus_handler_map),
             exit.clone()
-        );
+        ).await;
 
         info!("[Dvf {}/{}] successfully booted", operator_id, validator_id);
 

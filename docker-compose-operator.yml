@@ -57,7 +57,7 @@ services:
         "lighthouse",
         #lighthouse bn --builder https://mainnet-builder.test
         "bn",
-        "--builder=http://127.0.0.1:18550",
+        #"--builder=http://127.0.0.1:18550",
         "--network=${LIGHTHOUSE_NETWORK}",
         "--datadir=/data/lighthouse",
         # "--jwt-secrets=/data/jwt/jwtsecret",
@@ -72,15 +72,17 @@ services:
         "--execution-endpoint=http://127.0.0.1:8551",
         # "--eth1-endpoints=http://127.0.0.1:8545",
         "--metrics",
+        "--metrics-address=0.0.0.0",
         "--subscribe-all-subnets",
         "--import-all-attestations",
         "--validator-monitor-auto",
-        "--checkpoint-sync-url=https://prater.checkpoint.sigp.io",
+        "--checkpoint-sync-url=https://goerli.checkpoint-sync.ethpandaops.io",
         "--terminal-total-difficulty-override=${TTD}"
       ]
     expose:
       - "5052"
       - "9000"
+      - "5054"
     depends_on:
       geth:
         condition: service_started

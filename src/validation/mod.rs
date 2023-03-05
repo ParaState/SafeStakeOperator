@@ -465,11 +465,11 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             _ => {}
         }
         
-
+        let num_voting_validators = validator_store.num_voting_validators().await;
         info!(
             log,
             "Loaded validator keypair store";
-            "voting_validators" => validator_store.num_voting_validators().await
+            "voting_validators" => num_voting_validators,
         );
 
         // Perform pruning of the slashing protection database on start-up. In case the database is

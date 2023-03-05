@@ -46,7 +46,7 @@ pub struct Consensus;
 
 impl Consensus {
     #[allow(clippy::too_many_arguments)]
-    pub fn spawn(
+    pub async fn spawn(
         name: PublicKey,
         committee: Committee,
         parameters: Parameters,
@@ -82,13 +82,11 @@ impl Consensus {
             // Using a thread here avoids blocking the caller due to waiting for the write lock.
             // This might give us a non-fully initialized hotstuff instance because the consensus receiver 
             // handler has not been inserted, but it is worthwhile to save us from the blocking issue.
-            tokio::spawn(async move {
-                consensus_handler_map
+            consensus_handler_map
                 .write()
                 .await
                 .insert(validator_id, ConsensusReceiverHandler{tx_consensus, tx_helper});
-                info!("Insert consensus handler for validator: {}", validator_id);
-            });
+            info!("Insert consensus handler for validator: {}", validator_id);
         }
         
         // NetworkReceiver::spawn(

@@ -37,7 +37,7 @@ use validator_dir::Builder as ValidatorDirBuilder;
 use crate::validation::key_cache;
 use crate::validation::key_cache::KeyCache;
 
-use parking_lot::{RwLock};
+use tokio::sync::{RwLock};
 use crate::node::node::Node;
 use crate::node::dvfcore::DvfSigner;
 use crate::validation::validator_dir::share_builder::ShareBuilder;

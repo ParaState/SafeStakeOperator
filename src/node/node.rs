@@ -31,7 +31,6 @@ use hsutils::monitored_channel::{MonitoredChannel, MonitoredSender};
 use log::{error, info, warn};
 use mempool::{MempoolReceiverHandler, TxReceiverHandler};
 use network::{Receiver as NetworkReceiver};
-use parking_lot::RwLock as ParkingRwLock;
 use slot_clock::SystemTimeSlotClock;
 use std::collections::HashMap;
 use std::fs::{remove_dir_all, remove_file};
@@ -67,7 +66,7 @@ pub struct Node<T: EthSpec> {
 }
 // impl Send for Node{}
 impl<T: EthSpec> Node<T> {
-    pub fn new(config: NodeConfig) -> Result<Option<Arc<ParkingRwLock<Self>>>, ConfigError> {
+    pub fn new(config: NodeConfig) -> Result<Option<Arc<RwLock<Self>>>, ConfigError> {
         let self_address = config.base_address.ip();
         let secret_dir = config.secrets_dir.clone();
         let secret = Node::<T>::open_or_create_secret(config.node_key_path.clone())?;
@@ -156,7 +155,7 @@ impl<T: EthSpec> Node<T> {
             secret.name,
             tx_validator_command.clone(),
         );
-        let node = Arc::new(ParkingRwLock::new(node));
+        let node = Arc::new(RwLock::new(node));
         let initializer_store = Arc::new(RwLock::new(HashMap::new()));
         Node::process_contract_command(
             Arc::clone(&node),
@@ -181,7 +180,7 @@ impl<T: EthSpec> Node<T> {
     }
 
     pub fn process_contract_command(
-        node: Arc<ParkingRwLock<Node<T>>>,
+        node: Arc<RwLock<Node<T>>>,
         operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
         mut rx_contract_command: Receiver<ContractCommand>,
         tx_contract_command: MonitoredSender<ContractCommand>,
@@ -327,7 +326,7 @@ impl<T: EthSpec> Node<T> {
 }
 
 pub async fn add_validator<T: EthSpec>(
-    node: Arc<ParkingRwLock<Node<T>>>,
+    node: Arc<RwLock<Node<T>>>,
     validator: Validator,
     operator_public_keys: OperatorPublicKeys,
     shared_public_keys: SharedPublicKeys,
@@ -335,7 +334,7 @@ pub async fn add_validator<T: EthSpec>(
     operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
     tx_validator_command: MonitoredSender<ContractCommand>,
 ) -> Result<(), String> {
-    let node = node.read();
+    let node = node.read().await;
     let base_port = node.config.base_address.port();
     let validator_dir = node.config.validator_dir.clone();
     let secret_dir = node.config.secrets_dir.clone();
@@ -510,10 +509,10 @@ pub async fn add_validator<T: EthSpec>(
 }
 
 pub async fn activate_validator<T: EthSpec>(
-    node: Arc<ParkingRwLock<Node<T>>>,
+    node: Arc<RwLock<Node<T>>>,
     validator: Validator
 ) -> Result<(), String> {
-    let node = node.read();
+    let node = node.read().await;
     let validator_id = validator.id;
     let validator_pk = PublicKey::deserialize(&validator.public_key)
         .map_err(|e| format!("Unable to deserialize validator public key: {:?}", e))?;
@@ -563,7 +562,7 @@ pub async fn activate_validator<T: EthSpec>(
 } 
 
 pub async fn remove_validator<T: EthSpec>(
-    node: Arc<ParkingRwLock<Node<T>>>,
+    node: Arc<RwLock<Node<T>>>,
     validator: Validator,
 ) -> Result<(), String> {
     let validator_id = validator.id;
@@ -574,7 +573,7 @@ pub async fn remove_validator<T: EthSpec>(
         validator_id, validator_pk
     );
     let (validator_dir, secret_dir, validator_store) = {
-        let node_ = node.read();
+        let node_ = node.read().await;
         let validator_dir = node_.config.validator_dir.clone();
         let secret_dir = node_.config.secrets_dir.clone();
         let validator_store = node_.validator_store.clone();
@@ -597,7 +596,7 @@ pub async fn remove_validator<T: EthSpec>(
 }
 
 pub async fn stop_validator<T: EthSpec>(
-    node: Arc<ParkingRwLock<Node<T>>>,
+    node: Arc<RwLock<Node<T>>>,
     validator: Validator
 ) -> Result<(), String> {
     let validator_id = validator.id;
@@ -607,7 +606,7 @@ pub async fn stop_validator<T: EthSpec>(
         validator_id, validator_pk
     );
     let validator_store =  {
-        let node_ = node.read();
+        let node_ = node.read().await;
         node_.validator_store.clone()
     };
 
@@ -622,7 +621,7 @@ pub async fn stop_validator<T: EthSpec>(
 }
 
 pub async fn start_initializer<T: EthSpec>(
-    node: Arc<ParkingRwLock<Node<T>>>,
+    node: Arc<RwLock<Node<T>>>,
     initializer: Initializer,
     operator_public_keys: OperatorPublicKeys,
     operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
@@ -631,7 +630,7 @@ pub async fn start_initializer<T: EthSpec>(
     >,
     tx_contract_command: MonitoredSender<ContractCommand>,
 ) -> Result<(), String> {
-    let node = node.read();
+    let node = node.read().await;
     let base_port = node.config.base_address.port();
     let mut operator_ips =
         match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
@@ -695,7 +694,7 @@ pub async fn start_initializer<T: EthSpec>(
 
 // TODO process minipool created event
 pub async fn minipool_deposit<T: EthSpec>(
-    node: Arc<ParkingRwLock<Node<T>>>,
+    node: Arc<RwLock<Node<T>>>,
     initializer_id: u32,
     validator_pk: [u8; 48],
     operator_public_keys: OperatorPublicKeys,
@@ -705,7 +704,7 @@ pub async fn minipool_deposit<T: EthSpec>(
     initializer_store: InitializerStore,
     amount: u64
 ) -> Result<(), String> {
-    let node = node.read();
+    let node = node.read().await;
     let base_port = node.config.base_address.port();
     let mut operator_ips = match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
         Ok(ips) => ips,
@@ -745,8 +744,8 @@ pub async fn minipool_deposit<T: EthSpec>(
     Ok(())
 }
 
-pub async fn cleanup_handler<T: EthSpec>(node: Arc<ParkingRwLock<Node<T>>>, validator_id: u64) {
-    let node_ = node.read();
+pub async fn cleanup_handler<T: EthSpec>(node: Arc<RwLock<Node<T>>>, validator_id: u64) {
+    let node_ = node.read().await;
     let _ = node_.tx_handler_map.write().await.remove(&validator_id);
     let _ = node_
         .mempool_handler_map

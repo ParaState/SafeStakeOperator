@@ -359,7 +359,6 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         }
         let node = Node::<T>::new(config.dvf_node_config.clone())
             .map_err(|e| format!("Dvf node creation failed: {}", e))?;
-        // let node = Some(Arc::new(RwLock::new(node)));
 
         let validators = InitializedValidators::from_definitions(
             validator_defs,
@@ -459,7 +458,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         validator_store.register_all_in_doppelganger_protection_if_enabled().await?;
         match node {
             Some(n) => {
-                let mut node = n.write();
+                let mut node = n.write().await;
                 node.validator_store = Some(Arc::clone(&validator_store));
             }
             _ => {}

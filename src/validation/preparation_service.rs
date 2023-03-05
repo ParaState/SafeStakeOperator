@@ -315,13 +315,18 @@ impl<T: SlotClock + 'static, E: EthSpec> PreparationService<T, E> {
             .voting_pubkeys(DoppelgangerStatus::ignored)
             .await;
 
-        all_pubkeys
+        let map_fn_ref = &map_fn;
+        let futs = all_pubkeys
             .into_iter()
-            .filter_map(|pubkey| {
-                let proposal_data = self.validator_store.proposal_data(&pubkey)?;
-                map_fn(pubkey, proposal_data)
-            })
-            .collect()
+            .map(|pubkey| async move {
+                let proposal_data = self.validator_store.proposal_data(&pubkey).await?;
+                map_fn_ref(pubkey, proposal_data)
+            });
+        join_all(futs)
+            .await
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
     }
 
     async fn publish_preparation_data(
@@ -362,7 +367,7 @@ impl<T: SlotClock + 'static, E: EthSpec> PreparationService<T, E> {
 
     /// Register validators with builders, used in the blinded block proposal flow.
     async fn register_validators(&self) -> Result<(), String> {
-        let registration_keys = self.collect_validator_registration_keys();
+        let registration_keys = self.collect_validator_registration_keys().await;
 
         let mut changed_keys = vec![];
 

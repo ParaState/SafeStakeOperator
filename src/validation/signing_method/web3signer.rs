@@ -25,6 +25,9 @@ pub enum MessageType {
 pub enum ForkName {
     Phase0,
     Altair,
+    Bellatrix,
+    Capella,
+    Eip4844,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -73,13 +76,33 @@ pub enum Web3SignerObject<'a, T: EthSpec, Payload: AbstractExecPayload<T>> {
 
 impl<'a, T: EthSpec, Payload: AbstractExecPayload<T>> Web3SignerObject<'a, T, Payload> {
     pub fn beacon_block(block: &'a BeaconBlock<T, Payload>) -> Result<Self, Error> {
-        let version = match block {
-            BeaconBlock::Base(_) => ForkName::Phase0,
-            BeaconBlock::Altair(_) => ForkName::Altair,
-            BeaconBlock::Merge(_) => return Err(Error::MergeForkNotSupported),
-        };
-
-        Ok(Web3SignerObject::BeaconBlock { version, block })
+        match block {
+            BeaconBlock::Base(_) => Ok(Web3SignerObject::BeaconBlock {
+                version: ForkName::Phase0,
+                block: Some(block),
+                block_header: None,
+            }),
+            BeaconBlock::Altair(_) => Ok(Web3SignerObject::BeaconBlock {
+                version: ForkName::Altair,
+                block: Some(block),
+                block_header: None,
+            }),
+            BeaconBlock::Merge(_) => Ok(Web3SignerObject::BeaconBlock {
+                version: ForkName::Bellatrix,
+                block: None,
+                block_header: Some(block.block_header()),
+            }),
+            BeaconBlock::Capella(_) => Ok(Web3SignerObject::BeaconBlock {
+                version: ForkName::Capella,
+                block: None,
+                block_header: Some(block.block_header()),
+            }),
+            BeaconBlock::Eip4844(_) => Ok(Web3SignerObject::BeaconBlock {
+                version: ForkName::Eip4844,
+                block: None,
+                block_header: Some(block.block_header()),
+            }),
+        }
     }
 
     pub fn message_type(&self) -> MessageType {
@@ -120,4 +143,3 @@ pub struct SigningRequest<'a, T: EthSpec, Payload: AbstractExecPayload<T>> {
 pub struct SigningResponse {
     pub signature: Signature,
 }
-

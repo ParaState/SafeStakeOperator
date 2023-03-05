@@ -5,6 +5,7 @@ use crate::{
     validation::http_metrics::metrics,
     validation::initialized_validators::InitializedValidators,
     validation::signing_method::{Error as SigningError, SignableMessage, SigningContext, SigningMethod},
+    validation::Config,
 };
 use crate::validation::account_utils::{validator_definitions::ValidatorDefinition, ZeroizeString};
 // use parking_lot::{Mutex, RwLock};
@@ -29,6 +30,7 @@ use types::{
     SyncSelectionProof, SyncSubnetId, ValidatorRegistrationData, 
 };
 use validator_dir::ValidatorDir;
+use crate::validation::preparation_service::ProposalData;
 
 pub use crate::validation::doppelganger_service::DoppelgangerStatus;
 
@@ -55,6 +57,11 @@ impl From<SigningError> for Error {
 ///
 /// This acts as a maximum safe-guard against clock drift.
 const SLASHING_PROTECTION_HISTORY_EPOCHS: u64 = 512;
+
+/// Currently used as the default gas limit in execution clients.
+///
+/// https://github.com/ethereum/builder-specs/issues/17
+pub const DEFAULT_GAS_LIMIT: u64 = 30_000_000;
 
 struct LocalValidator {
     validator_dir: ValidatorDir,
@@ -90,6 +97,9 @@ pub struct ValidatorStore<T, E: EthSpec> {
     log: Logger,
     doppelganger_service: Option<Arc<DoppelgangerService>>,
     slot_clock: T,
+    fee_recipient_process: Option<Address>,
+    gas_limit: Option<u64>,
+    builder_proposals: bool,
     task_executor: TaskExecutor,
     _phantom: PhantomData<E>,
 }
@@ -105,6 +115,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         spec: ChainSpec,
         doppelganger_service: Option<Arc<DoppelgangerService>>,
         slot_clock: T,
+        config: &Config,
         task_executor: TaskExecutor,
         log: Logger,
     ) -> Self {
@@ -117,6 +128,9 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
             log,
             doppelganger_service,
             slot_clock,
+            fee_recipient_process: config.fee_recipient,
+            gas_limit: config.gas_limit,
+            builder_proposals: config.builder_proposals,
             task_executor,
             _phantom: PhantomData,
         }
@@ -419,11 +433,32 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         self.validators.read().await.graffiti(validator_pubkey)
     }
 
+    pub fn get_fee_recipient_defaulting(&self, fee_recipient: Option<Address>) -> Option<Address> {
+        // If there's nothing in the file, try the process-level default value.
+        fee_recipient.or(self.fee_recipient_process)
+    }
+
     pub async fn suggested_fee_recipient(&self, validator_pubkey: &PublicKeyBytes) -> Option<Address> {
         self.validators
             .read()
             .await
             .suggested_fee_recipient(validator_pubkey)
+    }
+
+    fn get_gas_limit_defaulting(&self, gas_limit: Option<u64>) -> u64 {
+        // If there is a `gas_limit` in the validator definitions yaml
+        // file, use that value.
+        gas_limit
+            // If there's nothing in the file, try the process-level default value.
+            .or(self.gas_limit)
+            // If there's no process-level default, use the `DEFAULT_GAS_LIMIT`.
+            .unwrap_or(DEFAULT_GAS_LIMIT)
+    }
+
+    fn get_builder_proposals_defaulting(&self, builder_proposals: Option<bool>) -> bool {
+        builder_proposals
+            // If there's nothing in the file, try the process-level default value.
+            .unwrap_or(self.builder_proposals)
     }
 
     pub async fn sign_block<Payload: AbstractExecPayload<E>>(

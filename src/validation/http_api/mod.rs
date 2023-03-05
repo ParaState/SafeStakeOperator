@@ -616,7 +616,7 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
         .and(log_filter.clone())
         .and_then(|request, signer, validator_store, task_executor, log| {
             blocking_signed_json_task(signer, move || {
-                keystores::delete(request, validator_store, task_executor, log)
+                block_on(keystores::delete(request, validator_store, task_executor, log))
             })
         });
 

@@ -450,6 +450,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             context.eth2_config.spec.clone(),
             doppelganger_service.clone(),
             slot_clock.clone(),
+            &config,
             context.executor.clone(),
             log.clone(),
         ));

@@ -31,7 +31,7 @@ use monitoring_api::{MonitoringHttpClient, ProcessType};
 pub use slashing_protection::{SlashingDatabase, SLASHING_PROTECTION_FILENAME};
 
 use crate::validation::beacon_node_fallback::{
-    start_fallback_updater_service, BeaconNodeFallback, CandidateBeaconNode, RequireSynced,
+    start_fallback_updater_service, BeaconNodeFallback, CandidateBeaconNode, OfflineOnFailure, RequireSynced,
 };
 use crate::validation::doppelganger_service::DoppelgangerService;
 use crate::validation::account_utils::validator_definitions::ValidatorDefinitions;
@@ -103,7 +103,7 @@ async fn check_synced<T: SlotClock, E: EthSpec>(beacon_nodes: Arc<BeaconNodeFall
     }
 
     match beacon_nodes
-        .first_success(RequireSynced::Yes, |beacon_node| async move {
+        .first_success(RequireSynced::Yes, OfflineOnFailure::Yes, |beacon_node| async move {
             if let Ok(response) = beacon_node.get_node_syncing().await {
                 if let Some(is_optimistic) = response.data.is_optimistic {
                     // "Optimistic" means the execution engine is not yet synced
@@ -300,8 +300,12 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         );
         // Initialize the number of connected, synced fallbacks to 0.
         set_gauge(&http_metrics::metrics::ETH2_FALLBACK_CONNECTED, 0);
-        let mut beacon_nodes: BeaconNodeFallback<_, T> =
-            BeaconNodeFallback::new(candidates, context.eth2_config.spec.clone(), log.clone());
+        let mut beacon_nodes: BeaconNodeFallback<_, T> = BeaconNodeFallback::new(
+            candidates, 
+            config.disable_run_on_all,
+            context.eth2_config.spec.clone(), 
+            log.clone()
+        );
 
         // Perform some potentially long-running initialization tasks.
         let (genesis_time, genesis_validators_root) = tokio::select! {
@@ -451,7 +455,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         ));
 
         // Ensure all validators are registered in doppelganger protection.
-        validator_store.register_all_in_doppelganger_protection_if_enabled()?;
+        validator_store.register_all_in_doppelganger_protection_if_enabled().await?;
         match node {
             Some(n) => {
                 let mut node = n.write();
@@ -464,7 +468,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         info!(
             log,
             "Loaded validator keypair store";
-            "voting_validators" => validator_store.num_voting_validators()
+            "voting_validators" => validator_store.num_voting_validators().await
         );
 
         // Perform pruning of the slashing protection database on start-up. In case the database is
@@ -520,8 +524,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             .validator_store(validator_store.clone())
             .beacon_nodes(beacon_nodes.clone())
             .runtime_context(context.service_context("preparation".into()))
-            .fee_recipient(config.fee_recipient)
-            .fee_recipient_file(config.fee_recipient_file.clone())
+            .builder_registration_timestamp_override(config.builder_registration_timestamp_override)
             .build()?;
 
         let sync_committee_service = SyncCommitteeService::new(
@@ -662,9 +665,11 @@ async fn init_from_beacon_node<E: EthSpec>(
 
     let genesis = loop {
         match beacon_nodes
-            .first_success(RequireSynced::No, |node| async move {
-                node.get_beacon_genesis().await
-            })
+            .first_success(
+                RequireSynced::No, 
+                OfflineOnFailure::Yes,
+                |node| async move { node.get_beacon_genesis().await },
+            )
             .await
         {
             Ok(genesis) => break genesis.data,
@@ -751,7 +756,7 @@ async fn poll_whilst_waiting_for_genesis<E: EthSpec>(
 ) -> Result<(), String> {
     loop {
         match beacon_nodes
-            .first_success(RequireSynced::No, |beacon_node| async move {
+            .first_success(RequireSynced::No, OfflineOnFailure::Yes, |beacon_node| async move {
                 beacon_node.get_lighthouse_staking().await
             })
             .await

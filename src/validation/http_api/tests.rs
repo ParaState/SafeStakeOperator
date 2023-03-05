@@ -108,6 +108,7 @@ impl ApiTester {
 
         validator_store
             .register_all_in_doppelganger_protection_if_enabled()
+            .await
             .expect("Should attach doppelganger service");
 
         let initialized_validators = validator_store.initialized_validators();

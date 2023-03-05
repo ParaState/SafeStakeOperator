@@ -38,13 +38,14 @@ pub enum Error {
     ShuttingDown,
     TokioJoin(String),
     MergeForkNotSupported,
+    GenesisForkVersionRequired,
     CommitteeSignFailed(String),
 
     NotLeader,
 }
 
 /// Enumerates all messages that can be signed by a validator.
-pub enum SignableMessage<'a, T: EthSpec, Payload: ExecPayload<T> = FullPayload<T>> {
+pub enum SignableMessage<'a, T: EthSpec, Payload: AbstractExecPayload<T> = FullPayload<T>> {
     RandaoReveal(Epoch),
     BeaconBlock(&'a BeaconBlock<T, Payload>),
     AttestationData(&'a AttestationData),
@@ -56,9 +57,10 @@ pub enum SignableMessage<'a, T: EthSpec, Payload: ExecPayload<T> = FullPayload<T
         slot: Slot,
     },
     SignedContributionAndProof(&'a ContributionAndProof<T>),
+    ValidatorRegistration(&'a ValidatorRegistrationData),
 }
 
-impl<'a, T: EthSpec, Payload: ExecPayload<T>> SignableMessage<'a, T, Payload> {
+impl<'a, T: EthSpec, Payload: AbstractExecPayload<T>> SignableMessage<'a, T, Payload> {
     /// Returns the `SignedRoot` for the contained message.
     ///
     /// The actual `SignedRoot` trait is not used since it also requires a `TreeHash` impl, which is
@@ -75,6 +77,7 @@ impl<'a, T: EthSpec, Payload: ExecPayload<T>> SignableMessage<'a, T, Payload> {
                 beacon_block_root, ..
             } => beacon_block_root.signing_root(domain),
             SignableMessage::SignedContributionAndProof(c) => c.signing_root(domain),
+            SignableMessage::ValidatorRegistration(v) => v.signing_root(domain),
         }
     }
 }
@@ -128,8 +131,9 @@ impl SigningContext {
 }
 
 impl SigningMethod {
+
     /// Return the signature of `signable_message`, with respect to the `signing_context`.
-    pub async fn get_signature<T: EthSpec, Payload: ExecPayload<T>>(
+    pub async fn get_signature<T: EthSpec, Payload: AbstractExecPayload<T>>(
         &self,
         signable_message: SignableMessage<'_, T, Payload>,
         signing_context: SigningContext,
@@ -140,10 +144,32 @@ impl SigningMethod {
         let SigningContext {
             fork,
             genesis_validators_root,
+            epoch,
             ..
         } = signing_context;
 
         let signing_root = signable_message.signing_root(domain_hash);
+
+        let fork_info = Some(ForkInfo {
+            fork,
+            genesis_validators_root,
+        });
+
+        self.get_signature_from_root(signable_message, signing_root, executor, fork_info, epoch, spec)
+            .await
+    }
+
+
+    /// Return the signature of `signable_message`, with respect to the `signing_context`.
+    pub async fn get_signature_from_root<T: EthSpec, Payload: AbstractExecPayload<T>>(
+        &self,
+        signable_message: SignableMessage<'_, T, Payload>,
+        signing_root: Hash256,
+        executor: &TaskExecutor,
+        fork_info: Option<ForkInfo>,
+        signing_epoch: Epoch,
+        spec: &ChainSpec,
+    ) -> Result<Signature, Error> {
 
         match self {
             SigningMethod::LocalKeystore { voting_keypair, .. } => {
@@ -197,21 +223,21 @@ impl SigningMethod {
                     SignableMessage::SignedContributionAndProof(c) => {
                         Web3SignerObject::ContributionAndProof(c)
                     }
+                    SignableMessage::ValidatorRegistration(v) => {
+                        Web3SignerObject::ValidatorRegistration(v)
+                    }
                 };
 
                 // Determine the Web3Signer message type.
                 let message_type = object.message_type();
 
-                // The `fork_info` field is not required for deposits since they sign across the
-                // genesis fork version.
-                let fork_info = if let Web3SignerObject::Deposit { .. } = &object {
-                    None
-                } else {
-                    Some(ForkInfo {
-                        fork,
-                        genesis_validators_root,
-                    })
-                };
+                if matches!(
+                    object,
+                    Web3SignerObject::Deposit { .. } | Web3SignerObject::ValidatorRegistration(_)
+                ) && fork_info.is_some()
+                {
+                    return Err(Error::GenesisForkVersionRequired);
+                }
 
                 let request = SigningRequest {
                     message_type,
@@ -273,13 +299,16 @@ impl SigningMethod {
                     SignableMessage::SignedContributionAndProof(_) => {
                         (Slot::new(0 as u64), "CONTRIB", true)
                     }
+                    SignableMessage::ValidatorRegistration(v) => {
+                        (Slot::new(0 as u64), "VA_REG", true)
+                    }
                 };
 
                 log::info!("[Dvf {}/{}] Signing\t-\tSlot: {}.\tEpoch: {}.\tType: {}.\tRoot: {:?}.", 
                     dvf_signer.operator_id, 
                     dvf_signer.operator_committee.validator_id(),
                     slot,
-                    signing_context.epoch.as_u64(),
+                    signing_epoch.as_u64(),
                     duty,
                     signing_root
                 );
@@ -288,7 +317,7 @@ impl SigningMethod {
                 // it is safe (from this operator's point of view) to sign it locally.
                 dvf_signer.local_sign_and_store(signing_root).await;
 
-                if !only_aggregator || (only_aggregator && dvf_signer.is_aggregator(signing_context.epoch.as_u64()).await) {
+                if !only_aggregator || (only_aggregator && dvf_signer.is_aggregator(signing_epoch.as_u64()).await) {
                     log::info!("[Dvf {}/{}] Leader trying to achieve duty consensus and aggregate duty signatures",
                         dvf_signer.operator_id, 
                         dvf_signer.operator_committee.validator_id()

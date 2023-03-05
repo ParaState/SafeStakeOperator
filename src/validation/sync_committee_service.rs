@@ -1,6 +1,6 @@
 //! Reference: lighthouse/validator_client/sync_committee_service.rs 
 
-use crate::validation::beacon_node_fallback::{BeaconNodeFallback, RequireSynced};
+use crate::validation::beacon_node_fallback::{BeaconNodeFallback, RequireSynced, OfflineOnFailure};
 use crate::validation::{duties_service::DutiesService, validator_store::ValidatorStore, validator_store::Error as VSError};
 use crate::validation::signing_method::Error as SigningError;
 use environment::RuntimeContext;
@@ -180,7 +180,7 @@ impl<T: SlotClock + 'static, E: EthSpec> SyncCommitteeService<T, E> {
         // Fetch block root for `SyncCommitteeContribution`.
         let block_root = self
             .beacon_nodes
-            .first_success(RequireSynced::Yes, |beacon_node| async move {
+            .first_success(RequireSynced::Yes, OfflineOnFailure::Yes, |beacon_node| async move {
                 beacon_node.get_beacon_blocks_root(BlockId::Head).await
             })
             .await
@@ -266,7 +266,7 @@ impl<T: SlotClock + 'static, E: EthSpec> SyncCommitteeService<T, E> {
             .collect::<Vec<_>>();
 
         self.beacon_nodes
-            .first_success(RequireSynced::No, |beacon_node| async move {
+            .first_success(RequireSynced::No, OfflineOnFailure::Yes, |beacon_node| async move {
                 beacon_node
                     .post_beacon_pool_sync_committee_signatures(committee_signatures)
                     .await
@@ -333,7 +333,7 @@ impl<T: SlotClock + 'static, E: EthSpec> SyncCommitteeService<T, E> {
 
         let contribution = &self
             .beacon_nodes
-            .first_success(RequireSynced::No, |beacon_node| async move {
+            .first_success(RequireSynced::No, OfflineOnFailure::Yes, |beacon_node| async move {
                 let sync_contribution_data = SyncContributionData {
                     slot,
                     beacon_block_root,
@@ -401,7 +401,7 @@ impl<T: SlotClock + 'static, E: EthSpec> SyncCommitteeService<T, E> {
 
         // Publish to the beacon node.
         self.beacon_nodes
-            .first_success(RequireSynced::No, |beacon_node| async move {
+            .first_success(RequireSynced::No, OfflineOnFailure::Yes, |beacon_node| async move {
                 beacon_node
                     .post_validator_contribution_and_proofs(signed_contributions)
                     .await
@@ -539,7 +539,7 @@ impl<T: SlotClock + 'static, E: EthSpec> SyncCommitteeService<T, E> {
 
         if let Err(e) = self
             .beacon_nodes
-            .first_success(RequireSynced::No, |beacon_node| async move {
+            .first_success(RequireSynced::No, OfflineOnFailure::Yes, |beacon_node| async move {
                 beacon_node
                     .post_validator_sync_committee_subscriptions(subscriptions_slice)
                     .await

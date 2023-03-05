@@ -69,10 +69,10 @@ async fn notify<T: SlotClock + 'static, E: EthSpec>(
     if let Some(slot) = duties_service.slot_clock.now() {
         let epoch = slot.epoch(E::slots_per_epoch());
 
-        let total_validators = duties_service.total_validator_count();
-        let proposing_validators = duties_service.proposer_count(epoch);
-        let attesting_validators = duties_service.attester_count(epoch);
-        let doppelganger_detecting_validators = duties_service.doppelganger_detecting_count();
+        let total_validators = duties_service.total_validator_count().await;
+        let proposing_validators = duties_service.proposer_count(epoch).await;
+        let attesting_validators = duties_service.attester_count(epoch).await;
+        let doppelganger_detecting_validators = duties_service.doppelganger_detecting_count().await;
 
         if doppelganger_detecting_validators > 0 {
             info!(log, "Listening for doppelgangers"; "doppelganger_detecting_validators" => doppelganger_detecting_validators)

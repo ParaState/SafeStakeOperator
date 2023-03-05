@@ -1,8 +1,8 @@
 //! Reference: lighthouse/validator_client/block_service.rs 
 
-use crate::validation::beacon_node_fallback::{AllErrored, Error as FallbackError};
+use crate::validation::beacon_node_fallback::{Errors, Error as FallbackError};
 use crate::validation::{
-    beacon_node_fallback::{BeaconNodeFallback, RequireSynced},
+    beacon_node_fallback::{BeaconNodeFallback, RequireSynced, OfflineOnFailure},
     graffiti_file::GraffitiFile,
 };
 use crate::validation::{http_metrics::metrics, validator_store::ValidatorStore, validator_store::Error as VSError};
@@ -15,7 +15,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use types::{
-    BlindedPayload, BlockType, Epoch, EthSpec, ExecPayload, FullPayload, PublicKeyBytes, Slot,
+    AbstractExecPayload, BlindedPayload, BlockType, Epoch, EthSpec, ExecPayload, FullPayload, PublicKeyBytes, Slot,
 };
 
 #[derive(Debug)]
@@ -26,8 +26,8 @@ pub enum BlockError {
     SignBlockNotLeader,
 }
 
-impl From<AllErrored<BlockError>> for BlockError {
-    fn from(e: AllErrored<BlockError>) -> Self {
+impl From<Errors<BlockError>> for BlockError {
+    fn from(e: Errors<BlockError>) -> Self {
         if e.0.iter().any(|(_, error)| {
             matches!(
                 error,
@@ -307,7 +307,7 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
     }
 
     /// Produce a block at the given slot for validator_pubkey
-    async fn publish_block<Payload: ExecPayload<E>>(
+    async fn publish_block<Payload: AbstractExecPayload<E>>(
         self,
         slot: Slot,
         validator_pubkey: PublicKeyBytes,
@@ -342,16 +342,16 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
                     None
                 }
             })
-            .or_else(|| self.validator_store.graffiti(&validator_pubkey))
+            .or(self.validator_store.graffiti(&validator_pubkey).await)
             .or(self.graffiti);
 
         let randao_reveal_ref = &randao_reveal;
         let self_ref = &self;
-        let proposer_index = self.validator_store.validator_index(&validator_pubkey);
+        let proposer_index = self.validator_store.validator_index(&validator_pubkey).await;
         let validator_pubkey_ref = &validator_pubkey;
         let signed_block = self
             .beacon_nodes
-            .first_success(RequireSynced::No, |beacon_node| async move {
+            .first_success(RequireSynced::No, OfflineOnFailure::Yes, |beacon_node| async move {
                 let get_timer = metrics::start_timer_vec(
                     &metrics::BLOCK_SERVICE_TIMES,
                     &[metrics::BEACON_BLOCK_HTTP_GET],

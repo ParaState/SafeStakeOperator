@@ -17,6 +17,7 @@ pub enum MessageType {
     SyncCommitteeMessage,
     SyncCommitteeSelectionProof,
     SyncCommitteeContributionAndProof,
+    ValidatorRegistration,
 }
 
 #[derive(Debug, PartialEq, Copy, Clone, Serialize)]
@@ -34,7 +35,7 @@ pub struct ForkInfo {
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(bound = "T: EthSpec", rename_all = "snake_case")]
-pub enum Web3SignerObject<'a, T: EthSpec, Payload: ExecPayload<T>> {
+pub enum Web3SignerObject<'a, T: EthSpec, Payload: AbstractExecPayload<T>> {
     AggregationSlot {
         slot: Slot,
     },
@@ -42,7 +43,10 @@ pub enum Web3SignerObject<'a, T: EthSpec, Payload: ExecPayload<T>> {
     Attestation(&'a AttestationData),
     BeaconBlock {
         version: ForkName,
-        block: &'a BeaconBlock<T, Payload>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        block: Option<&'a BeaconBlock<T, Payload>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        block_header: Option<BeaconBlockHeader>,
     },
     #[allow(dead_code)]
     Deposit {
@@ -64,9 +68,10 @@ pub enum Web3SignerObject<'a, T: EthSpec, Payload: ExecPayload<T>> {
     },
     SyncAggregatorSelectionData(&'a SyncAggregatorSelectionData),
     ContributionAndProof(&'a ContributionAndProof<T>),
+    ValidatorRegistration(&'a ValidatorRegistrationData),
 }
 
-impl<'a, T: EthSpec, Payload: ExecPayload<T>> Web3SignerObject<'a, T, Payload> {
+impl<'a, T: EthSpec, Payload: AbstractExecPayload<T>> Web3SignerObject<'a, T, Payload> {
     pub fn beacon_block(block: &'a BeaconBlock<T, Payload>) -> Result<Self, Error> {
         let version = match block {
             BeaconBlock::Base(_) => ForkName::Phase0,
@@ -93,13 +98,14 @@ impl<'a, T: EthSpec, Payload: ExecPayload<T>> Web3SignerObject<'a, T, Payload> {
             Web3SignerObject::ContributionAndProof(_) => {
                 MessageType::SyncCommitteeContributionAndProof
             }
+            Web3SignerObject::ValidatorRegistration(_) => MessageType::ValidatorRegistration,
         }
     }
 }
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(bound = "T: EthSpec")]
-pub struct SigningRequest<'a, T: EthSpec, Payload: ExecPayload<T>> {
+pub struct SigningRequest<'a, T: EthSpec, Payload: AbstractExecPayload<T>> {
     #[serde(rename = "type")]
     pub message_type: MessageType,
     #[serde(skip_serializing_if = "Option::is_none")]

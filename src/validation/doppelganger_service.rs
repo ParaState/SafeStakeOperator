@@ -31,7 +31,7 @@
 //!
 //! Doppelganger protection is a best-effort, last-line-of-defence mitigation. Do not rely upon it.
 
-use crate::validation::beacon_node_fallback::{BeaconNodeFallback, RequireSynced};
+use crate::validation::beacon_node_fallback::{BeaconNodeFallback, OfflineOnFailure, RequireSynced};
 use crate::validation::validator_store::ValidatorStore;
 use environment::RuntimeContext;
 use eth2::types::LivenessResponseData;
@@ -178,7 +178,7 @@ async fn beacon_node_liveness<'a, T: 'static + SlotClock, E: EthSpec>(
     } else {
         // Request the previous epoch liveness state from the beacon node.
         beacon_nodes
-            .first_success(RequireSynced::Yes, |beacon_node| async move {
+            .first_success(RequireSynced::Yes, OfflineOnFailure::Yes, |beacon_node| async move {
                 beacon_node
                     .post_lighthouse_liveness(validator_indices, previous_epoch)
                     .await
@@ -201,7 +201,7 @@ async fn beacon_node_liveness<'a, T: 'static + SlotClock, E: EthSpec>(
 
     // Request the current epoch liveness state from the beacon node.
     let current_epoch_responses = beacon_nodes
-        .first_success(RequireSynced::Yes, |beacon_node| async move {
+        .first_success(RequireSynced::Yes, OfflineOnFailure::Yes, |beacon_node| async move {
             beacon_node
                 .post_lighthouse_liveness(validator_indices, current_epoch)
                 .await

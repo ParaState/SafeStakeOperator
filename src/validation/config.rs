@@ -61,9 +61,14 @@ pub struct Config {
     /// any of the validators managed by this client before starting up.
     pub enable_doppelganger_protection: bool,
     pub private_tx_proposals: bool,
+    /// Overrides the timestamp field in builder api ValidatorRegistrationV1
+    pub builder_registration_timestamp_override: Option<u64>,
     /// A list of custom certificates that the validator client will additionally use when
     /// connecting to a beacon node over SSL/TLS.
     pub beacon_nodes_tls_certs: Option<Vec<PathBuf>>,
+
+    /// Disables publishing http api requests to all beacon nodes for select api calls.
+    pub disable_run_on_all: bool,
 
     /// Used for 
     pub dvf_node_config: NodeConfig,
@@ -101,6 +106,8 @@ impl Default for Config {
             enable_doppelganger_protection: false,
             beacon_nodes_tls_certs: None,
             private_tx_proposals: false,
+            builder_registration_timestamp_override: None,
+            disable_run_on_all: false,
             
             dvf_node_config: NodeConfig::default(), 
         }
@@ -268,6 +275,7 @@ impl Config {
         }
 
         config.allow_unsynced_beacon_node = cli_args.is_present("allow-unsynced");
+        config.disable_run_on_all = cli_args.is_present("disable-run-on-all");
         config.disable_auto_discover = cli_args.is_present("disable-auto-discover");
         config.init_slashing_protection = cli_args.is_present("init-slashing-protection");
         config.use_long_timeouts = cli_args.is_present("use-long-timeouts");
@@ -407,6 +415,16 @@ impl Config {
 
         if cli_args.is_present("private-tx-proposals") {
             config.private_tx_proposals = true;
+        }
+
+        if let Some(registration_timestamp_override) =
+            cli_args.value_of("builder-registration-timestamp-override")
+        {
+            config.builder_registration_timestamp_override = Some(
+                registration_timestamp_override
+                    .parse::<u64>()
+                    .map_err(|_| "builder-registration-timestamp-override is not a valid u64.")?,
+            );
         }
 
         Ok(config)

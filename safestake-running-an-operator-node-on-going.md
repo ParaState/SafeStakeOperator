@@ -142,9 +142,9 @@ sudo docker compose -f docker-compose-operator.yml up lighthouse -d
 ```
 NOTE: Remember to open the `5052` firewall port for this host
 
-Syncing data may take several hours. You can use the command to check if the data is synced:
+Syncing data may take several hours. You can use the command to see the latest logs of lighthouse to check if the data is synced:
 ```bash
-sudo docker compose -f docker-compose-operator.yml logs -f lighthouse
+sudo docker compose -f docker-compose-operator.yml logs -f --tail 10 lighthouse
 ```
 Once the data is synced, you will see output like below:
 ```bash
@@ -181,7 +181,7 @@ OPERATOR_ID=<YOUR_OPERATOR_ID>
 **Update these variables with yours**
 ```bash
 WS_URL= #YOUR Infura WSS URL
-BEACON_NODE_ENDPOINT= # The beacon node endpoint. Depending on whether you are running single-node mode or multi-node mode, fill in the correct Lighthouse beacon node service url, e.g., http://127.0.0.1:5052 for a local node
+BEACON_NODE_ENDPOINT= # The beacon node endpoint. Depending on whether you are running single-node mode or multi-node mode, fill in the correct Lighthouse beacon node service url, e.g. http://127.0.0.1:5052 for a local node
 ```
 
 For `BEACON_NODE_ENDPOINT`, if you follow the previous step to run geth and lighthouse and you want operator runs on the same machine, then you can use a local IP:

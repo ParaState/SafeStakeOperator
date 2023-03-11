@@ -76,7 +76,6 @@ impl<Handler: MessageHandler> Receiver<Handler> {
             let mut handler_opt: Option<Handler> = None;
             let transport = Framed::new(socket, LengthDelimitedCodec::new());
             let (mut writer, mut reader) = transport.split();
-            let mut printed: u32 = 0;
             while let Some(frame) = reader.next().await {
                 match frame.map_err(|e| NetworkError::FailedToReceiveMessage(peer, e)) {
                     Ok(message) => {
@@ -104,19 +103,11 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                 }                                
                                 match handler_opt.as_ref() {
                                     Some(handler) => {
-                                        if printed == 0 {
-                                            info!("[VA {}] Handler has been retrieved [{:?}]", validator_id, name);
-                                            printed = 1;
-                                        }
                                         // trunctate the prefix
                                         let msg = dvf_message.message;
                                         if let Err(e) = handler.dispatch(&mut writer, Bytes::from(msg)).await {
                                             error!("[VA {}] Handler dispatch error ({})", validator_id, e);
                                             return;
-                                        }
-                                        if printed <= 5 {
-                                            info!("[VA {}] {}-th message has been dispatched [{:?}]", printed, validator_id, name);
-                                            printed += 1;
                                         }
                                     },
                                     None => {

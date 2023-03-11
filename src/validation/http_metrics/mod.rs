@@ -118,7 +118,7 @@ pub fn serve<T: EthSpec>(
         .map(move || inner_ctx.clone())
         .and_then(|ctx: Arc<Context<T>>| async move {
             Ok::<_, warp::Rejection>(
-                metrics::gather_prometheus_metrics(&ctx)
+                metrics::gather_prometheus_metrics(&ctx).await
                     .map(|body| Response::builder().status(200).body(body).unwrap())
                     .unwrap_or_else(|e| {
                         Response::builder()

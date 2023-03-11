@@ -17,7 +17,6 @@ use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver};
 use tokio::sync::RwLock;
 use std::collections::HashMap;
-use futures::executor::block_on;
 use utils::monitored_channel::{MonitoredChannel, MonitoredSender};
 #[cfg(test)]
 #[path = "tests/mempool_tests.rs"]
@@ -63,7 +62,7 @@ pub struct Mempool {
 }
 
 impl Mempool {
-    pub fn spawn(
+    pub async fn spawn(
         name: PublicKey,
         committee: Committee,
         parameters: Parameters,
@@ -92,8 +91,8 @@ impl Mempool {
         // Spawn all mempool tasks.
         mempool.handle_consensus_messages(rx_consensus);
         
-        block_on(mempool.handle_clients_transactions(Arc::clone(&tx_handler_map)));
-        block_on(mempool.handle_mempool_messages(Arc::clone(&mempool_handler_map)));
+        mempool.handle_clients_transactions(Arc::clone(&tx_handler_map)).await;
+        mempool.handle_mempool_messages(Arc::clone(&mempool_handler_map)).await;
 
         info!(
             "Mempool successfully booted on {}",

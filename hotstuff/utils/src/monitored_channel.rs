@@ -1,15 +1,13 @@
 use tokio::sync::mpsc::{channel, Sender, Receiver};
 use tokio::sync::mpsc::error::SendError;
 use tokio::time::{sleep, Duration};
-use tokio::task::JoinHandle;
-use tokio::sync::oneshot;
-use log::{info, debug};
+use log::{info, debug, warn};
 
 #[derive(Clone)]
 pub struct MonitoredSender<T> {
     pub inner: Sender<T>,
-    tag: String,
-    level: String,
+    _tag: String,
+    _level: String,
 }
 
 impl <T> MonitoredSender<T> 
@@ -28,8 +26,8 @@ where T: Send + 'static {
 
         Self {
             inner: sender.clone(),
-            tag,
-            level,
+            _tag: tag,
+            _level: level,
         }
     }
 
@@ -43,11 +41,14 @@ where T: Send + 'static {
             if sender.is_closed() {
                 break;
             }
-            if level == "debug" {
-                debug!("[{}] remaining capacity: {}", tag, sender.capacity());
-            }
-            else {
-                info!("[{}] remaining capacity: {}", tag, sender.capacity());
+            // if level == "debug" {
+            //     debug!("[{}] remaining capacity: {}", tag, sender.capacity());
+            // }
+            // else {
+            //     info!("[{}] remaining capacity: {}", tag, sender.capacity());
+            // }
+            if sender.capacity() == 0 {
+                warn!("[{}] Low remaining capacity: {}", tag, sender.capacity());
             }
         }
     }

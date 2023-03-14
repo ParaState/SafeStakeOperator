@@ -4,9 +4,9 @@ use crypto::PublicKey;
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
 use network::CancelHandler;
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::{Receiver};
 use utils::monitored_channel::MonitoredSender;
-use tokio::time::{sleep, Duration, timeout};
+use tokio::time::{Duration, timeout};
 use log::{warn};
 
 #[cfg(test)]

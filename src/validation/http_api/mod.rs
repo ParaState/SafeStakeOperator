@@ -32,6 +32,7 @@ use warp::{
     },
     Filter,
 };
+use futures::executor::block_on;
 
 pub use api_secret::ApiSecret;
 
@@ -216,7 +217,7 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
         .and(signer.clone())
         .and_then(|spec: Arc<_>, signer| {
             blocking_signed_json_task(signer, move || {
-                let mut config = ConfigAndPreset::from_chain_spec::<E>(&spec, None);
+                let config = ConfigAndPreset::from_chain_spec::<E>(&spec, None);
                 // config.make_backwards_compat(&spec);
                 Ok(api_types::GenericResponse::from(config))
             })
@@ -230,9 +231,9 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
         .and(signer.clone())
         .and_then(|validator_store: Arc<ValidatorStore<T, E>>, signer| {
             blocking_signed_json_task(signer, move || {
-                let validators = validator_store
-                    .initialized_validators()
-                    .read()
+                // Zico: It is OK to use 'block_on' here because we know this function will be spawned in OS's blocking threads, 
+                // hence will not block tokio's core thread (for executing async tasks).
+                let validators = block_on(validator_store.initialized_validators().read()) 
                     .validator_definitions()
                     .iter()
                     .map(|def| api_types::ValidatorData {
@@ -256,9 +257,9 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
         .and_then(
             |validator_pubkey: PublicKey, validator_store: Arc<ValidatorStore<T, E>>, signer| {
                 blocking_signed_json_task(signer, move || {
-                    let validator = validator_store
-                        .initialized_validators()
-                        .read()
+                    // Zico: It is OK to use 'block_on' here because we know this function will be spawned in OS's blocking threads, 
+                    // hence will not block tokio's core thread (for executing async tasks).
+                    let validator = block_on(validator_store.initialized_validators().read())
                         .validator_definitions()
                         .iter()
                         .find(|def| def.voting_public_key == validator_pubkey)
@@ -515,7 +516,9 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
              task_executor: TaskExecutor| {
                 blocking_signed_json_task(signer, move || {
                     let initialized_validators_rw_lock = validator_store.initialized_validators();
-                    let mut initialized_validators = initialized_validators_rw_lock.write();
+                    // Zico: It is OK to use 'block_on' here because we know this function will be spawned in OS's blocking threads, 
+                    // hence will not block tokio's core thread (for executing async tasks).
+                    let mut initialized_validators = block_on(initialized_validators_rw_lock.write());
 
                     match (
                         initialized_validators.is_enabled(&validator_pubkey),
@@ -613,7 +616,7 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
         .and(log_filter.clone())
         .and_then(|request, signer, validator_store, task_executor, log| {
             blocking_signed_json_task(signer, move || {
-                keystores::delete(request, validator_store, task_executor, log)
+                block_on(keystores::delete(request, validator_store, task_executor, log))
             })
         });
 

@@ -72,7 +72,6 @@ impl TOperator for RemoteOperator {
     async fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> { 
         let n_try: u64 = 3;
         let timeout_mill :u64 = 400;
-        // Err(DvfError::Unknown)
         let dvf_message = DvfMessage { version: VERSION, validator_id: self.validator_id, message: msg.to_fixed_bytes().to_vec()};
         let serialize_msg = bincode::serialize(&dvf_message).unwrap();
         for i in 0..n_try {

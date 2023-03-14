@@ -50,7 +50,7 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
                 match rx_consensus.recv().await{
                     Some(value) => {
                         info!("Consensus achieved for msg {}", value);
-                        let mut notes = consensus_notifications_clone.write().await;
+                        let notes = consensus_notifications_clone.write().await;
                         if let Some(notify) = notes.get(&value) {
                             notify.notify_one();
                         }

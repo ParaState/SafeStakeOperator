@@ -1,0 +1,14 @@
+[package]
+name = "dvf_directory"
+version = "0.1.0"
+authors = ["Zhicong Huang <zhicong303@gmail.com>"]
+edition = "2021"
+
+[dependencies]
+dirs = "3.0.1"
+lighthouse_directory = { path = "../../lighthouse/common/directory", package = "directory" }
+dvf_version = { path = "../dvf_version" }
+clap = "2.33.3"
+
+
+[dev-dependencies]

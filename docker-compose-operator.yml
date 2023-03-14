@@ -35,7 +35,7 @@ services:
       - "30303"
   lighthouse:
     network_mode: "host"
-    image: sigp/lighthouse:v3.4.0
+    image: sigp/lighthouse:v3.5.0
     pull_policy: always
     volumes:
       - geth-data:/data/geth
@@ -59,6 +59,7 @@ services:
         "--execution-endpoint=http://127.0.0.1:8551",
         # "--eth1-endpoints=http://127.0.0.1:8545",
         "--metrics",
+        "--metrics-address=0.0.0.0",
         "--subscribe-all-subnets",
         "--import-all-attestations",
         "--validator-monitor-auto",
@@ -68,6 +69,7 @@ services:
     expose:
       - "5052"
       - "9000"
+      - "5054"
     depends_on:
       geth:
         condition: service_started

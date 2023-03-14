@@ -148,7 +148,6 @@ dependencies = [
  "log",
  "mempool",
  "network",
- "parking_lot",
  "rand 0.7.3",
  "serde",
  "store",
@@ -473,7 +472,6 @@ dependencies = [
  "futures",
  "log",
  "network",
- "parking_lot",
  "rand 0.7.3",
  "serde",
  "store",
@@ -532,7 +530,6 @@ dependencies = [
  "bytes",
  "futures",
  "log",
- "parking_lot",
  "rand 0.7.3",
  "serde",
  "thiserror",
@@ -570,29 +567,6 @@ name = "opaque-debug"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
-
-[[package]]
-name = "parking_lot"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3742b2c103b9f06bc9fff0a37ff4912935851bee6d36f3c02bcc755bcfec228f"
-dependencies = [
- "lock_api",
- "parking_lot_core",
-]
-
-[[package]]
-name = "parking_lot_core"
-version = "0.9.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09a279cbf25cb0757810394fbc1e359949b59e348145c643a939a525692e6929"
-dependencies = [
- "cfg-if",
- "libc",
- "redox_syscall",
- "smallvec",
- "windows-sys",
-]
 
 [[package]]
 name = "peeking_take_while"

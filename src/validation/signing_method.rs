@@ -18,13 +18,13 @@ use types::*;
 use url::Url;
 use web3signer::{ForkInfo, SigningRequest, SigningResponse};
 use crate::node::dvfcore::{DvfSigner, DvfPerformanceRequest};
-use crate::node::config::{API_ADDRESS};
+use crate::node::config::{API_ADDRESS, COLLECT_PERFORMANCE_URL};
+use crate::node::utils::request_to_web_server;
 pub use web3signer::Web3SignerObject;
 use chrono::prelude::*;
 use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
 use std::time::Duration;
 use tokio::time::sleep;
-
 mod web3signer;
 
 #[derive(Debug, PartialEq)]
@@ -38,13 +38,14 @@ pub enum Error {
     ShuttingDown,
     TokioJoin(String),
     MergeForkNotSupported,
+    GenesisForkVersionRequired,
     CommitteeSignFailed(String),
 
     NotLeader,
 }
 
 /// Enumerates all messages that can be signed by a validator.
-pub enum SignableMessage<'a, T: EthSpec, Payload: ExecPayload<T> = FullPayload<T>> {
+pub enum SignableMessage<'a, T: EthSpec, Payload: AbstractExecPayload<T> = FullPayload<T>> {
     RandaoReveal(Epoch),
     BeaconBlock(&'a BeaconBlock<T, Payload>),
     AttestationData(&'a AttestationData),
@@ -56,9 +57,10 @@ pub enum SignableMessage<'a, T: EthSpec, Payload: ExecPayload<T> = FullPayload<T
         slot: Slot,
     },
     SignedContributionAndProof(&'a ContributionAndProof<T>),
+    ValidatorRegistration(&'a ValidatorRegistrationData),
 }
 
-impl<'a, T: EthSpec, Payload: ExecPayload<T>> SignableMessage<'a, T, Payload> {
+impl<'a, T: EthSpec, Payload: AbstractExecPayload<T>> SignableMessage<'a, T, Payload> {
     /// Returns the `SignedRoot` for the contained message.
     ///
     /// The actual `SignedRoot` trait is not used since it also requires a `TreeHash` impl, which is
@@ -75,6 +77,7 @@ impl<'a, T: EthSpec, Payload: ExecPayload<T>> SignableMessage<'a, T, Payload> {
                 beacon_block_root, ..
             } => beacon_block_root.signing_root(domain),
             SignableMessage::SignedContributionAndProof(c) => c.signing_root(domain),
+            SignableMessage::ValidatorRegistration(v) => v.signing_root(domain),
         }
     }
 }
@@ -128,8 +131,9 @@ impl SigningContext {
 }
 
 impl SigningMethod {
+
     /// Return the signature of `signable_message`, with respect to the `signing_context`.
-    pub async fn get_signature<T: EthSpec, Payload: ExecPayload<T>>(
+    pub async fn get_signature<T: EthSpec, Payload: AbstractExecPayload<T>>(
         &self,
         signable_message: SignableMessage<'_, T, Payload>,
         signing_context: SigningContext,
@@ -140,10 +144,32 @@ impl SigningMethod {
         let SigningContext {
             fork,
             genesis_validators_root,
+            epoch,
             ..
         } = signing_context;
 
         let signing_root = signable_message.signing_root(domain_hash);
+
+        let fork_info = Some(ForkInfo {
+            fork,
+            genesis_validators_root,
+        });
+
+        self.get_signature_from_root(signable_message, signing_root, executor, fork_info, epoch, spec)
+            .await
+    }
+
+
+    /// Return the signature of `signable_message`, with respect to the `signing_context`.
+    pub async fn get_signature_from_root<T: EthSpec, Payload: AbstractExecPayload<T>>(
+        &self,
+        signable_message: SignableMessage<'_, T, Payload>,
+        signing_root: Hash256,
+        executor: &TaskExecutor,
+        fork_info: Option<ForkInfo>,
+        signing_epoch: Epoch,
+        spec: &ChainSpec,
+    ) -> Result<Signature, Error> {
 
         match self {
             SigningMethod::LocalKeystore { voting_keypair, .. } => {
@@ -197,21 +223,21 @@ impl SigningMethod {
                     SignableMessage::SignedContributionAndProof(c) => {
                         Web3SignerObject::ContributionAndProof(c)
                     }
+                    SignableMessage::ValidatorRegistration(v) => {
+                        Web3SignerObject::ValidatorRegistration(v)
+                    }
                 };
 
                 // Determine the Web3Signer message type.
                 let message_type = object.message_type();
 
-                // The `fork_info` field is not required for deposits since they sign across the
-                // genesis fork version.
-                let fork_info = if let Web3SignerObject::Deposit { .. } = &object {
-                    None
-                } else {
-                    Some(ForkInfo {
-                        fork,
-                        genesis_validators_root,
-                    })
-                };
+                if matches!(
+                    object,
+                    Web3SignerObject::Deposit { .. } | Web3SignerObject::ValidatorRegistration(_)
+                ) && fork_info.is_some()
+                {
+                    return Err(Error::GenesisForkVersionRequired);
+                }
 
                 let request = SigningRequest {
                     message_type,
@@ -238,108 +264,79 @@ impl SigningMethod {
             SigningMethod::DistributedKeystore { dvf_signer, .. } => {
                 let _timer =
                     metrics::start_timer_vec(&metrics::SIGNING_TIMES, &[metrics::LOCAL_KEYSTORE]);
-                // if dvf_signer.is_leader(SigningMethod::convert_signingroot_to_u64(&signing_root)).await {
-                if dvf_signer.is_leader(signing_context.epoch.as_u64()).await {
-                    let (slot, duty) = match signable_message {
-                        SignableMessage::RandaoReveal(_) => {
-                            (Slot::new(0 as u64), "RANDAO")
-                        }
-                        SignableMessage::AttestationData(a) => {
-                            (a.slot, "ATTESTER")
-                        },
-                        SignableMessage::BeaconBlock(b) => {
-                            (b.slot(), "PROPOSER")
-                        },
-                        SignableMessage::SignedAggregateAndProof(_) => {
-                            (Slot::new(0 as u64), "AGGREGATE")
-                        }
-                        SignableMessage::SelectionProof(s) => {
-                            (s, "SELECT")
-                        }
-                        SignableMessage::SyncSelectionProof(_) => {
-                            (Slot::new(0 as u64), "SYNC_SELECT")
-                        }
-                        SignableMessage::SyncCommitteeSignature{..} => {
-                            (Slot::new(0 as u64), "SYNC_COMMITTEE")
-                        }
-                        SignableMessage::SignedContributionAndProof(_) => {
-                            (Slot::new(0 as u64), "CONTRIB")
-                        }
-                        _ => { (Slot::new(0 as u64), "ERROR") }
-                    };
 
-                    log::info!("[Dvf {}/{}] Signing\t-\tSlot: {}.\tEpoch: {}.\tType: {}.\tRoot: {:?}.", 
-                               dvf_signer.operator_id, 
-                               dvf_signer.operator_committee.validator_id(),
-                               slot,
-                               signing_context.epoch.as_u64(),
-                               duty,
-                               signing_root
-                            );
+                let (slot, duty, only_aggregator) = match signable_message {
+                    SignableMessage::RandaoReveal(_) => {
+                        // Every operator should be able to get randao signature, 
+                        // otherwise if, e.g, only 2 out of 4 gets the randao signature,
+                        // then the committee wouldn't be able to get enough partial signatuers for
+                        // aggregation, because the other 2 operations who don't get the randao 
+                        // will NOT enter the next phase of signing block.
+                        (Slot::new(0 as u64), "RANDAO", false)
+                    }
+                    SignableMessage::AttestationData(a) => {
+                        (a.slot, "ATTESTER", true)
+                    },
+                    SignableMessage::BeaconBlock(b) => {
+                        (b.slot(), "PROPOSER", true)
+                    },
+                    SignableMessage::SignedAggregateAndProof(x) => {
+                        (x.aggregate.data.slot, "AGGREGATE", true)
+                    }
+                    SignableMessage::SelectionProof(s) => {
+                        // Every operator should be able to get selection proof signature,
+                        // otherwise operators who don't get selection proof signature will
+                        // NOT be able to insert the ATTESTER duties into their local cache,
+                        // hence will NOT enter the corresponding phase of signing attestation.
+                        (s, "SELECT", false)
+                    }
+                    SignableMessage::SyncSelectionProof(_) => {
+                        (Slot::new(0 as u64), "SYNC_SELECT", false)
+                    }
+                    SignableMessage::SyncCommitteeSignature{..} => {
+                        (Slot::new(0 as u64), "SYNC_COMMITTEE", true)
+                    }
+                    SignableMessage::SignedContributionAndProof(_) => {
+                        (Slot::new(0 as u64), "CONTRIB", true)
+                    }
+                    SignableMessage::ValidatorRegistration(v) => {
+                        (Slot::new(0 as u64), "VA_REG", true)
+                    }
+                };
 
-                    let validator_pk = dvf_signer.validator_public_key();
-                    let operator_id = dvf_signer.operator_id();
-                    let dt : DateTime<Utc> = Utc::now();
+                log::info!("[Dvf {}/{}] Signing\t-\tSlot: {}.\tEpoch: {}.\tType: {}.\tRoot: {:?}.", 
+                    dvf_signer.operator_id, 
+                    dvf_signer.operator_committee.validator_id(),
+                    slot,
+                    signing_epoch.as_u64(),
+                    duty,
+                    signing_root
+                );
 
-                    // match dvf_signer.sign(signing_root).await {
-                    //     Ok((signature, ids)) => {
-                    //         if duty ==  "ATTESTER" || duty == "PROPOSER" {
-                    //             let request_body = DvfPerformanceRequest {
-                    //                 validator_pk,
-                    //                 operator_id,
-                    //                 operators: ids, 
-                    //                 slot: slot.as_u64(),
-                    //                 epoch: signing_context.epoch.as_u64(),
-                    //                 duty: duty.to_string(),
-                    //                 time: Utc::now().signed_duration_since(dt).num_milliseconds()
-                    //             };
-                    //             let client = reqwest::Client::new();
-                    //             let url = Url::parse(API_ADDRESS.get().unwrap()).map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
-                    //             let _ = client.post(url).json(&request_body).send().await.map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
-                    //         }
-                    //         Ok(signature)
-                    //     },
-                    //     Err(e) => {
-                    //         Err(Error::CommitteeSignFailed(format!("{:?}", e)))
-                    //     }
-                    // }
+                // Following LocalKeystore, if the code logic reaches here, then it has already passed all checks of this duty, and
+                // it is safe (from this operator's point of view) to sign it locally.
+                dvf_signer.local_sign_and_store(signing_root).await;
 
-                    // let task_timeout = match signable_message {
-                    //     SignableMessage::SelectionProof(s) => {
-                    //         Duration::from_secs(spec.seconds_per_slot * (signing_context.epoch.end_slot(T::slots_per_epoch())-s+1).as_u64())
-                    //     }
-                    //     _ => {
-                    //         Duration::from_secs(spec.seconds_per_slot)
-                    //     }
-                    // };
-
+                if !only_aggregator || (only_aggregator && dvf_signer.is_aggregator(signing_epoch.as_u64()).await) {
+                    log::info!("[Dvf {}/{}] Leader trying to achieve duty consensus and aggregate duty signatures",
+                        dvf_signer.operator_id, 
+                        dvf_signer.operator_committee.validator_id()
+                    );
                     // Should NOT take more than a slot duration for two reasons:
                     // 1. if longer than slot duration, it might affect duty retrieval for other VAs (for example, previously,
                     // I set this to be the epoch remaining time for selection proof, so bad committee (VA) might take several mintues
                     // to timeout, making duties of other VAs outdated.)
                     // 2. most duties should complete in a slot
                     let task_timeout = Duration::from_secs(spec.seconds_per_slot / 2);
-
-                    let work = dvf_signer.sign(signing_root);
                     let timeout = sleep(task_timeout);
+                    let work = dvf_signer.threshold_sign(signing_root);
+
                     tokio::select!{
                         result = work => {
                             match result {
                                 Ok((signature, ids)) => {
-                                    if duty ==  "ATTESTER" || duty == "PROPOSER" {
-                                        let request_body = DvfPerformanceRequest {
-                                            validator_pk,
-                                            operator_id,
-                                            operators: ids, 
-                                            slot: slot.as_u64(),
-                                            epoch: signing_context.epoch.as_u64(),
-                                            duty: duty.to_string(),
-                                            time: Utc::now().signed_duration_since(dt).num_milliseconds()
-                                        };
-                                        let client = reqwest::Client::new();
-                                        let url = Url::parse(API_ADDRESS.get().unwrap()).map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
-                                        let _ = client.post(url).json(&request_body).send().await.map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
-                                    }
+                                    // [Issue] Several same reports will be sent to server from different aggregators
+                                    Self::dvf_report::<T>(slot, duty, dvf_signer.validator_public_key(), dvf_signer.operator_id(), ids).await?;
                                     Ok(signature)
                                 },
                                 Err(e) => {
@@ -351,28 +348,6 @@ impl SigningMethod {
                             Err(Error::CommitteeSignFailed(format!("Timeout")))
                         }
                     }
-                    // match result {
-                    //     Ok((signature, ids)) => {
-                    //         if duty ==  "ATTESTER" || duty == "PROPOSER" {
-                    //             let request_body = DvfPerformanceRequest {
-                    //                 validator_pk,
-                    //                 operator_id,
-                    //                 operators: ids, 
-                    //                 slot: slot.as_u64(),
-                    //                 epoch: signing_context.epoch.as_u64(),
-                    //                 duty: duty.to_string(),
-                    //                 time: Utc::now().signed_duration_since(dt).num_milliseconds()
-                    //             };
-                    //             let client = reqwest::Client::new();
-                    //             let url = Url::parse(API_ADDRESS.get().unwrap()).map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
-                    //             let _ = client.post(url).json(&request_body).send().await.map_err(|e| Error::Web3SignerRequestFailed(e.to_string()))?;
-                    //         }
-                    //         Ok(signature)
-                    //     },
-                    //     Err(e) => {
-                    //         Err(Error::CommitteeSignFailed(format!("{:?}", e)))
-                    //     }
-                    // }
                 }
                 else {
                     Err(Error::NotLeader)
@@ -381,15 +356,31 @@ impl SigningMethod {
         }
     }
 
-    pub fn convert_signingroot_to_u64(signing_root: &types::Hash256) -> u64 {
-        let mut little_endian: [u8; 8] = [0; 8];
-        let mut i = 0;
-        for elem in little_endian.iter_mut() {
-            *elem = signing_root.0[i];
-            i = i + 1;
-        } 
-        let nonce = u64::from_le_bytes(little_endian);
-        nonce 
+    async fn dvf_report<E: EthSpec>(
+        slot: Slot,
+        duty: &str, 
+        validator_pk: String, 
+        operator_id: u64, 
+        ids: Vec<u64>,
+    ) -> Result<(), Error> {
+        let dt : DateTime<Utc> = Utc::now();
+        let signing_epoch = slot.epoch(E::slots_per_epoch());
+
+        if duty ==  "ATTESTER" || duty == "PROPOSER" {
+            let request_body = DvfPerformanceRequest {
+                validator_pk,
+                operator_id,
+                operators: ids, 
+                slot: slot.as_u64(),
+                epoch: signing_epoch.as_u64(),
+                duty: duty.to_string(),
+                time: Utc::now().signed_duration_since(dt).num_milliseconds()
+            };
+            log::info!("[Dvf Request] Body: {:?}", &request_body);
+            let url_str = API_ADDRESS.get().unwrap().to_owned() + COLLECT_PERFORMANCE_URL;
+            request_to_web_server(request_body, &url_str).await.map_err(|e| Error::Web3SignerRequestFailed(e))?;
+        }
+        Ok(())
     }
 }
 

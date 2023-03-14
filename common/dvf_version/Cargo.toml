@@ -1,0 +1,10 @@
+[package]
+name = "dvf_version"
+version = "0.1.0"
+authors = ["Zhicong Huang <zhicong303@gmail.com>"]
+edition = "2021"
+
+[dependencies]
+
+
+[dev-dependencies]

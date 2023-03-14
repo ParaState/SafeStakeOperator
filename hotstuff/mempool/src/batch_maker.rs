@@ -12,7 +12,7 @@ use network::{ReliableSender, DvfMessage, VERSION};
 #[cfg(feature = "benchmark")]
 use std::convert::TryInto as _;
 use std::net::SocketAddr;
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::{Receiver};
 use tokio::time::{sleep, Duration, Instant};
 use utils::monitored_channel::MonitoredSender;
 

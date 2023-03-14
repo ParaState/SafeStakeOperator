@@ -71,6 +71,15 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 .takes_value(true)
         )
         .arg(
+            Arg::with_name("id")
+            .long("id")
+            .value_name("NODE_ID")
+            .help(
+                "This node's id in smart contract"
+            )
+            .takes_value(true)
+        )
+        .arg(
             Arg::with_name("api")
                 .long("api")
                 .value_name("API")
@@ -79,11 +88,13 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 ).takes_value(true)
         )
         .arg(
-            Arg::with_name("contract-address")
-            .long("contract-address")
-            .value_name("CONTRACT_ADDRESS")
-            .help("The contract address")
-            .takes_value(true)
+            Arg::with_name("base-port")
+                .long("base-port")
+                .value_name("BASE_PORT")
+                .help(
+                    "This node's BASE_PORT"
+                )
+                .takes_value(true)
         )
         .arg(
             Arg::with_name("ws-url")
@@ -92,21 +103,30 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
             .help("web socket url of infura to listen contract event")
             .takes_value(true)
         )
-        // .arg(
-        //     Arg::with_name("base-port")
-        //         .long("base-port")
-        //         .value_name("BASE_PORT")
-        //         .help(
-        //             "This node's BASE_PORT"
-        //         )
-        //         .takes_value(true)
-        // )
         .arg(
             Arg::with_name("boot-enr")
                 .long("boot-enr")
                 .value_name("BOOT_ENR")
                 .help(
                     "This is the enr of the root node"
+                )
+                .takes_value(true)
+        )
+        .arg(
+            Arg::with_name("registry-contract")
+                .long("registry-contract")
+                .value_name("REGISTRY_CONTRACT")
+                .help(
+                    "This is the address of registry contract"
+                )
+                .takes_value(true)
+        )
+        .arg(
+            Arg::with_name("network-contract")
+                .long("network-contract")
+                .value_name("NETWORK_CONTRACT")
+                .help(
+                    "This is the address of network contract"
                 )
                 .takes_value(true)
         )
@@ -307,12 +327,30 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                     immediately.")
                 .takes_value(false),
         )
+        // .arg(
+        //     Arg::with_name("private-tx-proposals")
+        //         .long("private-tx-proposals")
+        //         .help("If this flag is set, Lighthouse will query the Beacon Node for only block \
+        //             headers during proposals and will sign over headers. Useful for outsourcing \
+        //             execution payload construction during proposals.")
+        //         .takes_value(false),
+        // )
         .arg(
-            Arg::with_name("private-tx-proposals")
-                .long("private-tx-proposals")
+            Arg::with_name("builder-proposals")
+                .long("builder-proposals")
+                .alias("private-tx-proposals")
                 .help("If this flag is set, Lighthouse will query the Beacon Node for only block \
                     headers during proposals and will sign over headers. Useful for outsourcing \
                     execution payload construction during proposals.")
                 .takes_value(false),
+        ).arg(
+        Arg::with_name("gas-limit")
+            .long("gas-limit")
+            .value_name("GAS_LIMIT_INTEGER")
+            .takes_value(true)
+            .help("The gas limit to be used in all builder proposals for all validators managed \
+                    by this validator client. Note this will not necessarily be used if the gas limit \
+                    set here moves too far from the previous block's gas limit. [default: 30,000,000]")
+            .requires("builder-proposals"),
         )
 }

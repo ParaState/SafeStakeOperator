@@ -31,7 +31,7 @@ use monitoring_api::{MonitoringHttpClient, ProcessType};
 pub use slashing_protection::{SlashingDatabase, SLASHING_PROTECTION_FILENAME};
 
 use crate::validation::beacon_node_fallback::{
-    start_fallback_updater_service, BeaconNodeFallback, CandidateBeaconNode, RequireSynced,
+    start_fallback_updater_service, BeaconNodeFallback, CandidateBeaconNode, OfflineOnFailure, RequireSynced,
 };
 use crate::validation::doppelganger_service::DoppelgangerService;
 use crate::validation::account_utils::validator_definitions::ValidatorDefinitions;
@@ -64,6 +64,7 @@ use tokio::{
 use types::{EthSpec, Hash256};
 use validator_store::ValidatorStore;
 use crate::node::node::Node;
+use dvf_version::{VERSION};
 
 /// The interval between attempts to contact the beacon node during startup.
 const RETRY_DELAY: Duration = Duration::from_secs(2);
@@ -80,8 +81,68 @@ const HTTP_PROPOSAL_TIMEOUT_QUOTIENT: u32 = 2;
 const HTTP_PROPOSER_DUTIES_TIMEOUT_QUOTIENT: u32 = 4;
 const HTTP_SYNC_COMMITTEE_CONTRIBUTION_TIMEOUT_QUOTIENT: u32 = 4;
 const HTTP_SYNC_DUTIES_TIMEOUT_QUOTIENT: u32 = 4;
+const HTTP_GET_BEACON_BLOCK_SSZ_TIMEOUT_QUOTIENT: u32 = 4;
+const HTTP_GET_DEBUG_BEACON_STATE_QUOTIENT: u32 = 4;
+const HTTP_GET_DEPOSIT_SNAPSHOT_QUOTIENT: u32 = 4;
 
 const DOPPELGANGER_SERVICE_NAME: &str = "doppelganger";
+
+async fn check_synced<T: SlotClock, E: EthSpec>(beacon_nodes: Arc<BeaconNodeFallback<T, E>>, log: Logger) -> bool {
+    if beacon_nodes.num_synced().await == 0 {
+        warn!(log, 
+            "beancon node unsynced";
+            "action" => "Automatically re-check after 1 minute. You can safely close this program and re-run it after making sure your beacon node instance is synced."
+        );
+        return false;
+    }
+    else {
+        info!(log, 
+            "beacon node is synced";
+            "action" => "Moving on to check execution engine."
+        );
+    }
+
+    match beacon_nodes
+        .first_success(RequireSynced::Yes, OfflineOnFailure::Yes, |beacon_node| async move {
+            if let Ok(response) = beacon_node.get_node_syncing().await {
+                if let Some(is_optimistic) = response.data.is_optimistic {
+                    // "Optimistic" means the execution engine is not yet synced
+                    // https://github.com/sigp/lighthouse/blob/38514c07f222ff7783834c48cf5c0a6ee7f346d0/beacon_node/client/src/notifier.rs#L268
+                    if is_optimistic {
+                        Err("unsynced")
+                    }
+                    else {
+                        Ok(())
+                    }
+                }
+                else {
+                    Err("unknown")
+                }
+            }
+            else {
+                Err("unknown")
+            }
+        })
+        .await
+    {
+        Ok(()) => {
+            info!(log, 
+                "execution engine is synced";
+                "action" => "Moving on to start of validator client."
+            );
+            return true;
+        },
+        Err(e) => {
+            warn!(
+                log,
+                "execution engine status";
+                "status" => e.to_string(),
+                "action" => "Automatically re-check after 1 minute. You can safely close this program and re-run it after making sure your execution engine is synced.",
+            );
+            return false;
+        },
+    }
+}
 
 #[derive(Clone)]
 pub struct ProductionValidatorClient<T: EthSpec> {
@@ -117,6 +178,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         info!(
             log,
             "Starting validator client";
+            "dvf version: " => format!("v{}", VERSION),
             "beacon_nodes" => format!("{:?}", &config.beacon_nodes),
             "validator_dir" => format!("{:?}", config.validator_dir),
         );
@@ -207,6 +269,11 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
                     sync_committee_contribution: slot_duration
                         / HTTP_SYNC_COMMITTEE_CONTRIBUTION_TIMEOUT_QUOTIENT,
                     sync_duties: slot_duration / HTTP_SYNC_DUTIES_TIMEOUT_QUOTIENT,
+                    get_beacon_blocks_ssz: slot_duration
+                            / HTTP_GET_BEACON_BLOCK_SSZ_TIMEOUT_QUOTIENT,
+                    get_debug_beacon_states: slot_duration
+                        / HTTP_GET_DEBUG_BEACON_STATE_QUOTIENT,
+                    get_deposit_snapshot: slot_duration / HTTP_GET_DEPOSIT_SNAPSHOT_QUOTIENT,
                 }
             } else {
                 Timeouts::set_all(slot_duration)
@@ -233,8 +300,12 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         );
         // Initialize the number of connected, synced fallbacks to 0.
         set_gauge(&http_metrics::metrics::ETH2_FALLBACK_CONNECTED, 0);
-        let mut beacon_nodes: BeaconNodeFallback<_, T> =
-            BeaconNodeFallback::new(candidates, context.eth2_config.spec.clone(), log.clone());
+        let mut beacon_nodes: BeaconNodeFallback<_, T> = BeaconNodeFallback::new(
+            candidates, 
+            config.disable_run_on_all,
+            context.eth2_config.spec.clone(), 
+            log.clone()
+        );
 
         // Perform some potentially long-running initialization tasks.
         let (genesis_time, genesis_validators_root) = tokio::select! {
@@ -258,18 +329,10 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         start_fallback_updater_service(context.clone(), beacon_nodes.clone())?;
 
         loop {
-            if beacon_nodes.num_synced().await == 0 {
-                warn!(log, 
-                    "beancon node unsynced";
-                    "action" => "Automatically re-check after 1 minute. You can safely close this program and re-run it after making sure your beacon node instance is synced."
-                );
+            if !check_synced(beacon_nodes.clone(), log.clone()).await {
                 sleep(Duration::from_secs(60)).await;
             }
             else {
-                info!(log, 
-                    "beacon node is synced";
-                    "action" => "Moving on to further initialization steps..."
-                );
                 break;
             }
         }
@@ -296,7 +359,6 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         }
         let node = Node::<T>::new(config.dvf_node_config.clone())
             .map_err(|e| format!("Dvf node creation failed: {}", e))?;
-        // let node = Some(Arc::new(RwLock::new(node)));
 
         let validators = InitializedValidators::from_definitions(
             validator_defs,
@@ -387,25 +449,26 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             context.eth2_config.spec.clone(),
             doppelganger_service.clone(),
             slot_clock.clone(),
+            &config,
             context.executor.clone(),
             log.clone(),
         ));
 
         // Ensure all validators are registered in doppelganger protection.
-        validator_store.register_all_in_doppelganger_protection_if_enabled()?;
+        validator_store.register_all_in_doppelganger_protection_if_enabled().await?;
         match node {
             Some(n) => {
-                let mut node = n.write();
+                let mut node = n.write().await;
                 node.validator_store = Some(Arc::clone(&validator_store));
             }
             _ => {}
         }
         
-
+        let num_voting_validators = validator_store.num_voting_validators().await;
         info!(
             log,
             "Loaded validator keypair store";
-            "voting_validators" => validator_store.num_voting_validators()
+            "voting_validators" => num_voting_validators,
         );
 
         // Perform pruning of the slashing protection database on start-up. In case the database is
@@ -461,8 +524,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             .validator_store(validator_store.clone())
             .beacon_nodes(beacon_nodes.clone())
             .runtime_context(context.service_context("preparation".into()))
-            .fee_recipient(config.fee_recipient)
-            .fee_recipient_file(config.fee_recipient_file.clone())
+            .builder_registration_timestamp_override(config.builder_registration_timestamp_override)
             .build()?;
 
         let sync_committee_service = SyncCommitteeService::new(
@@ -603,9 +665,11 @@ async fn init_from_beacon_node<E: EthSpec>(
 
     let genesis = loop {
         match beacon_nodes
-            .first_success(RequireSynced::No, |node| async move {
-                node.get_beacon_genesis().await
-            })
+            .first_success(
+                RequireSynced::No, 
+                OfflineOnFailure::Yes,
+                |node| async move { node.get_beacon_genesis().await },
+            )
             .await
         {
             Ok(genesis) => break genesis.data,
@@ -692,7 +756,7 @@ async fn poll_whilst_waiting_for_genesis<E: EthSpec>(
 ) -> Result<(), String> {
     loop {
         match beacon_nodes
-            .first_success(RequireSynced::No, |beacon_node| async move {
+            .first_success(RequireSynced::No, OfflineOnFailure::Yes, |beacon_node| async move {
                 beacon_node.get_lighthouse_staking().await
             })
             .await

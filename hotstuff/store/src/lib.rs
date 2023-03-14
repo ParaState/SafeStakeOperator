@@ -3,9 +3,6 @@ use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::oneshot;
 use rocksdb::{DB, Options, LogLevel};
 use log::{info, warn};
-use utils::size_monitor::{SizeMonitor};
-use tokio::sync::{RwLock};
-use std::sync::{Arc};
 
 #[cfg(test)]
 #[path = "tests/store_tests.rs"]

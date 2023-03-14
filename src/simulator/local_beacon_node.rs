@@ -38,7 +38,8 @@ impl<E: EthSpec> LocalBeaconNode<E> {
             .tempdir()
             .expect("should create temp directory for client datadir");
 
-        client_config.data_dir = datadir.path().into();
+        // client_config.data_dir = datadir.path().into();
+        client_config.set_data_dir(datadir.path().into());
         client_config.network.network_dir = PathBuf::from(datadir.path()).join("network");
 
         ProductionBeaconNode::new(context, client_config)

@@ -78,7 +78,7 @@ Log in to your host cloud service provider, open the following firewall inbound 
 | Inbound/Ingress  | tcp         | 8551       | 8551    | 0.0.0.0/0 |
 | Inbound/Ingress  | udp         | 30303      | 30303   | 0.0.0.0/0 |
 | Inbound/Ingress  | tcp         | 9000       | 9000    | 0.0.0.0/0 |
-| Inbound/Ingress  | tcp         | 8545       | 8547    | 0.0.0.0/0 |
+| Inbound/Ingress  | tcp         | 8545       | 8545    | Internal |
 | Inbound/Ingress  | tcp         | 26000      | 26005   | 0.0.0.0/0 |
 | Inbound/Ingress  | udp         | 26004      | 26004   | 0.0.0.0/0 |
 

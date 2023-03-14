@@ -84,6 +84,11 @@ lazy_static::lazy_static! {
         "Total count of attempted SyncSelectionProof signings",
         &["status"]
     );
+    pub static ref SIGNED_VALIDATOR_REGISTRATIONS_TOTAL: Result<IntCounterVec> = try_create_int_counter_vec(
+        "builder_validator_registrations_total",
+        "Total count of ValidatorRegistrationData signings",
+        &["status"]
+    );
     pub static ref DUTIES_SERVICE_TIMES: Result<HistogramVec> = try_create_histogram_vec(
         "vc_duties_service_task_times_seconds",
         "Duration to perform duties service tasks",
@@ -150,7 +155,7 @@ lazy_static::lazy_static! {
     );
 }
 
-pub fn gather_prometheus_metrics<T: EthSpec>(
+pub async fn gather_prometheus_metrics<T: EthSpec>(
     ctx: &Context<T>,
 ) -> std::result::Result<String, String> {
     let mut buffer = vec![];
@@ -174,17 +179,17 @@ pub fn gather_prometheus_metrics<T: EthSpec>(
                 set_int_gauge(
                     &PROPOSER_COUNT,
                     &[CURRENT_EPOCH],
-                    duties_service.proposer_count(current_epoch) as i64,
+                    duties_service.proposer_count(current_epoch).await as i64,
                 );
                 set_int_gauge(
                     &ATTESTER_COUNT,
                     &[CURRENT_EPOCH],
-                    duties_service.attester_count(current_epoch) as i64,
+                    duties_service.attester_count(current_epoch).await as i64,
                 );
                 set_int_gauge(
                     &ATTESTER_COUNT,
                     &[NEXT_EPOCH],
-                    duties_service.attester_count(next_epoch) as i64,
+                    duties_service.attester_count(next_epoch).await as i64,
                 );
             }
         }

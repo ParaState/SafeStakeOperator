@@ -17,12 +17,13 @@ use types::{EthSpec, PublicKeyBytes};
 use validator_dir::Builder as ValidatorDirBuilder;
 use warp::Rejection;
 use warp_utils::reject::{custom_bad_request, custom_server_error};
+use futures::executor::block_on;
 
 pub fn list<T: SlotClock + 'static, E: EthSpec>(
     validator_store: Arc<ValidatorStore<T, E>>,
 ) -> ListKeystoresResponse {
     let initialized_validators_rwlock = validator_store.initialized_validators();
-    let initialized_validators = initialized_validators_rwlock.read();
+    let initialized_validators = block_on(initialized_validators_rwlock.read());
 
     let keystores = initialized_validators
         .validator_definitions()
@@ -164,9 +165,7 @@ fn import_single_keystore<T: SlotClock + 'static, E: EthSpec>(
     let pubkey = keystore
         .public_key()
         .ok_or_else(|| format!("invalid pubkey: {}", keystore.pubkey()))?;
-    if let Some(def) = validator_store
-        .initialized_validators()
-        .read()
+    if let Some(def) = handle.block_on(validator_store.initialized_validators().read())
         .validator_definitions()
         .iter()
         .find(|def| def.voting_public_key == pubkey)
@@ -212,7 +211,7 @@ fn import_single_keystore<T: SlotClock + 'static, E: EthSpec>(
     Ok(ImportKeystoreStatus::Imported)
 }
 
-pub fn delete<T: SlotClock + 'static, E: EthSpec>(
+pub async fn delete<T: SlotClock + 'static, E: EthSpec>(
     request: DeleteKeystoresRequest,
     validator_store: Arc<ValidatorStore<T, E>>,
     task_executor: TaskExecutor,
@@ -220,7 +219,7 @@ pub fn delete<T: SlotClock + 'static, E: EthSpec>(
 ) -> Result<DeleteKeystoresResponse, Rejection> {
     // Remove from initialized validators.
     let initialized_validators_rwlock = validator_store.initialized_validators();
-    let mut initialized_validators = initialized_validators_rwlock.write();
+    let mut initialized_validators = initialized_validators_rwlock.write().await;
 
     let mut statuses = request
         .pubkeys

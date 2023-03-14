@@ -15,12 +15,13 @@ use types::{EthSpec, PublicKeyBytes};
 use url::Url;
 use warp::Rejection;
 use warp_utils::reject::custom_server_error;
+use futures::executor::block_on;
 
 pub fn list<T: SlotClock + 'static, E: EthSpec>(
     validator_store: Arc<ValidatorStore<T, E>>,
 ) -> ListRemotekeysResponse {
     let initialized_validators_rwlock = validator_store.initialized_validators();
-    let initialized_validators = initialized_validators_rwlock.read();
+    let initialized_validators = block_on(initialized_validators_rwlock.read());
 
     let keystores = initialized_validators
         .validator_definitions()
@@ -100,9 +101,7 @@ fn import_single_remotekey<T: SlotClock + 'static, E: EthSpec>(
         .decompress()
         .map_err(|_| format!("invalid pubkey: {}", pubkey))?;
 
-    if let Some(def) = validator_store
-        .initialized_validators()
-        .read()
+    if let Some(def) = block_on(validator_store.initialized_validators().read())
         .validator_definitions()
         .iter()
         .find(|def| def.voting_public_key == pubkey)
@@ -152,7 +151,7 @@ pub fn delete<T: SlotClock + 'static, E: EthSpec>(
     );
     // Remove from initialized validators.
     let initialized_validators_rwlock = validator_store.initialized_validators();
-    let mut initialized_validators = initialized_validators_rwlock.write();
+    let mut initialized_validators = block_on(initialized_validators_rwlock.write());
 
     let statuses = request
         .pubkeys

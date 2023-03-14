@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
-pub const VERSION: u64 = 1_000_001;
+pub use dvf_version::{VERSION};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DvfMessage {

@@ -6,6 +6,7 @@ use crate::validation::{
     http_metrics::metrics,
     validator_store::ValidatorStore,
     validator_store::Error as VSError,
+    OfflineOnFailure
 };
 use crate::validation::signing_method::Error as SigningError;
 use environment::RuntimeContext;
@@ -21,6 +22,7 @@ use types::{
     AggregateSignature, Attestation, AttestationData, BitList, ChainSpec, CommitteeIndex, EthSpec,
     Slot,
 };
+use futures::executor::block_on;
 
 /// Builds an `AttestationService`.
 pub struct AttestationServiceBuilder<T: SlotClock + 'static, E: EthSpec> {
@@ -148,7 +150,7 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
                 if let Some(duration_to_next_slot) = self.slot_clock.duration_to_next_slot() {
                     sleep(duration_to_next_slot + slot_duration / 3).await;
                     let log = self.context.log();
-                    if let Err(e) = self.spawn_attestation_tasks(slot_duration) {
+                    if let Err(e) = self.spawn_attestation_tasks(slot_duration).await {
                         crit!(
                             log,
                             "Failed to spawn attestation tasks";
@@ -175,7 +177,7 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
 
     /// For each each required attestation, spawn a new task that downloads, signs and uploads the
     /// attestation to the beacon node.
-    fn spawn_attestation_tasks(&self, slot_duration: Duration) -> Result<(), String> {
+    async fn spawn_attestation_tasks(&self, slot_duration: Duration) -> Result<(), String> {
         let slot = self.slot_clock.now().ok_or("Failed to read slot clock")?;
         let duration_to_next_slot = self
             .slot_clock
@@ -192,6 +194,7 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
         let duties_by_committee_index: HashMap<CommitteeIndex, Vec<DutyAndProof>> = self
             .duties_service
             .attesters(slot)
+            .await
             .into_iter()
             .fold(HashMap::new(), |mut map, duty_and_proof| {
                 map.entry(duty_and_proof.duty.committee_index)
@@ -340,7 +343,7 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
 
         let attestation_data = self
             .beacon_nodes
-            .first_success(RequireSynced::No, |beacon_node| async move {
+            .first_success(RequireSynced::No, OfflineOnFailure::Yes, |beacon_node| async move {
                 let _timer = metrics::start_timer_vec(
                     &metrics::ATTESTATION_SERVICE_TIMES,
                     &[metrics::ATTESTATIONS_HTTP_GET],
@@ -439,7 +442,7 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
         // Post the attestations to the BN.
         match self
             .beacon_nodes
-            .first_success(RequireSynced::No, |beacon_node| async move {
+            .first_success(RequireSynced::No, OfflineOnFailure::Yes, |beacon_node| async move {
                 let _timer = metrics::start_timer_vec(
                     &metrics::ATTESTATION_SERVICE_TIMES,
                     &[metrics::ATTESTATIONS_HTTP_POST],
@@ -494,7 +497,7 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
 
         let aggregated_attestation = &self
             .beacon_nodes
-            .first_success(RequireSynced::No, |beacon_node| async move {
+            .first_success(RequireSynced::No, OfflineOnFailure::Yes, |beacon_node| async move {
                 let _timer = metrics::start_timer_vec(
                     &metrics::ATTESTATION_SERVICE_TIMES,
                     &[metrics::AGGREGATES_HTTP_GET],
@@ -560,7 +563,7 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
             let signed_aggregate_and_proofs_slice = signed_aggregate_and_proofs.as_slice();
             match self
                 .beacon_nodes
-                .first_success(RequireSynced::No, |beacon_node| async move {
+                .first_success(RequireSynced::No, OfflineOnFailure::Yes, |beacon_node| async move {
                     let _timer = metrics::start_timer_vec(
                         &metrics::ATTESTATION_SERVICE_TIMES,
                         &[metrics::AGGREGATES_HTTP_POST],
@@ -620,9 +623,10 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
 
                 executor.spawn_blocking(
                     move || {
-                        attestation_service
+                        let fut = attestation_service
                             .validator_store
-                            .prune_slashing_protection_db(current_epoch, false)
+                            .prune_slashing_protection_db(current_epoch, false);
+                        block_on(fut)
                     },
                     "slashing_protection_pruning",
                 )

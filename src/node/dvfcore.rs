@@ -7,7 +7,7 @@ use hscrypto::SignatureService;
 use log::{info, error, warn};
 use mempool::{Mempool, MempoolMessage};
 use store::Store;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{Receiver, Sender};
 use network::{MessageHandler, Writer};
 use std::sync::{Arc};
 use async_trait::async_trait;
@@ -20,11 +20,9 @@ use types::{Keypair, EthSpec};
 use crate::validation::operator::{LocalOperator, TOperator};
 use futures::SinkExt;
 use crate::node::node::Node;
-use futures::executor::block_on;
 use crate::utils::error::DvfError;
 use crate::validation::{OperatorCommittee};
 use tokio::sync::{RwLock};
-use parking_lot::{RwLock as ParkingRwLock};
 use crate::validation::operator_committee_definitions::OperatorCommitteeDefinition; 
 use crate::node::config::{TRANSACTION_PORT_OFFSET, MEMPOOL_PORT_OFFSET, CONSENSUS_PORT_OFFSET, SIGNATURE_PORT_OFFSET};
 use std::net::SocketAddr;
@@ -127,6 +125,8 @@ pub struct DvfSigner {
     pub signal: Option<exit_future::Signal>,
     pub operator_id: u64,
     pub operator_committee: OperatorCommittee,
+    pub local_keypair: Keypair,
+    pub store: Store,
 }
 
 impl Drop for DvfSigner {
@@ -140,13 +140,13 @@ impl Drop for DvfSigner {
 
 impl DvfSigner {
     pub async fn spawn<T: EthSpec>(
-        node_para: Arc<ParkingRwLock<Node<T>>>,
+        node_para: Arc<RwLock<Node<T>>>,
         validator_id: u64,
         keypair: Keypair,
         committee_def: OperatorCommitteeDefinition,
     ) -> Self {
         let node_tmp = Arc::clone(&node_para);
-        let node = node_tmp.read();
+        let node = node_tmp.read().await;
         // find operator id from operatorCommitteeDefinition
         let operator_index : Vec<usize> = committee_def.node_public_keys.iter().enumerate().filter(|&(_i, x)| {
             node.secret.name == *x
@@ -198,36 +198,47 @@ impl DvfSigner {
             consensus: consensus_committee,
         };
 
+        let store_path = node.config.base_store_path.join(validator_id.to_string()).join(operator_id.to_string()); 
+        let store = Store::new(&store_path.to_str().unwrap()).expect("Failed to create store");
+
         let signal = DvfCore::spawn(
             operator_id,
             node_para,
             committee_def.validator_id,
             hotstuff_committee,
-            keypair,
+            keypair.clone(),
             tx_consensus,
-        );
+            store.clone(),
+        ).await;
 
         Self {
             signal: Some(signal),
             operator_id,
             operator_committee,
+            local_keypair: keypair,
+            store,
         }
     }
 
-    // pub async fn sign_str(&self, message: &str) -> Result<Signature, DvfError> {
-    //     let mut context = Context::new();
-    //     context.update(message.as_bytes());
-    //     let message_hash = Hash256::from_slice(&context.finalize());
-
-    //     self.operator_committee.sign(message_hash).await
-    // }
-
-    pub async fn sign(&self, message: Hash256) -> Result<(Signature, Vec<u64>), DvfError> {
+    pub async fn threshold_sign(&self, message: Hash256) -> Result<(Signature, Vec<u64>), DvfError> {
         self.operator_committee.sign(message).await
     }
 
-    pub async fn is_leader(&self, nonce: u64) -> bool {
+    pub fn local_sign(&self, message: Hash256) -> Signature {
+        self.local_keypair.sk.sign(message)
+    }
+
+    pub async fn local_sign_and_store(&self, message: Hash256) {
+        let sig = self.local_sign(message);
+        let serialized_signature = bincode::serialize(&sig).unwrap();
+        // save to local db
+        let key = message.as_bytes().into();
+        self.store.write(key, serialized_signature).await;
+    }
+
+    pub async fn is_aggregator(&self, nonce: u64) -> bool {
         self.operator_committee.get_leader(nonce).await == self.operator_id
+        || self.operator_committee.get_leader(nonce + 1).await == self.operator_id
     }
 
     pub fn validator_public_key(&self) -> String {
@@ -267,36 +278,34 @@ unsafe impl Send for DvfCore {}
 unsafe impl Sync for DvfCore {}
 
 impl DvfCore {
-    pub fn spawn<T: EthSpec> (
+    pub async fn spawn<T: EthSpec> (
         operator_id: u64,
-        node: Arc<ParkingRwLock<Node<T>>>,
+        node: Arc<RwLock<Node<T>>>,
         validator_id: u64,
         committee: HotstuffCommittee,
         keypair: Keypair,
         tx_consensus: MonitoredSender<Hash256>,
+        store: Store,
     ) -> exit_future::Signal {
-        let node = node.read();
-        // let (tx_commit, rx_commit) = channel(CHANNEL_CAPACITY);
-        // let (tx_consensus_to_mempool, rx_consensus_to_mempool) = channel(CHANNEL_CAPACITY);
-        // let (tx_mempool_to_consensus, rx_mempool_to_consensus) = channel(CHANNEL_CAPACITY);
+        let node = node.read().await;
 
         let (tx_commit, rx_commit) = MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "dvf-commit".to_string(), "info");
         let (tx_consensus_to_mempool, rx_consensus_to_mempool) = MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "dvf-cs2mp".to_string(), "info");
         let (tx_mempool_to_consensus, rx_mempool_to_consensus) = MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "dvf-mp2cs".to_string(), "info");
 
         let parameters = Parameters::default();
-        let store_path = node.config.base_store_path.join(validator_id.to_string()).join(operator_id.to_string()); 
-        let store = Store::new(&store_path.to_str().unwrap()).expect("Failed to create store");
+        // let store_path = node.config.base_store_path.join(validator_id.to_string()).join(operator_id.to_string()); 
+        // let store = Store::new(&store_path.to_str().unwrap()).expect("Failed to create store");
 
         // Run the signature service.
         let signature_service = SignatureService::new(node.secret.secret.clone());
 
 
-        {
-            block_on(node.signature_handler_map.write())
-                .insert(validator_id, DvfSignatureReceiverHandler{store : store.clone()});
-            info!("Insert signature handler for validator: {}", validator_id);
-        }
+        node.signature_handler_map
+            .write()
+            .await
+            .insert(validator_id, DvfSignatureReceiverHandler{store : store.clone()});
+        info!("Insert signature handler for validator: {}", validator_id);
 
         let (signal, exit) = exit_future::signal();
         Mempool::spawn(
@@ -310,7 +319,7 @@ impl DvfCore {
             Arc::clone(&node.tx_handler_map),
             Arc::clone(&node.mempool_handler_map),
             exit.clone()
-        );
+        ).await;
 
         Consensus::spawn(
             node.secret.name,
@@ -324,7 +333,7 @@ impl DvfCore {
             validator_id,
             Arc::clone(&node.consensus_handler_map),
             exit.clone()
-        );
+        ).await;
 
         info!("[Dvf {}/{}] successfully booted", operator_id, validator_id);
 
@@ -370,10 +379,12 @@ impl DvfCore {
                                                 for batch in batches {
                                                     // construct hash256
                                                     let msg = Hash256::from_slice(&batch[..]);
-                                                    let signature = self.operator.sign(msg.clone()).await.unwrap();
-                                                    let serialized_signature = bincode::serialize(&signature).unwrap();
-                                                    // save to local db
-                                                    self.store.write(batch, serialized_signature).await;
+
+                                                    // let signature = self.operator.sign(msg.clone()).await.unwrap();
+                                                    // let serialized_signature = bincode::serialize(&signature).unwrap();
+                                                    // // save to local db
+                                                    // self.store.write(batch, serialized_signature).await;
+
                                                     
                                                     if let Err(e) = self.tx_consensus.send(msg).await {
                                                         error!("Failed to notify consensus status: {}", e);

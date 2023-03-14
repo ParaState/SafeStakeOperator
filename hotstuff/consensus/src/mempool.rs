@@ -6,11 +6,11 @@ use crypto::Hash as _;
 use futures::future::try_join_all;
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
-use log::{error, info};
+use log::{error};
 use mempool::ConsensusMempoolMessage;
 use std::collections::HashMap;
 use store::Store;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{channel, Receiver};
 use utils::monitored_channel::{MonitoredSender, MonitoredChannel};
 
 pub struct MempoolDriver {

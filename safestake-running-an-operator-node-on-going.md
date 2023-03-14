@@ -75,7 +75,7 @@ Log in to your host cloud service provider, open the following firewall inbound 
 | Inbound/Ingress  | tcp         | 5052       | 5052    | Internal (operator - lighthouse) |
 | Inbound/Ingress  | udp         | 9000       | 9000    | 0.0.0.0/0 |
 | Inbound/Ingress  | tcp         | 30303      | 30303   | 0.0.0.0/0 |
-| Inbound/Ingress  | tcp         | 8551       | 8551    | Internal (lighhouse - geth) |
+| Inbound/Ingress  | tcp         | 8551       | 8551    | Internal (lighthouse - geth) |
 | Inbound/Ingress  | udp         | 30303      | 30303   | 0.0.0.0/0 |
 | Inbound/Ingress  | tcp         | 9000       | 9000    | 0.0.0.0/0 |
 | Inbound/Ingress  | tcp         | 26000      | 26005   | 0.0.0.0/0 |

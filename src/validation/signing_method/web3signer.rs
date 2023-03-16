@@ -97,11 +97,6 @@ impl<'a, T: EthSpec, Payload: AbstractExecPayload<T>> Web3SignerObject<'a, T, Pa
                 block: None,
                 block_header: Some(block.block_header()),
             }),
-            BeaconBlock::Eip4844(_) => Ok(Web3SignerObject::BeaconBlock {
-                version: ForkName::Eip4844,
-                block: None,
-                block_header: Some(block.block_header()),
-            }),
         }
     }
 

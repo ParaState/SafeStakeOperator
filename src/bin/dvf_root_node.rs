@@ -1,31 +1,28 @@
-use discv5::enr::EnrPublicKey;
-use discv5::{
-    enr,
-    enr::{CombinedKey},
-    Discv5, Discv5ConfigBuilder, Discv5Event,
-};
+use std::collections::HashMap;
 use std::collections::HashSet;
+use std::error::Error;
+use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::{
     net::{Ipv4Addr, SocketAddr},
     time::Duration,
 };
-use log::{error, info, debug};
-use env_logger::Env;
-use std::io::Write;
-use store::Store;
-use chrono::Local;
-use hsconfig::{Secret};
-use hsconfig::Export as _;
-use std::fs;
-use bytes::Bytes;
-use network::{Receiver as NetworkReceiver, MessageHandler, Writer as NetworkWriter};
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use std::collections::HashMap;
+
 use async_trait::async_trait;
-use std::error::Error;
+use bytes::Bytes;
+use chrono::Local;
+use discv5::enr::EnrPublicKey;
+use discv5::{enr, enr::CombinedKey, Discv5, Discv5ConfigBuilder, Discv5Event};
+use env_logger::Env;
 use futures::SinkExt;
+use hsconfig::Export as _;
+use hsconfig::Secret;
+use log::{debug, error, info};
+use network::{MessageHandler, Receiver as NetworkReceiver, Writer as NetworkWriter};
+use store::Store;
+use tokio::sync::RwLock;
 
 pub const DEFAULT_SECRET_DIR: &str = "node_key.json";
 pub const DEFAULT_STORE_DIR: &str = "boot_store";
@@ -33,38 +30,45 @@ pub const DEFAULT_ROOT_DIR: &str = ".lighthouse";
 
 #[derive(Clone)]
 pub struct IpQueryReceiverHandler {
-    store: Store
+    store: Store,
 }
 
 #[async_trait]
 impl MessageHandler for IpQueryReceiverHandler {
-    async fn dispatch(&self, writer: &mut NetworkWriter, message: Bytes) -> Result<(), Box<dyn Error>> {
-        let msg: Vec<u8> = message.slice(..).to_vec();  
+    async fn dispatch(
+        &self,
+        writer: &mut NetworkWriter,
+        message: Bytes,
+    ) -> Result<(), Box<dyn Error>> {
+        let msg: Vec<u8> = message.slice(..).to_vec();
         // message contains the public key
         match self.store.read(msg).await {
-            Ok(value) => {
-                match value {
-                    Some(data) => {
-                        let _  = writer.send(Bytes::from(data)).await;
-                    }
-                    None => {
-                        let _ = writer.send(Bytes::from("can't find signature, please wait")).await;
-                    }
-                 }
+            Ok(value) => match value {
+                Some(data) => {
+                    let _ = writer.send(Bytes::from(data)).await;
+                }
+                None => {
+                    let _ = writer
+                        .send(Bytes::from("can't find signature, please wait"))
+                        .await;
+                }
             },
             Err(e) => {
-                let _ = writer.send(Bytes::from("can't read database, please wait")).await;
+                let _ = writer
+                    .send(Bytes::from("can't read database, please wait"))
+                    .await;
                 error!("can't read database, {}", e)
             }
         }
-        Ok(())  
+        Ok(())
     }
 }
 
 #[tokio::main]
 async fn main() {
-    
-    let network = std::env::args().nth(1).expect("ERRPR: there is no valid network argument");
+    let network = std::env::args()
+        .nth(1)
+        .expect("ERRPR: there is no valid network argument");
     let base_dir = dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(DEFAULT_ROOT_DIR)
@@ -73,29 +77,39 @@ async fn main() {
     let store = Store::new(store_dir.to_str().unwrap()).unwrap();
     let secret_dir = base_dir.join(DEFAULT_SECRET_DIR);
 
-    let _logger = env_logger::Builder::from_env(Env::default().default_filter_or("info")).format(|buf, record| {
-        let level = { buf.default_styled_level(record.level()) };
-        writeln!(
-            buf,
-            "{} {} [{}:{}] {}",
-            Local::now().format("%Y-%m-%d %H:%M:%S%.3f"),
-            format_args!("{:>5}", level),
-            record.module_path().unwrap_or("<unnamed>"),
-            record.line().unwrap_or(0),
-            &record.args()
-        )
-    }).init();
+    let _logger = env_logger::Builder::from_env(Env::default().default_filter_or("info"))
+        .format(|buf, record| {
+            let level = { buf.default_styled_level(record.level()) };
+            writeln!(
+                buf,
+                "{} {} [{}:{}] {}",
+                Local::now().format("%Y-%m-%d %H:%M:%S%.3f"),
+                format_args!("{:>5}", level),
+                record.module_path().unwrap_or("<unnamed>"),
+                record.line().unwrap_or(0),
+                &record.args()
+            )
+        })
+        .init();
 
     let address = std::env::args()
         .nth(2)
-        .map(|addr| addr.parse::<Ipv4Addr>().unwrap()).unwrap();
+        .map(|addr| addr.parse::<Ipv4Addr>().unwrap())
+        .unwrap();
 
-    let port: u16 = std::env::args()
-        .nth(3)
-        .map(|udp_port| udp_port.parse().unwrap()).unwrap();
+    let port = {
+        if let Some(udp_port) = std::env::args().nth(3) {
+            udp_port.parse().unwrap()
+        } else {
+            9000
+        }
+    };
 
     let secret = if secret_dir.exists() {
-        info!("secret file has been generated, path: {}", &secret_dir.to_str().unwrap());
+        info!(
+            "secret file has been generated, path: {}",
+            &secret_dir.to_str().unwrap()
+        );
         Secret::read(secret_dir.to_str().unwrap()).unwrap()
     } else {
         let secret = Secret::new();
@@ -114,43 +128,64 @@ async fn main() {
     // construct a local ENR
     let enr = {
         let mut builder = enr::EnrBuilder::new("v4");
-        builder.ip(address.into());
-        builder.udp4(port);
+        // if an IP was specified, use it
+        if let Some(external_address) = address {
+            builder.ip4(external_address);
+        }
+        // if a port was specified, use it
+        if std::env::args().nth(3).is_some() {
+            builder.udp4(port);
+        }
         builder.build(&enr_key).unwrap()
     };
 
-    info!("Base64 ENR: {}", enr.to_base64());
-    info!("IP: {}, UDP_PORT:{}", enr.ip4().unwrap(), enr.udp4().unwrap());
+    // if the ENR is useful print it
+    info!("------node_id: {}", enr.node_id());
+    if enr.udp4_socket().is_none() {
+        info!("------local enr is not printed as no IP:PORT was specified");
+    }
+    info!(
+        "------local enr: {} , local base64 enr:{}",
+        enr,
+        enr.to_base64()
+    );
 
     let config = Discv5ConfigBuilder::new().build();
 
     // the address to listen on
-    let socket_addr = SocketAddr::new("0.0.0.0".parse().expect("valid ip"), port);
+    let listen_addr = SocketAddr::new("0.0.0.0".parse().expect("valid ip"), port);
 
     // construct the discv5 server
     let mut discv5 = Discv5::new(enr, enr_key, config).unwrap();
 
     // start the discv5 service
-    discv5.start(socket_addr).await.unwrap();
+    discv5.start(listen_addr).await.unwrap();
 
-    // construct a 30 second interval to search for new peers.
+    // construct a 60 second interval to search for new peers.
     let mut query_interval = tokio::time::interval(Duration::from_secs(60));
     let mut ip_set: HashSet<Ipv4Addr> = HashSet::new();
     let mut event_stream = discv5.event_stream().await.unwrap();
-    let mut handler_map : HashMap<u64, IpQueryReceiverHandler> = HashMap::new();
-    handler_map.insert(0, IpQueryReceiverHandler{ store: store.clone()});
+    let mut handler_map: HashMap<u64, IpQueryReceiverHandler> = HashMap::new();
+    handler_map.insert(
+        0,
+        IpQueryReceiverHandler {
+            store: store.clone(),
+        },
+    );
 
     let handler_map = Arc::new(RwLock::new(handler_map));
 
-    NetworkReceiver::spawn(
-        socket_addr,
-        handler_map,
-        "boot node",
-    );
+    NetworkReceiver::spawn(listen_addr, handler_map, "boot node");
 
     loop {
         tokio::select! {
             _ = query_interval.tick() => {
+                 // get metrics
+                let metrics = discv5.metrics();
+                let connected_peers = discv5.connected_peers();
+                info!("------Connected peers: {}, Active sessions: {}, Unsolicited requests/s: {:.2}", connected_peers, metrics.active_sessions, metrics.unsolicited_requests_per_second);
+                info!("------Searching for peers...");
+
                 // pick a random node target
                 let target_random_node_id = enr::NodeId::random();
                 // execute a FINDNODE query
@@ -158,33 +193,48 @@ async fn main() {
                     Err(e) => info!("Find Node result failed: {:?}", e),
                     Ok(v) => {
                         // found a list of ENR's print their NodeIds
-                        info!("current ip set size: {}, found {} peers", ip_set.len(), v.len());
+                        let node_ids = v.iter().map(|enr| enr.node_id()).collect::<Vec<_>>();
+                        info!("------Nodes found: {}", node_ids.len());
+                        // found a list of ENR's print their NodeIds
+                        info!("------current ip set size: {}, found {} peers", ip_set.len(), v.len());
                         for enr in &v {
+                            info!("------node enr: {} , node base64 enr:{}",enr,enr.to_base64());
                             match enr.ip4() {
                                 Some(ip) => {
                                     ip_set.insert(ip);
-                                    debug!("{:?}", ip);
+                                    debug!("------ip_set.insert:{:?}", ip);
                                 },
                                 None => { }
-                            }
+                            };
                         }
                     }
                 }
             }
-            Some(event) = event_stream.recv() => match event {
-                Discv5Event::SessionEstablished(enr,  addr) => {
-                    if let Some(enr_ip) =  enr.ip4() {
-                        if enr_ip != addr.ip()  {
-                            error!("ip doesn't match enr {:?} addr {:?}", enr_ip, addr.ip());
-                            continue;
+            Some(event) = event_stream.recv() => {
+                match event {
+                    Discv5Event::Discovered(enr) => {
+                        info!("------Discovered,enr: {}", enr);
+                        info!("------Discovered,base64 enr:{}",enr.to_base64());
+                    },
+                    Discv5Event::SessionEstablished(enr,  addr) => {
+                        info!("------Discv5Event::SessionEstablished,enr:{},base64 enr:{}", enr,enr.to_base64());
+                        if let Some(enr_ip) =  enr.ip4() {
+                            if enr_ip != addr.ip()  {
+                                error!("------ip doesn't match enr {:?} addr {:?}", enr_ip, addr.ip());
+                                continue;
+                            }
+                            info!("------A peer has established session: public key: {}, ip: {:?}", base64::encode(enr.public_key().encode()), enr_ip);
+                            // store binary data
+                            store.write(enr.public_key().encode(), enr_ip.octets().to_vec()).await;
+                            ip_set.insert(enr_ip);
                         }
-                        info!("A peer has established session: public key: {}, ip: {:?}", base64::encode(enr.public_key().encode()), enr_ip);
-                        // store binary data
-                        store.write(enr.public_key().encode(), enr_ip.octets().to_vec()).await;
-                        ip_set.insert(enr_ip);
-                    }
-                }
-                _ => {}
+                    },
+                    Discv5Event::EnrAdded { enr, replaced: _ } => info!("------Discv5Event::EnrAdded,enr:{},base64 enr:{}", enr,enr.to_base64()),
+                    Discv5Event::NodeInserted { node_id, replaced: _ } => info!("------Discv5Event::NodeInserted, node_id:{}", node_id),
+                    Discv5Event::SocketUpdated(addr) => info!("------Discv5Event::SocketUpdated,addr:{}", addr),
+                    Discv5Event::TalkRequest(t_req) => info!("------Discv5Event::TalkRequest,TalkRequest:{:?}",t_req),
+                    _ => {}
+                };
             }
         }
     }

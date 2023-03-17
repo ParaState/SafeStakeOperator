@@ -1,7 +1,7 @@
 version: '3'
 services:
   geth:
-    image: ethereum/client-go:v1.10.25
+    image: ethereum/client-go:v1.11.3
     pull_policy: always
     network_mode: "host"
     volumes:
@@ -24,8 +24,7 @@ services:
       "--pprof.addr=0.0.0.0",
       "--http.api=engine,eth,web3,net,debug",
       "--http.corsdomain=*",
-      "--authrpc.jwtsecret=/data/jwt/jwtsecret",
-      "--override.terminaltotaldifficulty=${TTD}"
+      "--authrpc.jwtsecret=/data/jwt/jwtsecret"
     ]
     expose:
       - "8545"
@@ -35,7 +34,7 @@ services:
       - "30303"
   lighthouse:
     network_mode: "host"
-    image: sigp/lighthouse:v3.4.0
+    image: sigp/lighthouse:v3.5.1
     pull_policy: always
     volumes:
       - geth-data:/data/geth

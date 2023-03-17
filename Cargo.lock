@@ -636,7 +636,7 @@ dependencies = [
 
 [[package]]
 name = "beacon_node"
-version = "3.5.0"
+version = "3.5.1"
 dependencies = [
  "beacon_chain",
  "clap",
@@ -674,25 +674,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "bindgen"
-version = "0.59.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bd2a9a458e8f4304c52c43ebb0cfbd520289f8379a52e329a38afda99bf8eb8"
-dependencies = [
- "bitflags",
- "cexpr",
- "clang-sys",
- "lazy_static",
- "lazycell",
- "peeking_take_while",
- "proc-macro2",
- "quote",
- "regex",
- "rustc-hash",
- "shlex",
 ]
 
 [[package]]
@@ -828,7 +809,7 @@ dependencies = [
 
 [[package]]
 name = "boot_node"
-version = "3.5.0"
+version = "3.5.1"
 dependencies = [
  "beacon_node",
  "clap",
@@ -3730,21 +3711,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "348108ab3fba42ec82ff6e9564fc4ca0247bdccdc68dd8af9764bbc79c3c8ffb"
 
 [[package]]
-name = "libmdbx"
-version = "0.1.4"
-source = "git+https://github.com/sigp/libmdbx-rs?tag=v0.1.4#096da80a83d14343f8df833006483f48075cd135"
-dependencies = [
- "bitflags",
- "byteorder",
- "derive_more",
- "indexmap",
- "libc",
- "mdbx-sys",
- "parking_lot 0.12.1",
- "thiserror",
-]
-
-[[package]]
 name = "libp2p"
 version = "0.50.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4218,7 +4184,7 @@ version = "0.8.3+7.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "557b255ff04123fcc176162f56ed0c9cd42d8f357cf55b3fabeb60f7413741b3"
 dependencies = [
- "bindgen 0.64.0",
+ "bindgen",
  "bzip2-sys",
  "cc",
  "glob",
@@ -4510,17 +4476,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6365506850d44bff6e2fbcb5176cf63650e48bd45ef2fe2665ae1570e0f4b9ca"
 dependencies = [
  "digest 0.10.6",
-]
-
-[[package]]
-name = "mdbx-sys"
-version = "0.11.6-4"
-source = "git+https://github.com/sigp/libmdbx-rs?tag=v0.1.4#096da80a83d14343f8df833006483f48075cd135"
-dependencies = [
- "bindgen 0.59.2",
- "cc",
- "cmake",
- "libc",
 ]
 
 [[package]]
@@ -6715,15 +6670,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde-big-array"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd31f59f6fe2b0c055371bb2f16d7f0aa7d8881676c04a55b1596d1a17cd10a4"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "serde_array_query"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6958,7 +6904,6 @@ dependencies = [
  "filesystem",
  "flate2",
  "lazy_static",
- "libmdbx",
  "lighthouse_metrics",
  "lru 0.7.8",
  "parking_lot 0.12.1",
@@ -8114,7 +8059,6 @@ dependencies = [
  "rusqlite",
  "safe_arith",
  "serde",
- "serde-big-array",
  "serde_derive",
  "serde_json",
  "serde_with",

@@ -94,8 +94,7 @@ async fn main() {
 
     let address = std::env::args()
         .nth(2)
-        .map(|addr| addr.parse::<Ipv4Addr>().unwrap())
-        .unwrap();
+        .map(|addr| addr.parse::<Ipv4Addr>().unwrap());
 
     let port = {
         if let Some(udp_port) = std::env::args().nth(3) {

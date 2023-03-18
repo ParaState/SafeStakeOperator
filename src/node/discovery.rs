@@ -56,7 +56,8 @@ impl Discovery {
             Ok(enr) => {
                 info!(
                     "------remote enr: {} , remote base64 enr:{}",
-                    enr, base64_enr
+                    enr,
+                    enr.to_base64()
                 );
 
                 BOOT_SOCKETADDR

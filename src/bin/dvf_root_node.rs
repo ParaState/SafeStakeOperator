@@ -215,14 +215,20 @@ async fn main() {
                     Discv5Event::Discovered(enr) => {
                         info!("------Discovered,enr: {}", enr);
                         info!("------Discovered,base64 enr:{}",enr.to_base64());
+                        if let Some(enr_ip) =  enr.ip4() {
+                            info!("------Discv5Event::Discovered: public key: {}, ip: {:?}", base64::encode(enr.public_key().encode()), enr_ip);
+                            // store binary data
+                            store.write(enr.public_key().encode(), enr_ip.octets().to_vec()).await;
+                            ip_set.insert(enr_ip);
+                        }
                     },
                     Discv5Event::SessionEstablished(enr,  addr) => {
                         info!("------Discv5Event::SessionEstablished,enr:{},base64 enr:{}", enr,enr.to_base64());
                         if let Some(enr_ip) =  enr.ip4() {
-                            if enr_ip != addr.ip()  {
-                                error!("------ip doesn't match enr {:?} addr {:?}", enr_ip, addr.ip());
-                                continue;
-                            }
+                            // if enr_ip != addr.ip()  {
+                            //     error!("------ip doesn't match enr {:?} addr {:?}", enr_ip, addr.ip());
+                            //     continue;
+                            // }
                             info!("------A peer has established session: public key: {}, ip: {:?}", base64::encode(enr.public_key().encode()), enr_ip);
                             // store binary data
                             store.write(enr.public_key().encode(), enr_ip.octets().to_vec()).await;

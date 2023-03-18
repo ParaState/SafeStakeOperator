@@ -33,14 +33,6 @@ services:
       - "8547"
       - "8551"
       - "30303"
-  mev-boost:
-    image: flashbots/mev-boost:1.4.0-portable
-    network_mode: "host"
-    pull_policy: always
-    restart: unless-stopped
-    command: -${GETH_NETWORK} -relays ${MEV_BOOST_RELAYS}
-    expose:
-      - "18550"
   lighthouse:
     network_mode: "host"
     image: sigp/lighthouse:v3.5.1
@@ -53,12 +45,9 @@ services:
     command:
       [
         "lighthouse",
-        #lighthouse bn --builder https://mainnet-builder.test
         "bn",
-        #"--builder=http://127.0.0.1:18550",
         "--network=${LIGHTHOUSE_NETWORK}",
         "--datadir=/data/lighthouse",
-        # "--jwt-secrets=/data/jwt/jwtsecret",
         "--execution-jwt=/data/jwt/jwtsecret",
         "--http",
         "--listen-address=0.0.0.0",
@@ -68,7 +57,6 @@ services:
         "--http-allow-sync-stalled",
         "--merge",
         "--execution-endpoint=http://127.0.0.1:8551",
-        # "--eth1-endpoints=http://127.0.0.1:8545",
         "--metrics",
         "--metrics-address=0.0.0.0",
         "--subscribe-all-subnets",
@@ -92,13 +80,12 @@ services:
     image: parastate/dvf-operator:${IMAGE_TAG}
     pull_policy: always
     restart: unless-stopped
-    #such as : lighthouse vc --builder-proposals/private-tx-proposals
     command:
       - /bin/sh
       - -c
       - |
         node_ip=$$(curl -s ifconfig.me)
-        dvf validator_client --private-tx-proposals --debug-level=info --network=${OPERATOR_NETWORK} --beacon-nodes=${BEACON_NODE_ENDPOINT} --api=${API_SERVER} --ws-url=${WS_URL}  --ip=$$node_ip --id=${OPERATOR_ID} --boot-enr=${ENR} --registry-contract=${REGISTRY_CONTRACT_ADDRESS} --network-contract=${NETWORK_CONTRACT_ADDRESS} --base-port=26000 2>&1
+        dvf validator_client --debug-level=info --network=${OPERATOR_NETWORK} --beacon-nodes=${BEACON_NODE_ENDPOINT} --api=${API_SERVER} --ws-url=${WS_URL}  --ip=$$node_ip --id=${OPERATOR_ID} --boot-enr=${ENR} --registry-contract=${REGISTRY_CONTRACT_ADDRESS} --network-contract=${NETWORK_CONTRACT_ADDRESS} --base-port=26000 2>&1
     expose:
       - "26000"
       - "26001"
@@ -110,9 +97,6 @@ services:
       resources:
         limits:
           memory: 5G
-    # depends_on:
-    #   lighthouse:
-    #     condition: service_started
 
   dvf_key_tool:
     network_mode: "host"

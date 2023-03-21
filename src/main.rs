@@ -38,7 +38,6 @@ fn bls_library_name() -> &'static str {
 
 fn main() {
     tracing_subscriber::fmt().json().init();
-    log::info!("------dvf main------");
 
     // Enable backtraces unless a RUST_BACKTRACE value has already been explicitly provided.
     if std::env::var("RUST_BACKTRACE").is_err() {
@@ -307,6 +306,8 @@ fn main() {
         Builder::from_env(Env::default()).init();
     }
 
+    info!("------dvf main------");
+
     let result = get_eth2_network_config(&matches).and_then(|eth2_network_config| {
         let eth_spec_id = eth2_network_config.eth_spec_id()?;
 
@@ -376,21 +377,6 @@ fn run<E: EthSpec>(
     let debug_level = matches
         .value_of("debug-level")
         .ok_or("Expected --debug-level flag")?;
-
-    let _logger = env_logger::Builder::from_env(Env::default().default_filter_or(debug_level))
-        .format(|buf, record| {
-            let level = { buf.default_styled_level(record.level()) };
-            writeln!(
-                buf,
-                "{} {} [{}:{}] {}",
-                Local::now().format("%Y-%m-%d %H:%M:%S%.3f"),
-                format_args!("{:>5}", level),
-                record.module_path().unwrap_or("<unnamed>"),
-                record.line().unwrap_or(0),
-                &record.args()
-            )
-        })
-        .init();
 
     let log_format = matches.value_of("log-format");
     let log_color = matches.is_present("log-color");

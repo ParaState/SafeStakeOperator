@@ -1,9 +1,12 @@
+use std::fs::create_dir_all;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
-use std::fs::create_dir_all;
+
+use directory::{DEFAULT_ROOT_DIR, DEFAULT_SECRET_DIR, DEFAULT_VALIDATOR_DIR};
 use serde_derive::{Deserialize, Serialize};
-use directory::{DEFAULT_ROOT_DIR, DEFAULT_VALIDATOR_DIR, DEFAULT_SECRET_DIR};
 use tokio::sync::OnceCell;
+use tracing::{debug, error, info, log, warn};
+
 /// The file name for the serialized `OperatorCommitteeDefinition` struct.
 pub const NODE_KEY_FILENAME: &str = "node_key.json";
 pub const DB_FILENAME: &str = "dvf_node_db";
@@ -12,17 +15,17 @@ pub const DEFAULT_BASE_PORT: u16 = 25_000;
 pub const TRANSACTION_PORT_OFFSET: u16 = 0;
 pub const MEMPOOL_PORT_OFFSET: u16 = 1;
 pub const CONSENSUS_PORT_OFFSET: u16 = 2;
-pub const SIGNATURE_PORT_OFFSET: u16 = 3; 
+pub const SIGNATURE_PORT_OFFSET: u16 = 3;
 pub const DISCOVERY_PORT_OFFSET: u16 = 4;
 pub const DKG_PORT_OFFSET: u16 = 5;
 pub const BASE_ADDRESS: [u8; 4] = [127, 0, 0, 1];
 pub static API_ADDRESS: OnceCell<String> = OnceCell::const_new();
-pub static BOOT_ENR: OnceCell<String> =  OnceCell::const_new();
+pub static BOOT_ENR: OnceCell<String> = OnceCell::const_new();
 pub static BOOT_SOCKETADDR: OnceCell<SocketAddr> = OnceCell::const_new();
-pub const COLLECT_PERFORMANCE_URL : &str = "collect_performance";
-pub const VALIDATOR_PK_URL : &str = "validator_pk";
-pub const PRESTAKE_SIGNATURE_URL : &str = "prestake_signature";
-pub const STAKE_SIGNATURE_URL : &str = "stake_signature";
+pub const COLLECT_PERFORMANCE_URL: &str = "collect_performance";
+pub const VALIDATOR_PK_URL: &str = "validator_pk";
+pub const PRESTAKE_SIGNATURE_URL: &str = "prestake_signature";
+pub const STAKE_SIGNATURE_URL: &str = "stake_signature";
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct NodeConfig {
@@ -43,15 +46,15 @@ impl Default for NodeConfig {
         Self::new(
             1,
             IpAddr::V4(Ipv4Addr::new(BASE_ADDRESS[0], BASE_ADDRESS[1], BASE_ADDRESS[2], BASE_ADDRESS[3])),
-            DEFAULT_BASE_PORT, 
-        ) 
+            DEFAULT_BASE_PORT,
+        )
     }
 }
 
 impl NodeConfig {
     pub fn new(id: u64, ip: IpAddr, base_port: u16) -> Self {
         if id == 0 {
-            panic!("Invalid id");
+            warn!("Invalid id");
         }
 
         let base_dir = dirs::home_dir()

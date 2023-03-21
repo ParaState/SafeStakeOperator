@@ -1,26 +1,28 @@
 #![recursion_limit = "256"]
 
-mod metrics;
+use std::io::Write;
+use std::path::PathBuf;
+use std::process::exit;
 
 use beacon_node::ProductionBeaconNode;
+use chrono::Local;
 use clap::{App, Arg, ArgMatches};
 use clap_utils::{flags::DISABLE_MALLOC_TUNING_FLAG, get_eth2_network_config};
-use directory::{parse_path_or_default, DEFAULT_BEACON_NODE_DIR, DEFAULT_VALIDATOR_DIR};
+use directory::{DEFAULT_BEACON_NODE_DIR, DEFAULT_VALIDATOR_DIR, parse_path_or_default};
+use dvf_directory::get_default_base_dir;
 use env_logger::{Builder, Env};
 use environment::{EnvironmentBuilder, LoggerConfig};
 use eth2_hashing::have_sha_extensions;
-use eth2_network_config::{Eth2NetworkConfig, DEFAULT_HARDCODED_NETWORK, HARDCODED_NET_NAMES};
+use eth2_network_config::{DEFAULT_HARDCODED_NETWORK, Eth2NetworkConfig, HARDCODED_NET_NAMES};
 use lighthouse_version::VERSION;
 use malloc_utils::configure_memory_allocator;
-use slog::{crit, info, warn};
-use std::path::PathBuf;
-use std::process::exit;
 use task_executor::ShutdownReason;
+use tracing::{debug, error, info, log, warn};
 use types::{EthSpec, EthSpecId};
+
 use dvf::validation::ProductionValidatorClient;
-use std::io::Write;
-use chrono::Local;
-use dvf_directory::{get_default_base_dir};
+
+mod metrics;
 
 fn bls_library_name() -> &'static str {
     if cfg!(feature = "portable") {
@@ -35,6 +37,9 @@ fn bls_library_name() -> &'static str {
 }
 
 fn main() {
+    tracing_subscriber::fmt().json().init();
+    log::info!("------dvf main------");
+
     // Enable backtraces unless a RUST_BACKTRACE value has already been explicitly provided.
     if std::env::var("RUST_BACKTRACE").is_err() {
         std::env::set_var("RUST_BACKTRACE", "1");
@@ -55,11 +60,11 @@ fn main() {
                  BLS library: {}\n\
                  SHA256 hardware acceleration: {}\n\
                  Specs: mainnet (true), minimal ({}), gnosis ({})",
-                 VERSION.replace("Lighthouse/", ""),
-                 bls_library_name(),
-                 have_sha_extensions(),
-                 cfg!(feature = "spec-minimal"),
-                 cfg!(feature = "gnosis"),
+                VERSION.replace("Lighthouse/", ""),
+                bls_library_name(),
+                have_sha_extensions(),
+                cfg!(feature = "spec-minimal"),
+                cfg!(feature = "gnosis"),
             ).as_str()
         )
         .arg(
@@ -185,7 +190,6 @@ fn main() {
                 .conflicts_with("testnet-dir")
                 .takes_value(true)
                 .global(true)
-
         )
         .arg(
             Arg::with_name("dump-config")
@@ -384,8 +388,8 @@ fn run<E: EthSpec>(
             record.line().unwrap_or(0),
             &record.args()
         )
-    }).init();    
-    
+    }).init();
+
     let log_format = matches.value_of("log-format");
     let log_color = matches.is_present("log-color");
     let disable_log_timestamp = matches.is_present("disable-log-timestamp");
@@ -537,7 +541,7 @@ fn run<E: EthSpec>(
             executor.clone().spawn(
                 async move {
                     if let Err(e) = ProductionBeaconNode::new(context.clone(), config).await {
-                        crit!(log, "Failed to start beacon node"; "reason" => e);
+                        error!(log, "Failed to start beacon node"; "reason" => e);
                         // Ignore the error since it always occurs during normal operation when
                         // shutting down.
                         let _ = executor
@@ -568,7 +572,7 @@ fn run<E: EthSpec>(
                             .await
                             .and_then(|mut vc| vc.start_service())
                         {
-                            crit!(log, "Failed to start validator client"; "reason" => e);
+                            error!(log, "Failed to start validator client"; "reason" => e);
                             // Ignore the error since it always occurs during normal operation when
                             // shutting down.
                             let _ = executor.shutdown_sender().try_send(ShutdownReason::Failure(
@@ -585,7 +589,7 @@ fn run<E: EthSpec>(
             }
         }
         _ => {
-            crit!(log, "No subcommand supplied. See --help .");
+            error!(log, "No subcommand supplied. See --help .");
             return Err("No subcommand supplied.".into());
         }
     };

@@ -1,19 +1,25 @@
-use rusqlite::{params, Connection, Result, DropBehavior};
+use std::path::Path;
+
+use rusqlite::{Connection, DropBehavior, params, Result};
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::oneshot;
-use log::{error};
-use crate::node::contract::{Operator, Validator, Initializer};
+use tracing::{debug, error, info, log, warn};
 use web3::types::Address;
-use std::path::{Path};
+
+use crate::node::contract::{Initializer, Operator, Validator};
+
 pub type DbError = rusqlite::Error;
 type DbResult<T> = Result<T, DbError>;
 
 pub enum DbCommand {
     InsertOperator(Operator),
     InsertValidator(Validator),
-    DeleteOperator(u32),    // delete operator by id
-    DeleteValidator(String), // delete validator by pk
-    QueryOperatorById(u32, oneshot::Sender<DbResult<Option<Operator>>>), // query operator by operator id
+    DeleteOperator(u32),
+    // delete operator by id
+    DeleteValidator(String),
+    // delete validator by pk
+    QueryOperatorById(u32, oneshot::Sender<DbResult<Option<Operator>>>),
+    // query operator by operator id
     QueryValidatorByPublicKey(String, oneshot::Sender<DbResult<Option<Validator>>>),
     QueryOperatorPublicKeyByIds(Vec<u32>, oneshot::Sender<DbResult<Option<Vec<String>>>>),
     QueryOperatorPublicKeyById(u32, oneshot::Sender<DbResult<Option<String>>>),
@@ -25,7 +31,7 @@ pub enum DbCommand {
     QueryValidatorByAddress(Address, oneshot::Sender<DbResult<Vec<Validator>>>),
     DisableValidator(String),
     EnableValidator(String),
-    ValidatorActive(String, oneshot::Sender<DbResult<bool>>)
+    ValidatorActive(String, oneshot::Sender<DbResult<bool>>),
 }
 
 #[derive(Clone)]
@@ -79,10 +85,10 @@ impl Database {
             CONSTRAINT initializer_select_operators_2 FOREIGN KEY (operator_id) REFERENCES operators(id) ON DELETE CASCADE
         )";
 
-        conn.execute(create_operators_sql, [],)?;
-        conn.execute(create_validators_sql, [],)?;
-        conn.execute(create_releation_sql, [],)?;
-        conn.execute(create_initializer_sql,[])?;
+        conn.execute(create_operators_sql, [])?;
+        conn.execute(create_validators_sql, [])?;
+        conn.execute(create_releation_sql, [])?;
+        conn.execute(create_initializer_sql, [])?;
         conn.execute(create_initializer_releation_sql, [])?;
         let (tx, mut rx) = channel(1000);
 
@@ -91,61 +97,61 @@ impl Database {
                 match db_command {
                     DbCommand::InsertOperator(operator) => {
                         insert_operator(&conn, operator);
-                    },
+                    }
                     DbCommand::InsertValidator(validator) => {
                         insert_validator(&mut conn, validator)
-                    },
+                    }
                     DbCommand::DeleteOperator(operator_id) => {
                         delete_operator(&conn, operator_id)
-                    },
+                    }
                     DbCommand::DeleteValidator(validator_pk) => {
                         delete_validator(&conn, &validator_pk);
-                    },
+                    }
                     DbCommand::QueryOperatorById(operator_id, sender) => {
                         let response = query_operator_by_id(&conn, &operator_id);
                         let _ = sender.send(response);
-                    },
+                    }
                     DbCommand::QueryValidatorByPublicKey(validator_pk, sender) => {
                         let response = query_validator_by_public_key(&conn, &validator_pk);
                         let _ = sender.send(response);
-                    },
+                    }
                     DbCommand::QueryOperatorPublicKeyByIds(operator_ids, sender) => {
                         let response = query_operators_public_key_by_ids(&conn, operator_ids);
                         let _ = sender.send(response);
-                    },
+                    }
                     DbCommand::QueryOperatorPublicKeyById(operator_id, sender) => {
                         let response = query_operator_public_key_by_id(&conn, operator_id);
                         let _ = sender.send(response);
                     }
                     DbCommand::InsertInitializer(initializer) => {
                         insert_initializer(&mut conn, initializer);
-                    },
+                    }
                     DbCommand::UpdateInitializer(id, va_pk, minipool_address, sender) => {
                         let response = update_initializer(&conn, id, va_pk, minipool_address);
                         let _ = sender.send(response);
-                    },
+                    }
                     DbCommand::QueryInitializer(id, sender) => {
                         let response = query_initializer(&conn, id);
                         let _ = sender.send(response);
-                    },
+                    }
                     DbCommand::QueryInitializerReleaterOpPk(initializer_id, sender) => {
                         let response = query_initializer_releated_operator_pks(&conn, initializer_id);
                         let _ = sender.send(response);
-                    },
+                    }
                     DbCommand::QueryAllValidatorOwners(sender) => {
                         let response = query_all_validator_address(&conn);
                         let _ = sender.send(response);
-                    },
+                    }
                     DbCommand::QueryValidatorByAddress(address, sender) => {
                         let response = query_validator_by_address(&conn, address);
                         let _ = sender.send(response);
-                    },
+                    }
                     DbCommand::EnableValidator(public_key) => {
                         enable_validator(&conn, public_key);
-                    },
+                    }
                     DbCommand::DisableValidator(public_key) => {
                         disable_validator(&conn, public_key);
-                    },
+                    }
                     DbCommand::ValidatorActive(public_key, sender) => {
                         let response = if_validator_active(&conn, public_key);
                         let _ = sender.send(response);
@@ -153,7 +159,7 @@ impl Database {
                 }
             }
         });
-        Ok(Self { channel: tx})
+        Ok(Self { channel: tx })
     }
 
     pub async fn insert_operator(&self, operator: Operator) {
@@ -258,7 +264,7 @@ impl Database {
         receiver.await.expect("Failed to receive reply to query initializer command from db")
     }
 
-    pub async fn if_validator_active(&self, public_key: String) -> DbResult<bool>{
+    pub async fn if_validator_active(&self, public_key: String) -> DbResult<bool> {
         let (sender, receiver) = oneshot::channel();
         if let Err(e) = self.channel.send(DbCommand::ValidatorActive(public_key, sender)).await {
             panic!("Failed to send query validator owners command to store: {}", e);
@@ -277,11 +283,10 @@ impl Database {
             panic!("Failed to send query validator owners command to store: {}", e);
         }
     }
- 
 }
 
 fn insert_operator(conn: &Connection, operator: Operator) {
-    if let Err(e) = conn.execute("INSERT INTO operators(id, name, address, public_key) values (?1, ?2, ?3, ?4)", params![&operator.id, &operator.name, format!("{0:0x}", operator.address), base64::encode(&operator.public_key)],) {
+    if let Err(e) = conn.execute("INSERT INTO operators(id, name, address, public_key) values (?1, ?2, ?3, ?4)", params![&operator.id, &operator.name, format!("{0:0x}", operator.address), base64::encode(&operator.public_key)]) {
         error!("Can't insert into operators, error: {} {:?}", e, operator);
     }
 }
@@ -294,7 +299,7 @@ fn insert_initializer(conn: &mut Connection, initializer: Initializer) {
         Ok(mut tx) => {
             tx.set_drop_behavior(DropBehavior::Commit);
             for operator_id in &initializer.releated_operators {
-                if let Err(e) = &tx.execute("INSERT INTO initializer_operators_mapping(initializer_id, operator_id) values(?1, ?2)", params![initializer.id, operator_id], ) {
+                if let Err(e) = &tx.execute("INSERT INTO initializer_operators_mapping(initializer_id, operator_id) values(?1, ?2)", params![initializer.id, operator_id]) {
                     error!("Can't insert into initializer_operators_mapping, error: {} operator_id {:?} initializer {}", e, operator_id, initializer.id);
                     break;
                 }
@@ -302,7 +307,7 @@ fn insert_initializer(conn: &mut Connection, initializer: Initializer) {
             if let Err(e) = tx.finish() {
                 error!("Can't finish the transaction {}", e);
             }
-        },
+        }
         Err(e) => {
             error!("Can't create a transaction for database {}", e);
         }
@@ -315,17 +320,16 @@ fn update_initializer(conn: &Connection, id: u32, validator_pk: String, minipool
 }
 
 fn insert_validator(conn: &mut Connection, validator: Validator) {
-
     match conn.transaction() {
         Ok(mut tx) => {
             tx.set_drop_behavior(DropBehavior::Commit);
-            if let Err(e) = &tx.execute("INSERT INTO validators(public_key, id, owner_address) values(?1, ?2, ?3)", params![hex::encode(&validator.public_key), validator.id.to_string(), format!("{0:0x}", validator.owner_address)] ) {
+            if let Err(e) = &tx.execute("INSERT INTO validators(public_key, id, owner_address) values(?1, ?2, ?3)", params![hex::encode(&validator.public_key), validator.id.to_string(), format!("{0:0x}", validator.owner_address)]) {
                 error!("Can't insert into validators, error: {} {:?}", e, validator);
                 let _ = &tx.set_drop_behavior(DropBehavior::Rollback);
             }
 
             for operator_id in &validator.releated_operators {
-                if let Err(e) = &tx.execute("INSERT INTO validator_operators_mapping(validator_pk, operator_id) values(?1, ?2)", params![hex::encode(&validator.public_key), operator_id], ) {
+                if let Err(e) = &tx.execute("INSERT INTO validator_operators_mapping(validator_pk, operator_id) values(?1, ?2)", params![hex::encode(&validator.public_key), operator_id]) {
                     error!("Can't insert into validator_operators_mapping, error: {} operator_id {:?}", e, operator_id);
                     let _ = &tx.set_drop_behavior(DropBehavior::Rollback);
                     break;
@@ -334,7 +338,7 @@ fn insert_validator(conn: &mut Connection, validator: Validator) {
             if let Err(e) = tx.finish() {
                 error!("Can't finish the transaction {}", e);
             }
-        },
+        }
         Err(e) => {
             error!("Can't create a transaction for database {}", e);
         }
@@ -362,15 +366,15 @@ fn query_operator_by_id(conn: &Connection, operator_id: &u32) -> DbResult<Option
                     let address: String = row.get(2)?;
                     let public_key: String = row.get(3)?;
                     Ok(Some(Operator {
-                            id : row.get(0)?,
-                            name: row.get(1)?,
-                            address: Address::from_slice(&hex::decode(address).unwrap()),
-                            public_key: base64::decode(public_key).unwrap().try_into().unwrap()
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        address: Address::from_slice(&hex::decode(address).unwrap()),
+                        public_key: base64::decode(public_key).unwrap().try_into().unwrap(),
                     }))
-                },
+                }
                 None => { Ok(None) }
             }
-        },
+        }
         Err(e) => {
             error!("Can't prepare statement {}", e);
             Err(e)
@@ -388,7 +392,7 @@ fn query_validator_by_public_key(conn: &Connection, validator_pk: &str) -> DbRes
             while let Some(row) = rows.next()? {
                 releated_operators.push(row.get(0)?);
             }
-        },
+        }
         Err(e) => {
             error!("Can't prepare statement {}", e);
             return Err(e);
@@ -403,17 +407,17 @@ fn query_validator_by_public_key(conn: &Connection, validator_pk: &str) -> DbRes
                     let public_key: String = row.get(0)?;
                     let owner_address: String = row.get(2)?;
                     let id: String = row.get(1)?;
-                    Ok(Some(Validator{
+                    Ok(Some(Validator {
                         public_key: hex::decode(&public_key).unwrap().try_into().unwrap(),
                         id: id.parse().unwrap(),
                         owner_address: Address::from_slice(&hex::decode(owner_address).unwrap()),
                         releated_operators: releated_operators,
-                        active: row.get(3)?
+                        active: row.get(3)?,
                     }))
-                },
+                }
                 None => { Ok(None) }
             }
-        },
+        }
         Err(e) => {
             error!("Can't prepare statement {}", e);
             Err(e)
@@ -431,10 +435,10 @@ fn query_operators_public_key_by_ids(conn: &Connection, operator_ids: Vec<u32>) 
                 match rows.next()? {
                     Some(row) => {
                         public_keys.push(row.get(0)?)
-                    },
+                    }
                     None => {}
                 }
-            },
+            }
             Err(e) => {
                 error!("Can't prepare statement {}", e);
                 return Err(e);
@@ -454,10 +458,10 @@ fn query_operator_public_key_by_id(conn: &Connection, operator_id: u32) -> DbRes
             match rows.next()? {
                 Some(row) => {
                     Ok(Some(row.get(0)?))
-                },
-                None => {Ok(None)}
+                }
+                None => { Ok(None) }
             }
-        },
+        }
         Err(e) => {
             error!("Can't prepare statement {}", e);
             return Err(e);
@@ -470,7 +474,7 @@ fn query_initializer(conn: &Connection, id: u32) -> DbResult<Option<Initializer>
         Ok(mut stmt) => {
             let mut rows = stmt.query([id])?;
             match rows.next()? {
-                Some(row) => { 
+                Some(row) => {
                     let address: String = row.get(1)?;
                     let validator_pk: String = row.get(2)?;
                     let minipool_address: String = row.get(3)?;
@@ -485,18 +489,21 @@ fn query_initializer(conn: &Connection, id: u32) -> DbResult<Option<Initializer>
                         id: row.get(0)?,
                         owner_address: Address::from_slice(&hex::decode(address).unwrap()),
                         releated_operators: vec![],
-                        validator_pk:  va_pk_option,
-                        minipool_address: minipool_address_option
+                        validator_pk: va_pk_option,
+                        minipool_address: minipool_address_option,
                     }))
-                },
+                }
                 None => { Ok(None) }
             }
-        },
-        Err(e) => { error!("Can't prepare statement {}", e); return Err(e); }
+        }
+        Err(e) => {
+            error!("Can't prepare statement {}", e);
+            return Err(e);
+        }
     }
 }
 
-fn query_initializer_releated_operator_pks(conn: &Connection, id: u32) -> DbResult<(Vec<String>, Vec<u32>) > {
+fn query_initializer_releated_operator_pks(conn: &Connection, id: u32) -> DbResult<(Vec<String>, Vec<u32>)> {
     let mut op_pks = Vec::new();
     let mut op_ids: Vec<u32> = Vec::new();
     match conn.prepare("select public_key, id from operators where id in (select operator_id from initializer_operators_mapping where initializer_id = (?))") {
@@ -505,14 +512,17 @@ fn query_initializer_releated_operator_pks(conn: &Connection, id: u32) -> DbResu
             while let Some(row) = rows.next()? {
                 op_pks.push(row.get(0)?);
                 op_ids.push(row.get(1)?);
-            } 
-        },
-        Err(e) => { error!("Can't prepare statement {}", e); return Err(e); }
+            }
+        }
+        Err(e) => {
+            error!("Can't prepare statement {}", e);
+            return Err(e);
+        }
     };
-    Ok((op_pks,op_ids))
+    Ok((op_pks, op_ids))
 }
 
-fn query_all_validator_address(conn: &Connection) -> DbResult<Vec<Address>>{
+fn query_all_validator_address(conn: &Connection) -> DbResult<Vec<Address>> {
     let mut owners = Vec::new();
     match conn.prepare("select distinct owner_address from validators") {
         Ok(mut stmt) => {
@@ -525,8 +535,11 @@ fn query_all_validator_address(conn: &Connection) -> DbResult<Vec<Address>>{
                     )
                 );
             }
-        },
-        Err(e) => { error!("Can't prepare statement {}", e); return Err(e); }
+        }
+        Err(e) => {
+            error!("Can't prepare statement {}", e);
+            return Err(e);
+        }
     }
     Ok(owners)
 }
@@ -539,19 +552,19 @@ fn query_validator_by_address(conn: &Connection, address: Address) -> DbResult<V
     match conn.prepare("select public_key, id, owner_address, active from validators where owner_address = (?)") {
         Ok(mut stmt) => {
             let mut rows = stmt.query([address_str])?;
-            
+
             while let Some(row) = rows.next()? {
                 let public_key: String = row.get(0)?;
                 let id: String = row.get(1)?;
                 validators.push(Validator {
                     public_key: hex::decode(&public_key).unwrap().try_into().unwrap(),
                     id: id.parse().unwrap(),
-                    owner_address: address, 
+                    owner_address: address,
                     releated_operators: vec![],
-                    active: row.get(3)?
+                    active: row.get(3)?,
                 });
             }
-        },
+        }
         Err(e) => {
             error!("Can't prepare statement {}", e);
         }
@@ -576,10 +589,10 @@ fn if_validator_active(conn: &Connection, public_key: String) -> DbResult<bool> 
         Ok(mut stmt) => {
             let mut rows = stmt.query([public_key]).unwrap();
             while let Some(row) = rows.next().unwrap() {
-                let active : bool = row.get(0).unwrap();
+                let active: bool = row.get(0).unwrap();
                 return Ok(active);
             }
-        },
+        }
         Err(e) => {
             error!("Can't prepare statement {}", e);
         }
@@ -596,23 +609,22 @@ fn test_database() {
         owner_address CHARACTER(40) NOT NULL,
         active INTEGER DEFAULT 1 NOT NULL
     )";
-    conn.execute(create_validators_sql, [],).unwrap();
+    conn.execute(create_validators_sql, []).unwrap();
     conn.execute("INSERT INTO validators(public_key, id, owner_address) values(?1, ?2, ?3)", params!["123123", (12222501569673719727 as u64).to_string(), "adasdasd"]).unwrap();
     disable_validator(&conn, "123123".to_string());
     match conn.prepare("select public_key, id, owner_address, active from validators where owner_address = (?)") {
         Ok(mut stmt) => {
             let mut rows = stmt.query(["adasdasd"]).unwrap();
-            
+
             while let Some(row) = rows.next().unwrap() {
-                let active : bool = row.get(3).unwrap();
+                let active: bool = row.get(3).unwrap();
                 let id: String = row.get(1).unwrap();
                 let id_u64: u64 = id.parse().unwrap();
                 println!("{} {}", active, id_u64);
             }
-        },
+        }
         Err(e) => {
             error!("Can't prepare statement {}", e);
         }
     };
-
 }

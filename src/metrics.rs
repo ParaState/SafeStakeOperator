@@ -1,8 +1,9 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use lazy_static::lazy_static;
 pub use lighthouse_metrics::*;
 use lighthouse_version::VERSION;
-use slog::{error, Logger};
-use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::{debug, error, info, log, warn};
 
 lazy_static! {
     pub static ref PROCESS_START_TIME_SECONDS: Result<IntGauge> = try_create_int_gauge(

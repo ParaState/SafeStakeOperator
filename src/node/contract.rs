@@ -1,27 +1,29 @@
-use super::db::Database;
-use super::utils::{convert_va_pk_to_u64, FromFile, ToFile};
-use async_trait::async_trait;
-use hscrypto::PublicKey;
-use hsutils::monitored_channel::MonitoredSender;
-use log::{error, info, warn};
-use tokio::sync::RwLock;
-use serde_derive::{Deserialize as DeriveDeserialize, Serialize as DeriveSerialize};
-use serde_json::Value;
 use core::panic;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
+
+use async_trait::async_trait;
+use hscrypto::PublicKey;
+use hsutils::monitored_channel::MonitoredSender;
+use serde_derive::{Deserialize as DeriveDeserialize, Serialize as DeriveSerialize};
+use serde_json::Value;
 use store::Store;
 use tokio::sync::OnceCell;
-use web3::ethabi::{token, Event, EventParam, ParamType, RawLog};
+use tokio::sync::RwLock;
+use tracing::{debug, error, info, log, warn};
 use web3::{
     contract::{Contract as EthContract, Options},
     futures::TryStreamExt,
     transports::WebSocket,
-    types::{Address, BlockNumber, FilterBuilder, Log, H256, U256, U64},
+    types::{Address, BlockNumber, FilterBuilder, H256, Log, U256, U64},
     Web3,
 };
+use web3::ethabi::{Event, EventParam, ParamType, RawLog, token};
+
+use super::db::Database;
+use super::utils::{convert_va_pk_to_u64, FromFile, ToFile};
 
 const CONTRACT_CONFIG_FILE: &str = "contract_config/configs.yml";
 const CONTRACT_RECORD_FILE: &str = "contract_record.yml";
@@ -36,6 +38,7 @@ pub static SELF_OPERATOR_ID: OnceCell<u32> = OnceCell::const_new();
 pub static DEFAULT_TRANSPORT_URL: OnceCell<String> = OnceCell::const_new();
 pub static REGISTRY_CONTRACT: OnceCell<String> = OnceCell::const_new();
 pub static NETWORK_CONTRACT: OnceCell<String> = OnceCell::const_new();
+
 #[derive(Debug)]
 pub enum ContractError {
     StoreError,
@@ -73,6 +76,7 @@ impl ContractError {
 
 type ValidatorPublicKey = [u8; 48];
 type OperatorPublicKey = [u8; 33];
+
 #[derive(Clone, Debug)]
 pub struct Operator {
     pub id: u32,
@@ -85,9 +89,10 @@ pub struct Operator {
 pub struct Validator {
     pub id: u64,
     pub owner_address: Address,
-    pub public_key: ValidatorPublicKey, // bls public key
+    pub public_key: ValidatorPublicKey,
+    // bls public key
     pub releated_operators: Vec<u32>,
-    pub active: bool
+    pub active: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -103,6 +108,7 @@ pub type SharedPublicKeys = Vec<Vec<u8>>;
 pub type EncryptedSecretKeys = Vec<Vec<u8>>;
 pub type OperatorPublicKeys = Vec<Vec<u8>>;
 pub type OperatorIds = Vec<u32>;
+
 #[derive(Clone)]
 pub enum ContractCommand {
     StartValidator(
@@ -155,6 +161,7 @@ impl TopicHandler for ValidatorRegistrationHandler {
 
 #[derive(Clone)]
 pub struct ValidatorRemovalHandler {}
+
 #[async_trait]
 impl TopicHandler for ValidatorRemovalHandler {
     async fn process(
@@ -252,7 +259,9 @@ pub struct ContractConfig {
     pub safestake_network_abi_path: String,
     pub safestake_registry_abi_path: String,
 }
+
 impl FromFile<ContractConfig> for ContractConfig {}
+
 impl ToFile for ContractConfig {}
 
 #[derive(Clone, DeriveSerialize, DeriveDeserialize, Debug)]
@@ -261,6 +270,7 @@ pub struct ContractRecord {
 }
 
 impl FromFile<ContractRecord> for ContractRecord {}
+
 impl ToFile for ContractRecord {}
 
 pub struct Contract {
@@ -539,7 +549,7 @@ impl Contract {
             loop {
                 let transport = WebSocket::new(transport_url).await;
                 match &transport {
-                    Ok(_) => {},
+                    Ok(_) => {}
                     Err(e) => {
                         warn!("can't connect to websocket {}", e);
                         tokio::time::sleep(Duration::from_secs(60 * 3)).await;
@@ -756,7 +766,7 @@ pub async fn process_validator_registration(
             owner_address: address,
             public_key: va_pk.try_into().unwrap(),
             releated_operators: op_ids,
-            active: true
+            active: true,
         };
         // save validator in local database
         db.insert_validator(validator.clone()).await;
@@ -824,7 +834,7 @@ pub async fn process_validator_removal(
             owner_address,
             public_key: va_pk.try_into().unwrap(),
             releated_operators: vec![],
-            active: true
+            active: true,
         }))
         .await;
     Ok(())
@@ -1055,7 +1065,7 @@ pub async fn process_minipool_ready(
                         error!("Can't query initializer releated op pks");
                         ContractError::DatabaseError
                     })?;
-                
+
                 let op_pks_bn = op_pks.into_iter()
                     .map(|s| base64::decode(s).unwrap())
                     .collect();
@@ -1101,7 +1111,7 @@ pub async fn query_operator_from_contract(
     })?;
     let (name, address, pk, _, _, _, _): (String, Address, Vec<u8>, U256, U256, U256, bool) =
         contract
-            .query("getOperatorById", (id,), None, Options::default(), None)
+            .query("getOperatorById", (id, ), None, Options::default(), None)
             .await
             .or_else(|e| {
                 error!("Can't query from contract {}", e);
@@ -1116,9 +1126,9 @@ pub async fn query_operator_from_contract(
 }
 
 // check the paid block number of address. If the block is behind the current block number, stop validators releated to the address
-pub async fn check_account (
+pub async fn check_account(
     config: &ContractConfig,
-    owner: Address
+    owner: Address,
 ) -> Result<bool, ContractError> {
     let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
     let web3 = Web3::new(WebSocket::new(transport_url).await.unwrap());
@@ -1149,7 +1159,7 @@ pub async fn check_account (
     info!("current block {:?}, paid block {:?} , account {}", current_block, paid_block,  owner);
     if current_block.as_u64() >= paid_block.as_u64() {
         Ok(true)
-    } else {    
+    } else {
         Ok(false)
     }
 }

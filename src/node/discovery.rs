@@ -1,18 +1,18 @@
-use std::collections::HashMap;
-use std::sync::Arc;
 use std::{
     net::{IpAddr, SocketAddr},
     time::Duration,
 };
+use std::collections::HashMap;
+use std::sync::Arc;
 
-use discv5::enr::EnrPublicKey;
 use discv5::{
-    enr::{CombinedKey, Enr},
-    Discv5, Discv5ConfigBuilder,
+    Discv5,
+    Discv5ConfigBuilder, enr::{CombinedKey, Enr},
 };
+use discv5::enr::EnrPublicKey;
 use hsconfig::Secret;
-use log::{error, info};
 use tokio::sync::RwLock;
+use tracing::{debug, error, info, log, warn};
 
 use super::config::BOOT_SOCKETADDR;
 
@@ -50,7 +50,7 @@ impl Discovery {
         let listen_addr = SocketAddr::new("0.0.0.0".parse().expect("valid ip"), udp_port);
 
         // construct the discv5 server
-        let mut discv5 = Discv5::new(self_enr, enr_key, config).unwrap();
+        let mut discv5: Discv5 = Discv5::new(self_enr, enr_key, config).unwrap();
 
         match boot_enr.parse::<Enr<CombinedKey>>() {
             Ok(enr) => {
@@ -73,7 +73,7 @@ impl Discovery {
                 }
             }
             Err(e) => {
-                panic!("Decoding ENR failed: {}", e);
+                error!("Decoding ENR failed: {}", e);
             }
         }
 

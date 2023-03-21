@@ -1,3 +1,7 @@
+use std::{
+    net::{Ipv4Addr, SocketAddr},
+    time::Duration,
+};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::error::Error;
@@ -5,24 +9,20 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::{
-    net::{Ipv4Addr, SocketAddr},
-    time::Duration,
-};
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::Local;
+use discv5::{Discv5, Discv5ConfigBuilder, Discv5Event, enr, enr::CombinedKey};
 use discv5::enr::EnrPublicKey;
-use discv5::{enr, enr::CombinedKey, Discv5, Discv5ConfigBuilder, Discv5Event};
 use env_logger::Env;
 use futures::SinkExt;
 use hsconfig::Export as _;
 use hsconfig::Secret;
-use log::{debug, error, info};
 use network::{MessageHandler, Receiver as NetworkReceiver, Writer as NetworkWriter};
 use store::Store;
 use tokio::sync::RwLock;
+use tracing::{debug, error, info, log, warn};
 
 pub const DEFAULT_SECRET_DIR: &str = "node_key.json";
 pub const DEFAULT_STORE_DIR: &str = "boot_store";
@@ -66,6 +66,9 @@ impl MessageHandler for IpQueryReceiverHandler {
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt().json().init();
+    log::info!("------dvf_root_node------");
+
     let network = std::env::args()
         .nth(1)
         .expect("ERRPR: there is no valid network argument");
@@ -76,21 +79,6 @@ async fn main() {
     let store_dir = base_dir.join(DEFAULT_STORE_DIR);
     let store = Store::new(store_dir.to_str().unwrap()).unwrap();
     let secret_dir = base_dir.join(DEFAULT_SECRET_DIR);
-
-    let _logger = env_logger::Builder::from_env(Env::default().default_filter_or("info"))
-        .format(|buf, record| {
-            let level = { buf.default_styled_level(record.level()) };
-            writeln!(
-                buf,
-                "{} {} [{}:{}] {}",
-                Local::now().format("%Y-%m-%d %H:%M:%S%.3f"),
-                format_args!("{:>5}", level),
-                record.module_path().unwrap_or("<unnamed>"),
-                record.line().unwrap_or(0),
-                &record.args()
-            )
-        })
-        .init();
 
     let address = std::env::args()
         .nth(2)

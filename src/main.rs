@@ -522,7 +522,7 @@ fn run<E: EthSpec>(
         return Ok(());
     }
 
-    info!(log, "Lighthouse started"; "version" => VERSION);
+    info!(log, "Lighthouse started,version" => VERSION);
     info!(
         log,
         "Configured for network";
@@ -541,7 +541,7 @@ fn run<E: EthSpec>(
             executor.clone().spawn(
                 async move {
                     if let Err(e) = ProductionBeaconNode::new(context.clone(), config).await {
-                        error!(log, "Failed to start beacon node"; "reason" => e);
+                        error!(log, "Failed to start beacon node,reason" => e);
                         // Ignore the error since it always occurs during normal operation when
                         // shutting down.
                         let _ = executor
@@ -572,7 +572,7 @@ fn run<E: EthSpec>(
                             .await
                             .and_then(|mut vc| vc.start_service())
                         {
-                            error!(log, "Failed to start validator client"; "reason" => e);
+                            error!(log, "Failed to start validator client,reason" => e);
                             // Ignore the error since it always occurs during normal operation when
                             // shutting down.
                             let _ = executor.shutdown_sender().try_send(ShutdownReason::Failure(
@@ -596,7 +596,7 @@ fn run<E: EthSpec>(
 
     // Block this thread until we get a ctrl-c or a task sends a shutdown signal.
     let shutdown_reason = environment.block_until_shutdown_requested()?;
-    info!(log, "Shutting down.."; "reason" => ?shutdown_reason);
+    info!(log, "Shutting down..,reason" => ?shutdown_reason);
 
     environment.fire_signal();
 

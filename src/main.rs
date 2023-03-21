@@ -497,7 +497,7 @@ fn run<E: EthSpec>(
         (Some(testnet), None) => testnet,
         (None, Some(testnet_dir)) => format!("custom ({})", testnet_dir.display()),
         (None, None) => DEFAULT_HARDCODED_NETWORK.to_string(),
-        (Some(_), Some(_)) => info!("CLI prevents both --network and --testnet-dir"),
+        (Some(_), Some(_)) => panic!("CLI prevents both --network and --testnet-dir"),
     };
 
     if let Some(sub_matches) = matches.subcommand_matches("account_manager") {
@@ -586,7 +586,7 @@ fn run<E: EthSpec>(
 
     // Block this thread until we get a ctrl-c or a task sends a shutdown signal.
     let shutdown_reason = environment.block_until_shutdown_requested()?;
-    info!("Shutting down..,reason:{}", ?shutdown_reason);
+    info!("Shutting down..,reason:{:?}", shutdown_reason);
 
     environment.fire_signal();
 

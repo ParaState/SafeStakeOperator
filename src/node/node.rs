@@ -16,7 +16,7 @@ use slot_clock::SystemTimeSlotClock;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
 use tokio::time::{Duration, sleep};
-use tracing::{debug, error, info, log, warn};
+use tracing::{error, info, warn};
 use types::EthSpec;
 use types::PublicKey;
 use validator_dir::insecure_keys::INSECURE_PASSWORD;
@@ -33,14 +33,14 @@ use crate::node::config::{
     API_ADDRESS, BOOT_ENR, DB_FILENAME, DISCOVERY_PORT_OFFSET, DKG_PORT_OFFSET, NodeConfig,
     PRESTAKE_SIGNATURE_URL, STAKE_SIGNATURE_URL, VALIDATOR_PK_URL,
 };
-use crate::node::contract::{
-    Contract, ContractCommand, EncryptedSecretKeys, Initializer, OperatorIds,
-    OperatorPublicKeys, SELF_OPERATOR_ID, SharedPublicKeys, Validator,
-};
 use crate::node::discovery::Discovery;
 /// The default channel capacity for this module.
 use crate::node::dvfcore::DvfSignatureReceiverHandler;
-use crate::node::utils::{convert_address_to_withdraw_crendentials, DepositRequest, get_operator_ips, request_to_web_server, ValidatorPkRequest};
+use crate::node::contract::{
+    Contract, ContractCommand, EncryptedSecretKeys, Initiator, OperatorPublicKeys,
+    SharedPublicKeys, Validator, SELF_OPERATOR_ID, OperatorIds
+};
+use crate::node::utils::{get_operator_ips, request_to_web_server, convert_address_to_withdraw_crendentials, ValidatorPkRequest, DepositRequest};
 use crate::validation::account_utils::default_keystore_share_password_path;
 use crate::validation::account_utils::default_keystore_share_path;
 use crate::validation::account_utils::default_operator_committee_definition_path;
@@ -51,8 +51,8 @@ use crate::validation::validator_store::ValidatorStore;
 
 const THRESHOLD: u64 = 3;
 
-type InitializerStore =
-Arc<RwLock<HashMap<u32, (BlsKeypair, BlsPublicKey, HashMap<u64, BlsPublicKey>)>>>;
+type InitiatorStore =
+    Arc<RwLock<HashMap<u32, (BlsKeypair, BlsPublicKey, HashMap<u64, BlsPublicKey>)>>>;
 
 fn with_wildcard_ip(mut addr: SocketAddr) -> SocketAddr {
     addr.set_ip("0.0.0.0".parse().unwrap());
@@ -190,7 +190,7 @@ impl<T: EthSpec> Node<T> {
         operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
         mut rx_contract_command: Receiver<ContractCommand>,
         tx_contract_command: MonitoredSender<ContractCommand>,
-        initializer_store: InitializerStore,
+        initializer_store: InitiatorStore,
     ) {
         tokio::spawn(async move {
             loop {
@@ -247,11 +247,11 @@ impl<T: EthSpec> Node<T> {
                                 }
                             }
                         }
-                        ContractCommand::StartInitializer(initializer, operator_pks) => {
-                            info!("StartInitializer");
+                        ContractCommand::StartInitiator(initiator, operator_pks) => {
+                            info!("StartInitiator");
                             match start_initializer(
                                 node.clone(),
-                                initializer,
+                                initiator,
                                 operator_pks,
                                 operator_key_ip_map.clone(),
                                 initializer_store.clone(),
@@ -261,7 +261,7 @@ impl<T: EthSpec> Node<T> {
                             {
                                 Ok(_) => {}
                                 Err(e) => {
-                                    error!("Failed to start initializer: {}", e);
+                                    error!("Failed to start initiator: {}", e);
                                 }
                             }
                         }
@@ -628,7 +628,7 @@ pub async fn stop_validator<T: EthSpec>(
 
 pub async fn start_initializer<T: EthSpec>(
     node: Arc<RwLock<Node<T>>>,
-    initializer: Initializer,
+    initiator: Initiator,
     operator_public_keys: OperatorPublicKeys,
     operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
     initializer_store: Arc<
@@ -644,12 +644,12 @@ pub async fn start_initializer<T: EthSpec>(
             Err(e) => {
                 sleep(Duration::from_secs(10)).await;
                 let _ = tx_contract_command
-                    .send(ContractCommand::StartInitializer(
-                        initializer,
+                    .send(ContractCommand::StartInitiator(
+                        initiator,
                         operator_public_keys,
                     ))
                     .await;
-                info!("Will process the validator again");
+                info!("Will process the initiator again");
                 return Err(e);
             }
         };
@@ -663,7 +663,7 @@ pub async fn start_initializer<T: EthSpec>(
     let self_op_id = *SELF_OPERATOR_ID
         .get()
         .ok_or("Self operator has not been set".to_string())?;
-    let op_ids: Vec<u64> = initializer
+    let op_ids: Vec<u64> = initiator
         .releated_operators
         .iter()
         .map(|x| *x as u64)
@@ -687,8 +687,8 @@ pub async fn start_initializer<T: EthSpec>(
     // push va pk to web server
     let request_body = ValidatorPkRequest {
         validator_pk: pk_str,
-        initializer_id: initializer.id,
-        initializer_address: format!("{0:0x}", initializer.owner_address),
+        initializer_id: initiator.id,
+        initializer_address: format!("{0:0x}", initiator.owner_address),
         operators: op_ids,
     };
     let url_str = API_ADDRESS.get().unwrap().to_owned() + VALIDATOR_PK_URL;
@@ -697,7 +697,7 @@ pub async fn start_initializer<T: EthSpec>(
     initializer_store
         .write()
         .await
-        .insert(initializer.id, (keypair, va_pk, shared_pks));
+        .insert(initiator.id, (keypair, va_pk, shared_pks));
     info!("dkg success!");
     Ok(())
 }
@@ -711,8 +711,8 @@ pub async fn minipool_deposit<T: EthSpec>(
     operator_ids: OperatorIds,
     operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
     minipool_address: H160,
-    initializer_store: InitializerStore,
-    amount: u64,
+    initializer_store: InitiatorStore,
+    amount: u64
 ) -> Result<(), String> {
     let node = node.read().await;
     let base_port = node.config.base_address.port();
@@ -720,7 +720,7 @@ pub async fn minipool_deposit<T: EthSpec>(
         Ok(ips) => ips,
         Err(e) => {
             error!("Some operators are not online, it's critical error, minipool exiting");
-            initializer_store.write().await.remove(&initializer_id).ok_or(format!("can't remove initializer store id: {}", initializer_id))?;
+            initializer_store.write().await.remove(&initializer_id).ok_or(format!("can't remove initiator store id: {}", initializer_id))?;
             return Err(e);
         }
     };
@@ -736,7 +736,7 @@ pub async fn minipool_deposit<T: EthSpec>(
         .get()
         .ok_or("Self operator has not been set".to_string())?;
     let store = initializer_store.read().await;
-    let (keypair, va_pk, op_bls_pks) = store.get(&initializer_id).ok_or(format!("can't get initializer store id: {}", initializer_id))?;
+    let (keypair, va_pk, op_bls_pks) = store.get(&initializer_id).ok_or(format!("can't get initiator store id: {}", initializer_id))?;
     let io_committee = Arc::new(NetIOCommittee::new(self_op_id as u64, base_port + DKG_PORT_OFFSET, &op_ids, &operator_ips).await);
     let signer = SimpleDistributedSigner::new(self_op_id as u64, keypair.clone(), va_pk.clone(), op_bls_pks.clone(), io_committee, THRESHOLD as usize);
     let mpk = BlsPublicKey::deserialize(&validator_pk).map_err(|e| format!("Can't deserilize bls pk {:?}", e))?;

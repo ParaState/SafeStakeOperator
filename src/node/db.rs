@@ -4,9 +4,8 @@ use rusqlite::{Connection, DropBehavior, params, Result};
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::oneshot;
 use tracing::{debug, error, info, log, warn};
+use crate::node::contract::{Operator, Validator, Initiator};
 use web3::types::Address;
-
-use crate::node::contract::{Initializer, Operator, Validator};
 
 pub type DbError = rusqlite::Error;
 type DbResult<T> = Result<T, DbError>;
@@ -23,10 +22,10 @@ pub enum DbCommand {
     QueryValidatorByPublicKey(String, oneshot::Sender<DbResult<Option<Validator>>>),
     QueryOperatorPublicKeyByIds(Vec<u32>, oneshot::Sender<DbResult<Option<Vec<String>>>>),
     QueryOperatorPublicKeyById(u32, oneshot::Sender<DbResult<Option<String>>>),
-    InsertInitializer(Initializer),
-    UpdateInitializer(u32, String, String, oneshot::Sender<DbResult<usize>>),
-    QueryInitializer(u32, oneshot::Sender<DbResult<Option<Initializer>>>),
-    QueryInitializerReleaterOpPk(u32, oneshot::Sender<DbResult<(Vec<String>, Vec<u32>)>>),
+    InsertInitiator(Initiator),
+    UpdateInitiator(u32, String, String, oneshot::Sender<DbResult<usize>>),
+    QueryInitiator(u32, oneshot::Sender<DbResult<Option<Initiator>>>),
+    QueryInitiatorReleaterOpPk(u32, oneshot::Sender<DbResult<(Vec<String>, Vec<u32>)>>),
     QueryAllValidatorOwners(oneshot::Sender<DbResult<Vec<Address>>>),
     QueryValidatorByAddress(Address, oneshot::Sender<DbResult<Vec<Validator>>>),
     DisableValidator(String),
@@ -70,26 +69,26 @@ impl Database {
             CONSTRAINT validator_select_operators_2 FOREIGN KEY (operator_id) REFERENCES operators(id) ON DELETE CASCADE
         )";
 
-        let create_initializer_sql = "CREATE TABLE IF NOT EXISTS initializers(
+        let create_initiator_sql = "CREATE TABLE IF NOT EXISTS initiators(
             id INTEGER NOT NULL PRIMARY KEY,
             address CHARACTER(40) NOT NULL, 
             validator_pk CHARACTER(96),
             minipool_address CHARACTER(40)
         )";
 
-        let create_initializer_releation_sql = "CREATE TABLE IF NOT EXISTS initializer_operators_mapping(
+        let create_initiator_releation_sql = "CREATE TABLE IF NOT EXISTS initiator_operators_mapping(
             id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-            initializer_id INTEGER NOT NULL,
+            initiator_id INTEGER NOT NULL,
             operator_id INTEGER NOT NULL,
-            CONSTRAINT initializer_select_operators_1 FOREIGN KEY (initializer_id) REFERENCES initializers(id) ON DELETE CASCADE,
-            CONSTRAINT initializer_select_operators_2 FOREIGN KEY (operator_id) REFERENCES operators(id) ON DELETE CASCADE
+            CONSTRAINT initiator_select_operators_1 FOREIGN KEY (initiator_id) REFERENCES initiators(id) ON DELETE CASCADE,
+            CONSTRAINT initiator_select_operators_2 FOREIGN KEY (operator_id) REFERENCES operators(id) ON DELETE CASCADE
         )";
 
-        conn.execute(create_operators_sql, [])?;
-        conn.execute(create_validators_sql, [])?;
-        conn.execute(create_releation_sql, [])?;
-        conn.execute(create_initializer_sql, [])?;
-        conn.execute(create_initializer_releation_sql, [])?;
+        conn.execute(create_operators_sql, [],)?;
+        conn.execute(create_validators_sql, [],)?;
+        conn.execute(create_releation_sql, [],)?;
+        conn.execute(create_initiator_sql,[])?;
+        conn.execute(create_initiator_releation_sql, [])?;
         let (tx, mut rx) = channel(1000);
 
         tokio::spawn(async move {
@@ -123,19 +122,19 @@ impl Database {
                         let response = query_operator_public_key_by_id(&conn, operator_id);
                         let _ = sender.send(response);
                     }
-                    DbCommand::InsertInitializer(initializer) => {
-                        insert_initializer(&mut conn, initializer);
-                    }
-                    DbCommand::UpdateInitializer(id, va_pk, minipool_address, sender) => {
-                        let response = update_initializer(&conn, id, va_pk, minipool_address);
+                    DbCommand::InsertInitiator(initiator) => {
+                        insert_initiator(&mut conn, initiator);
+                    },
+                    DbCommand::UpdateInitiator(id, va_pk, minipool_address, sender) => {
+                        let response = update_initiator(&conn, id, va_pk, minipool_address);
                         let _ = sender.send(response);
-                    }
-                    DbCommand::QueryInitializer(id, sender) => {
-                        let response = query_initializer(&conn, id);
+                    },
+                    DbCommand::QueryInitiator(id, sender) => {
+                        let response = query_initiator(&conn, id);
                         let _ = sender.send(response);
-                    }
-                    DbCommand::QueryInitializerReleaterOpPk(initializer_id, sender) => {
-                        let response = query_initializer_releated_operator_pks(&conn, initializer_id);
+                    },
+                    DbCommand::QueryInitiatorReleaterOpPk(initiator_id, sender) => {
+                        let response = query_initiator_releated_operator_pks(&conn, initiator_id);
                         let _ = sender.send(response);
                     }
                     DbCommand::QueryAllValidatorOwners(sender) => {
@@ -226,34 +225,34 @@ impl Database {
         }
     }
 
-    pub async fn insert_initializer(&self, initializer: Initializer) {
-        if let Err(e) = self.channel.send(DbCommand::InsertInitializer(initializer)).await {
-            panic!("Failed to insert insert initializer command to store: {}", e);
+    pub async fn insert_initiator(&self, initiator: Initiator) {
+        if let Err(e) = self.channel.send(DbCommand::InsertInitiator(initiator)).await {
+            panic!("Failed to insert insert initiator command to store: {}", e);
         }
     }
 
-    pub async fn update_initializer(&self, id: u32, va_pk: String, minipool_address: String) -> DbResult<usize> {
+    pub async fn update_initiator(&self, id: u32, va_pk: String, minipool_address: String) -> DbResult<usize> {
         let (sender, receiver) = oneshot::channel();
-        if let Err(e) = self.channel.send(DbCommand::UpdateInitializer(id, va_pk, minipool_address, sender)).await {
-            panic!("Failed to send update initializer command to store: {}", e);
+        if let Err(e) = self.channel.send(DbCommand::UpdateInitiator(id, va_pk, minipool_address, sender)).await {
+            panic!("Failed to send update initiator command to store: {}", e);
         }
-        receiver.await.expect("Failed to receive reply to update initializer command from db")
+        receiver.await.expect("Failed to receive reply to update initiator command from db")
     }
 
-    pub async fn query_initializer(&self, id: u32) -> DbResult<Option<Initializer>> {
+    pub async fn query_initiator(&self, id: u32) -> DbResult<Option<Initiator>> {
         let (sender, receiver) = oneshot::channel();
-        if let Err(e) = self.channel.send(DbCommand::QueryInitializer(id, sender)).await {
-            panic!("Failed to send query initializer command to store: {}", e);
+        if let Err(e) = self.channel.send(DbCommand::QueryInitiator(id, sender)).await {
+            panic!("Failed to send query initiator command to store: {}", e);
         }
-        receiver.await.expect("Failed to receive reply to query initializer command from db")
+        receiver.await.expect("Failed to receive reply to query initiator command from db")
     }
 
-    pub async fn query_initializer_releated_op_pks(&self, id: u32) -> DbResult<(Vec<String>, Vec<u32>)> {
+    pub async fn query_initiator_releated_op_pks(&self, id: u32) -> DbResult<(Vec<String>, Vec<u32>)> {
         let (sender, receiver) = oneshot::channel();
-        if let Err(e) = self.channel.send(DbCommand::QueryInitializerReleaterOpPk(id, sender)).await {
-            panic!("Failed to send query initializer command to store: {}", e);
+        if let Err(e) = self.channel.send(DbCommand::QueryInitiatorReleaterOpPk(id, sender)).await {
+            panic!("Failed to send query initiator command to store: {}", e);
         }
-        receiver.await.expect("Failed to receive reply to query initializer command from db")
+        receiver.await.expect("Failed to receive reply to query initiator command from db")
     }
 
     pub async fn query_all_validator_address(&self) -> DbResult<Vec<Address>> {
@@ -261,7 +260,7 @@ impl Database {
         if let Err(e) = self.channel.send(DbCommand::QueryAllValidatorOwners(sender)).await {
             panic!("Failed to send query validator owners command to store: {}", e);
         }
-        receiver.await.expect("Failed to receive reply to query initializer command from db")
+        receiver.await.expect("Failed to receive reply to query initiator command from db")
     }
 
     pub async fn if_validator_active(&self, public_key: String) -> DbResult<bool> {
@@ -269,7 +268,7 @@ impl Database {
         if let Err(e) = self.channel.send(DbCommand::ValidatorActive(public_key, sender)).await {
             panic!("Failed to send query validator owners command to store: {}", e);
         }
-        receiver.await.expect("Failed to receive reply to query initializer command from db")
+        receiver.await.expect("Failed to receive reply to query initiator command from db")
     }
 
     pub async fn disable_validator(&self, public_key: String) {
@@ -291,16 +290,16 @@ fn insert_operator(conn: &Connection, operator: Operator) {
     }
 }
 
-fn insert_initializer(conn: &mut Connection, initializer: Initializer) {
-    if let Err(e) = conn.execute("INSERT INTO initializers(id, address) values (?1, ?2)", params![initializer.id, format!("{0:0x}", initializer.owner_address), ]) {
-        error!("Can't insert into initializer, error: {} {:?}", e, initializer);
+fn insert_initiator(conn: &mut Connection, initiator: Initiator) {
+    if let Err(e) = conn.execute("INSERT INTO initiators(id, address) values (?1, ?2)", params![initiator.id, format!("{0:0x}", initiator.owner_address), ]) {
+        error!("Can't insert into initiator, error: {} {:?}", e, initiator);
     }
     match conn.transaction() {
         Ok(mut tx) => {
             tx.set_drop_behavior(DropBehavior::Commit);
-            for operator_id in &initializer.releated_operators {
-                if let Err(e) = &tx.execute("INSERT INTO initializer_operators_mapping(initializer_id, operator_id) values(?1, ?2)", params![initializer.id, operator_id]) {
-                    error!("Can't insert into initializer_operators_mapping, error: {} operator_id {:?} initializer {}", e, operator_id, initializer.id);
+            for operator_id in &initiator.releated_operators {
+                if let Err(e) = &tx.execute("INSERT INTO initiator_operators_mapping(initiator_id, operator_id) values(?1, ?2)", params![initiator.id, operator_id], ) {
+                    error!("Can't insert into initiator_operators_mapping, error: {} operator_id {:?} initiator {}", e, operator_id, initiator.id);
                     break;
                 }
             }
@@ -315,8 +314,8 @@ fn insert_initializer(conn: &mut Connection, initializer: Initializer) {
 }
 
 // validator_pk is in hex mode
-fn update_initializer(conn: &Connection, id: u32, validator_pk: String, minipool_address: String) -> DbResult<usize> {
-    conn.execute("UPDATE initializers SET validator_pk = ?1, minipool_address = ?2 WHERE id = ?3", params![validator_pk, minipool_address, id])
+fn update_initiator(conn: &Connection, id: u32, validator_pk: String, minipool_address: String) -> DbResult<usize> {
+    conn.execute("UPDATE initiators SET validator_pk = ?1, minipool_address = ?2 WHERE id = ?3", params![validator_pk, minipool_address, id])
 }
 
 fn insert_validator(conn: &mut Connection, validator: Validator) {
@@ -469,8 +468,8 @@ fn query_operator_public_key_by_id(conn: &Connection, operator_id: u32) -> DbRes
     }
 }
 
-fn query_initializer(conn: &Connection, id: u32) -> DbResult<Option<Initializer>> {
-    match conn.prepare("SELECT id, address, validator_pk, minipool_address from initializers where id = (?)") {
+fn query_initiator(conn: &Connection, id: u32) -> DbResult<Option<Initiator>> {
+    match conn.prepare("SELECT id, address, validator_pk, minipool_address from initiators where id = (?)") {
         Ok(mut stmt) => {
             let mut rows = stmt.query([id])?;
             match rows.next()? {
@@ -485,7 +484,7 @@ fn query_initializer(conn: &Connection, id: u32) -> DbResult<Option<Initializer>
                         Some(Address::from_slice(&hex::decode(minipool_address).unwrap()))
                     };
 
-                    Ok(Some(Initializer {
+                    Ok(Some(Initiator {
                         id: row.get(0)?,
                         owner_address: Address::from_slice(&hex::decode(address).unwrap()),
                         releated_operators: vec![],
@@ -503,10 +502,10 @@ fn query_initializer(conn: &Connection, id: u32) -> DbResult<Option<Initializer>
     }
 }
 
-fn query_initializer_releated_operator_pks(conn: &Connection, id: u32) -> DbResult<(Vec<String>, Vec<u32>)> {
+fn query_initiator_releated_operator_pks(conn: &Connection, id: u32) -> DbResult<(Vec<String>, Vec<u32>) > {
     let mut op_pks = Vec::new();
     let mut op_ids: Vec<u32> = Vec::new();
-    match conn.prepare("select public_key, id from operators where id in (select operator_id from initializer_operators_mapping where initializer_id = (?))") {
+    match conn.prepare("select public_key, id from operators where id in (select operator_id from initiator_operators_mapping where initiator_id = (?))") {
         Ok(mut stmt) => {
             let mut rows = stmt.query([id])?;
             while let Some(row) = rows.next()? {

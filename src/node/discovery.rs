@@ -1,15 +1,15 @@
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::{
     net::{IpAddr, SocketAddr},
     time::Duration,
 };
-use std::collections::HashMap;
-use std::sync::Arc;
 
-use discv5::{
-    Discv5,
-    Discv5ConfigBuilder, enr::{CombinedKey, Enr},
-};
 use discv5::enr::EnrPublicKey;
+use discv5::{
+    enr::{CombinedKey, Enr},
+    Discv5, Discv5ConfigBuilder, Discv5Event,
+};
 use hsconfig::Secret;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, log, warn};
@@ -79,44 +79,76 @@ impl Discovery {
 
         tokio::spawn(async move {
             discv5.start(listen_addr).await.unwrap();
+            let mut event_stream = discv5.event_stream().await.unwrap();
             // construct a 30 second interval to search for new peers.
             let mut query_interval = tokio::time::interval(Duration::from_secs(30));
             loop {
                 tokio::select! {
-                  _ = query_interval.tick() => {
-                    // get metrics
-                    let metrics = discv5.metrics();
-                    let connected_peers = discv5.connected_peers();
-                    info!("------Connected peers: {}, Active sessions: {}, Unsolicited requests/s: {:.2}", connected_peers, metrics.active_sessions, metrics.unsolicited_requests_per_second);
-                    info!("------Searching for peers...");
+                    _ = query_interval.tick() => {
+                        // get metrics
+                        let metrics = discv5.metrics();
+                        let connected_peers = discv5.connected_peers();
+                        info!("------Connected peers: {}, Active sessions: {}, Unsolicited requests/s: {:.2}", connected_peers, metrics.active_sessions, metrics.unsolicited_requests_per_second);
+                        info!("------Searching for peers...");
 
-                    // pick a random node target
-                    let target_random_node_id = discv5::enr::NodeId::random();
-                    // execute a FINDNODE query
-                    match discv5.find_node(target_random_node_id).await {
-                      Err(e) => error!("Find Node result failed: {:?}", e),
-                      Ok(v) => {
-                        // found a list of ENR's print their NodeIds
-                        let node_ids = v.iter().map(|enr| enr.node_id()).collect::<Vec<_>>();
-                        info!("------Nodes found: {}", node_ids.len());
+                        // pick a random node target
+                        let target_random_node_id = discv5::enr::NodeId::random();
+                        // execute a FINDNODE query
+                        match discv5.find_node(target_random_node_id).await {
+                            Err(e) => error!("Find Node result failed: {:?}", e),
+                            Ok(v) => {
+                                // found a list of ENR's print their NodeIds
+                                let node_ids = v.iter().map(|enr| enr.node_id()).collect::<Vec<_>>();
+                                info!("------Nodes found: {}", node_ids.len());
 
-                        let mut m = key_ip_map.write().await;
-                        for enr in v {
-                          info!("------node enr: {} , node base64 enr:{}",
-                            enr,
-                            enr.to_base64()
-                          );
-
-                          if let Some(ip) = enr.ip4() {
-                            info!("------enr ipv4:{}",ip);
-                            let public_key = base64::encode(&enr.public_key().encode()[..]);
-                            // update public key ip
-                            m.insert(public_key, IpAddr::V4(ip));
-                          };
-                        };
-                      }
+                                let mut m = key_ip_map.write().await;
+                                for enr in v {
+                                    info!("------node enr: {} , node base64 enr:{}",enr,enr.to_base64());
+                                    if let Some(ip) = enr.ip4() {
+                                        info!("------enr ipv4:{}",ip);
+                                        let public_key = base64::encode(&enr.public_key().encode()[..]);
+                                        // update public key ip
+                                        m.insert(public_key, IpAddr::V4(ip));
+                                    };
+                                };
+                            }
+                        }
                     }
-                  }
+                    Some(event) = event_stream.recv() => {
+                        match event {
+                            Discv5Event::Discovered(enr) => {
+                                info!("------Discovered,enr: {}", enr);
+                                info!("------Discovered,base64 enr:{}",enr.to_base64());
+                                info!("------Discv5Event::Discovered: public key: {}, ip: {:?}", base64::encode(enr.public_key().encode()), enr.ip4());
+
+                                let mut m = key_ip_map.write().await;
+                                if let Some(ip) = enr.ip4() {
+                                    info!("------enr ipv4:{}",ip);
+                                    let public_key = base64::encode(&enr.public_key().encode()[..]);
+                                    // update public key ip
+                                    m.insert(public_key, IpAddr::V4(ip));
+                                };
+                            },
+                            Discv5Event::SessionEstablished(enr,  addr) => {
+                                info!("------Discv5Event::SessionEstablished,enr:{},base64 enr:{}", enr,enr.to_base64());
+                                info!("------A peer has established session: public key: {}, ip: {:?}", base64::encode(enr.public_key().encode()), enr.ip4());
+                            },
+                            Discv5Event::EnrAdded { enr, replaced: _ } => info!("------Discv5Event::EnrAdded,enr:{},base64 enr:{}", enr,enr.to_base64()),
+                            Discv5Event::NodeInserted { node_id, replaced: _ } => info!("------Discv5Event::NodeInserted, node_id:{}", node_id),
+                            Discv5Event::SocketUpdated(addr) => {
+                                info!("------Discv5Event::SocketUpdated,Our local ENR IP address has been updated,addr:{}", addr);
+                                let ip_addr=addr.ip();
+                                match ip_addr {
+                                    IpAddr::V4(ip4) => {
+                                        info!("ipv4: {}, octets: {:?}", ip4, ip4.octets());
+                                    },
+                                    IpAddr::V6(ip6) => info!("ipv6: {}, segments: {:?}", ip6, ip6.segments()),
+                                }
+                            },
+                            Discv5Event::TalkRequest(t_req) => info!("------Discv5Event::TalkRequest,TalkRequest:{:?}",t_req),
+                            _ => {}
+                        };
+                    }
                 }
             }
         });

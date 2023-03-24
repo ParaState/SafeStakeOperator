@@ -1,20 +1,21 @@
-use std::{
-    net::{Ipv4Addr, SocketAddr},
-    time::Duration,
-};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::error::Error;
 use std::fs;
 use std::io::Write;
+use std::net::{IpAddr, ToSocketAddrs};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::{
+    net::{Ipv4Addr, SocketAddr},
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::Local;
-use discv5::{Discv5, Discv5ConfigBuilder, Discv5Event, enr, enr::CombinedKey};
 use discv5::enr::EnrPublicKey;
+use discv5::{enr, enr::CombinedKey, Discv5, Discv5ConfigBuilder, Discv5Event};
 use env_logger::Env;
 use futures::SinkExt;
 use hsconfig::Export as _;
@@ -113,7 +114,7 @@ async fn main() {
     let enr_key = CombinedKey::secp256k1_from_bytes(&mut secret_key).unwrap();
 
     // construct a local ENR
-    let enr = {
+    let local_enr = {
         let mut builder = enr::EnrBuilder::new("v4");
         // if an IP was specified, use it
         if let Some(external_address) = address {
@@ -127,14 +128,14 @@ async fn main() {
     };
 
     // if the ENR is useful print it
-    info!("------node_id: {}", enr.node_id());
-    if enr.udp4_socket().is_none() {
+    info!("------node_id: {}", local_enr.node_id());
+    if local_enr.udp4_socket().is_none() {
         info!("------local enr is not printed as no IP:PORT was specified");
     }
     info!(
         "------local enr: {} , local base64 enr:{}",
-        enr,
-        enr.to_base64()
+        local_enr,
+        local_enr.to_base64()
     );
 
     let config = Discv5ConfigBuilder::new().build();
@@ -143,7 +144,7 @@ async fn main() {
     let listen_addr = SocketAddr::new("0.0.0.0".parse().expect("valid ip"), port);
 
     // construct the discv5 server
-    let mut discv5 = Discv5::new(enr, enr_key, config).unwrap();
+    let mut discv5 = Discv5::new(local_enr, enr_key, config).unwrap();
 
     // start the discv5 service
     discv5.start(listen_addr).await.unwrap();
@@ -224,7 +225,16 @@ async fn main() {
                     },
                     Discv5Event::EnrAdded { enr, replaced: _ } => info!("------Discv5Event::EnrAdded,enr:{},base64 enr:{}", enr,enr.to_base64()),
                     Discv5Event::NodeInserted { node_id, replaced: _ } => info!("------Discv5Event::NodeInserted, node_id:{}", node_id),
-                    Discv5Event::SocketUpdated(addr) => info!("------Discv5Event::SocketUpdated,addr:{}", addr),
+                    Discv5Event::SocketUpdated(addr) => {
+                        info!("------Discv5Event::SocketUpdated,Our local ENR IP address has been updated,addr:{}", addr);
+                        let ip_addr=addr.ip();
+                        match ip_addr {
+                            IpAddr::V4(ip4) => {
+                                info!("ipv4: {}, octets: {:?}", ip4, ip4.octets());
+                            },
+                            IpAddr::V6(ip6) => info!("ipv6: {}, segments: {:?}", ip6, ip6.segments()),
+                        }
+                    },
                     Discv5Event::TalkRequest(t_req) => info!("------Discv5Event::TalkRequest,TalkRequest:{:?}",t_req),
                     _ => {}
                 };

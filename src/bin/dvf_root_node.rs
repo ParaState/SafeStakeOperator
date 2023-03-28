@@ -207,7 +207,7 @@ async fn main() {
                             ip_set.insert(enr_ip);
                         }
                     },
-                    Discv5Event::SessionEstablished(enr,  addr) => {
+                    Discv5Event::SessionEstablished(enr,  _addr) => {
                         info!("------Discv5Event::SessionEstablished,enr:{},base64 enr:{}", enr,enr.to_base64());
                         if let Some(enr_ip) =  enr.ip4() {
                             // if enr_ip != addr.ip()  {
@@ -233,7 +233,6 @@ async fn main() {
                         }
                     },
                     Discv5Event::TalkRequest(t_req) => info!("------Discv5Event::TalkRequest,TalkRequest:{:?}",t_req),
-                    _ => {}
                 };
             }
         }

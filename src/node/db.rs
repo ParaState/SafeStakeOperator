@@ -3,7 +3,7 @@ use std::path::Path;
 use rusqlite::{Connection, DropBehavior, params, Result};
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::oneshot;
-use tracing::{debug, error, info, log, warn};
+use tracing::{error};
 use crate::node::contract::{Operator, Validator, Initiator};
 use web3::types::Address;
 
@@ -82,6 +82,10 @@ impl Database {
             operator_id INTEGER NOT NULL,
             CONSTRAINT initiator_select_operators_1 FOREIGN KEY (initiator_id) REFERENCES initiators(id) ON DELETE CASCADE,
             CONSTRAINT initiator_select_operators_2 FOREIGN KEY (operator_id) REFERENCES operators(id) ON DELETE CASCADE
+        )";
+
+        let create_failure_adding_vas_sql = "CREATE TABLE IF NOT EXISTS failure_validators(
+            
         )";
 
         conn.execute(create_operators_sql, [],)?;

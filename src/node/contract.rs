@@ -3,7 +3,6 @@ use super::utils::{convert_va_pk_to_u64, FromFile, ToFile};
 use async_trait::async_trait;
 use hscrypto::PublicKey;
 use hsutils::monitored_channel::MonitoredSender;
-use tokio::select;
 use tokio::sync::RwLock;
 use serde_derive::{Deserialize as DeriveDeserialize, Serialize as DeriveSerialize};
 use serde_json::Value;
@@ -21,7 +20,7 @@ use std::time::Duration;
 use store::Store;
 use tokio::sync::OnceCell;
 // use tokio::sync::RwLock;
-use tracing::{debug, error, info, log, warn};
+use tracing::{error, info, warn};
 use web3::{
     contract::{Contract as EthContract, Options},
     futures::TryStreamExt,

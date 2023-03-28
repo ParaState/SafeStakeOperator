@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use directory::{DEFAULT_ROOT_DIR, DEFAULT_SECRET_DIR, DEFAULT_VALIDATOR_DIR};
 use serde_derive::{Deserialize, Serialize};
 use tokio::sync::OnceCell;
-use tracing::{debug, error, info, log, warn};
+use tracing::{warn};
 use lazy_static::lazy_static;
 
 /// The file name for the serialized `OperatorCommitteeDefinition` struct.

@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use store::Store;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tracing::{debug, error, info, log, warn};
+use tracing::{error, info, warn};
 use types::{EthSpec, Keypair};
 
 use crate::DEFAULT_CHANNEL_CAPACITY;
@@ -28,7 +28,7 @@ use crate::node::config::{invalid_addr, base_to_transaction_addr, base_to_mempoo
 use crate::node::node::Node;
 use crate::utils::error::DvfError;
 use crate::validation::OperatorCommittee;
-use crate::validation::operator::{LocalOperator, TOperator};
+use crate::validation::operator::{LocalOperator};
 use crate::validation::operator_committee_definitions::OperatorCommitteeDefinition;
 
 #[derive(Serialize, Deserialize, Clone)]

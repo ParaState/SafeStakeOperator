@@ -12,7 +12,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tokio::sync::RwLock;
 use tokio::time::timeout;
-use tracing::{debug, error, info, log, warn};
+use tracing::{error, info, warn};
 use types::DepositData;
 use url::Url;
 use web3::types::H160;

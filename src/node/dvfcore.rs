@@ -408,6 +408,7 @@ impl DvfCore {
                 }
             }
         }
+        self.store.exit().await;
         info!("[Dvf {}/{}] exit dvf core", self.operator_id, self.validator_id);
     }
 }

@@ -182,7 +182,7 @@ impl Synchronizer {
                     Ok(None) => {
                         // The sync request for this batch has been canceled.
                     },
-                    Err(e) => error!("{}", e)
+                    Err(e) => error!("{:?}", e)
                 },
 
                 // Triggers on timer's expiration.

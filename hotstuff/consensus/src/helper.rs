@@ -2,7 +2,7 @@ use crate::config::Committee;
 use crate::consensus::ConsensusMessage;
 use bytes::Bytes;
 use crypto::{Digest, PublicKey};
-use log::{warn, debug};
+use log::{info, warn, debug};
 use network::{SimpleSender, DvfMessage, VERSION};
 use store::Store;
 use tokio::sync::mpsc::Receiver;

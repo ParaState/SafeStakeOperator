@@ -5,6 +5,7 @@ use std::convert::TryInto;
 use store::Store;
 use tokio::sync::mpsc::{Receiver};
 use utils::monitored_channel::MonitoredSender;
+use log::{info};
 
 #[cfg(test)]
 #[path = "tests/processor_tests.rs"]

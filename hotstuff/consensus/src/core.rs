@@ -701,7 +701,7 @@ impl Core {
             };
             match result {
                 Ok(()) => (),
-                Err(ConsensusError::StoreError(e)) => error!("{}", e),
+                Err(ConsensusError::StoreError(e)) => error!("{:?}", e),
                 Err(ConsensusError::SerializationError(e)) => error!("Store corrupted. {}", e),
                 Err(e) => warn!("{}", e),
             }

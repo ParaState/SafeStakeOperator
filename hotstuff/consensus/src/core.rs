@@ -706,6 +706,6 @@ impl Core {
                 Err(e) => warn!("{}", e),
             }
         }
-        info!("[VA {}] Shut down hotstuff core", self.validator_id);
+        info!("[VA {}] Shut down consensus core", self.validator_id);
     }
 }

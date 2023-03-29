@@ -43,6 +43,7 @@ impl Processor {
                     }
                 }
             }
+            info!("Shutting down mempool processor");
         });
     }
 }

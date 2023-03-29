@@ -94,6 +94,7 @@ impl Store {
                     }
                 }
             }
+            drop(db);
             info!("RocksDB is closed: {:?}", db.path().to_path_buf());
         });
         Ok(Self { channel: tx })

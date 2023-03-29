@@ -130,5 +130,6 @@ impl QuorumWaiter {
                 }
             }
         }
+        info!("Shutting down mempool quorum waiter");
     }
 }

@@ -100,14 +100,13 @@ impl BatchMaker {
                     timer.as_mut().reset(Instant::now() + Duration::from_millis(self.max_batch_delay));
                 },
                 () = exit => {
-                    log::info!("Shutting down BatchMaker");
                     break;
                 }
             }
-
             // Give the change to schedule other tasks.
             tokio::task::yield_now().await;
         }
+        log::info!("Shutting down mempool batch maker");
     }
 
     /// Seal and broadcast the current batch.

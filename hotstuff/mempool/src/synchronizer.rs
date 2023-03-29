@@ -231,10 +231,10 @@ impl Synchronizer {
                     timer.as_mut().reset(Instant::now() + Duration::from_millis(TIMER_RESOLUTION));
                 },
                 () = exit => {
-                    info!("Shutting down Synchronizer");
                     break;
                 }
             }
         }
+        info!("[VA {}] Shutting down mempool synchronizer", self.validator_id);
     }
 }

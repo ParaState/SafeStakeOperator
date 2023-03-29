@@ -789,6 +789,7 @@ pub fn cleanup_db(base_dir: &Path, validator_id: u64) -> Result<(), String> {
         remove_dir_all(&db_dir)
             .map_err(|e| format!("[VA {}] Failed to remove DB file ({})", validator_id, e))?;
     }
+    info!("Dvf node db removed: {:?}", db_dir);
     Ok(())
 }
 

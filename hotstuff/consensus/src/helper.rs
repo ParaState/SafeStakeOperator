@@ -80,5 +80,6 @@ impl Helper {
                 }
             }
         }
+        info!("[VA {}] Shut down consensus helper", self.validator_id);
     }
 }

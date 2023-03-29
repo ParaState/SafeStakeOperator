@@ -75,7 +75,7 @@ impl Store {
                     }
                     StoreCommand::NotifyDestroy(sender) => {
                         let p = db.path().to_path_buf();
-                        drop(db);
+                        // drop(db);
                         let result = DB::destroy(&Options::default(), p); 
                         match result {
                              Ok(()) => {
@@ -94,6 +94,7 @@ impl Store {
                     }
                 }
             }
+            info!("RocksDB is closed: {:?}", db.path().to_path_buf());
         });
         Ok(Self { channel: tx })
     }

@@ -134,7 +134,7 @@ pub struct DvfSigner {
 impl Drop for DvfSigner {
     fn drop(&mut self) {
         if let Some(signal) = self.signal.take() {
-            info!("Shutting down Dvf Core");
+            info!("Shutting down dvf signer");
             let _ = signal.fire();
         }
     }
@@ -297,8 +297,6 @@ impl DvfCore {
         let (tx_mempool_to_consensus, rx_mempool_to_consensus) = MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "dvf-mp2cs".to_string(), "info");
 
         let parameters = Parameters::default();
-        // let store_path = node.config.base_store_path.join(validator_id.to_string()).join(operator_id.to_string()); 
-        // let store = Store::new(&store_path.to_str().unwrap()).expect("Failed to create store");
 
         // Run the signature service.
         let signature_service = SignatureService::new(node.secret.secret.clone());
@@ -383,12 +381,6 @@ impl DvfCore {
                                                     // construct hash256
                                                     let msg = Hash256::from_slice(&batch[..]);
 
-                                                    // let signature = self.operator.sign(msg.clone()).await.unwrap();
-                                                    // let serialized_signature = bincode::serialize(&signature).unwrap();
-                                                    // // save to local db
-                                                    // self.store.write(batch, serialized_signature).await;
-
-                                                    
                                                     if let Err(e) = self.tx_consensus.send(msg).await {
                                                         error!("Failed to notify consensus status: {}", e);
                                                     }
@@ -416,7 +408,6 @@ impl DvfCore {
                 }
             }
         }
-        info!("[Dvf {}/{}] destroying dvf store", self.operator_id, self.validator_id);
-        // self.store.notify_destroy().await;
+        info!("[Dvf {}/{}] exit dvf core", self.operator_id, self.validator_id);
     }
 }

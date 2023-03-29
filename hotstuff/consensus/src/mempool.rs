@@ -175,5 +175,6 @@ impl PayloadWaiter {
                 }
             }
         }
+        info!("Shut down payload waiter");
     }
 }

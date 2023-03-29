@@ -83,5 +83,6 @@ impl Helper {
             }
             
         }
+        info!("[VA {}] Shut down mempool helper", self.validator_id);
     }
 }

@@ -146,7 +146,7 @@ impl DvfSigner {
         validator_id: u64,
         keypair: Keypair,
         committee_def: OperatorCommitteeDefinition,
-    ) -> Self {
+    ) -> Result<Self, DvfError> {
         let node_tmp = Arc::clone(&node_para);
         let node = node_tmp.read().await;
         // find operator id from operatorCommitteeDefinition
@@ -201,7 +201,8 @@ impl DvfSigner {
         };
 
         let store_path = node.config.base_store_path.join(validator_id.to_string()).join(operator_id.to_string());
-        let store = Store::new(&store_path.to_str().unwrap()).expect("Failed to create store");
+        let store = Store::new(&store_path.to_str().unwrap())
+            .map_err(|e| DvfError::StoreError(format!("Failed to create store: {:?}", e)))?;
 
         let signal = DvfCore::spawn(
             operator_id,
@@ -213,13 +214,13 @@ impl DvfSigner {
             store.clone(),
         ).await;
 
-        Self {
+        Ok(Self {
             signal: Some(signal),
             operator_id,
             operator_committee,
             local_keypair: keypair,
             store,
-        }
+        })
     }
 
     pub async fn threshold_sign(&self, message: Hash256) -> Result<(Signature, Vec<u64>), DvfError> {

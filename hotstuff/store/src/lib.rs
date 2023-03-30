@@ -112,6 +112,7 @@ impl Store {
                         let _ = db.delete(key);
                     }
                     StoreCommand::Exit(sender) => {
+                        info!("Store receives exit signal");
                         sender.send(());
                         break;
                     }

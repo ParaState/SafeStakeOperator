@@ -26,6 +26,8 @@ pub enum DvfError {
     InvalidLength,
     /// Should not call the function specified by the string
     UnexpectedCall(String),
+    /// Error propogated from Store
+    StoreError(String),
     ///
     Unknown
 }

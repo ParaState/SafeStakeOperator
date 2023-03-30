@@ -18,6 +18,7 @@ use crate::validation::account_utils::{
 };
 use crate::validation::operator_committee_definitions::{self, OperatorCommitteeDefinition};
 use crate::validation::eth2_keystore_share::keystore_share::{KeystoreShare};
+use crate::utils::error::DvfError;
 use eth2::lighthouse_vc::std_types::DeleteKeystoreStatus;
 use eth2_keystore::Keystore;
 use lighthouse_metrics::set_gauge;
@@ -105,6 +106,8 @@ pub enum Error {
     UnableToBuildCommittee,
     /// Unable to apply an action to a validator because it is using a remote signer.
     InvalidActionOnRemoteValidator,
+    /// Error propogated from Dvf
+    DvfError(String),
 }
 
 impl From<LockfileError> for Error {
@@ -366,8 +369,9 @@ impl InitializedValidator {
                     node.unwrap(),
                     committee_def.validator_id,
                     voting_keypair,
-                    committee_def,
-                ).await;
+                    committee_def)
+                    .await
+                    .map_err(|e| Error::DvfError(format!("{:?}", e)))?;
 
                 SigningMethod::DistributedKeystore {
                     voting_keystore_share_path, 

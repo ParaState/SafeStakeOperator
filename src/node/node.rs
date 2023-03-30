@@ -22,7 +22,8 @@ use types::PublicKey;
 use validator_dir::insecure_keys::INSECURE_PASSWORD;
 use web3::types::H160;
 
-use crate::crypto::dkg::{DKG, SimpleDistributedSigner};
+use crate::crypto::dkg::{DKGSemiHonest, SimpleDistributedSigner, DKGTrait};
+
 use crate::crypto::elgamal::{Ciphertext, Elgamal};
 use crate::DEFAULT_CHANNEL_CAPACITY;
 use crate::deposit::get_distributed_deposit;
@@ -671,7 +672,7 @@ pub async fn start_initializer<T: EthSpec>(
         )
             .await,
     );
-    let dkg = DKG::new(self_op_id as u64, io, THRESHOLD as usize);
+    let dkg = DKGSemiHonest::new(self_op_id as u64, io, THRESHOLD as usize);
     let (keypair, va_pk, shared_pks) = dkg
         .run()
         .await

@@ -16,10 +16,36 @@ use tokio::task::JoinHandle;
 use tokio::sync::{Notify};
 use tokio::time::{sleep, Duration};
 use std::cmp::min;
+use sha256::{digest_bytes};
+use aes_gcm::{Aes128Gcm, Key, Nonce, Error};
+use aes_gcm::aead::{Aead, NewAead};
+use rand::Rng;
+use crate::utils::blst_utils::{blst_sk_to_pk, 
+    bytes_to_blst_p1, blst_p1_to_bytes, 
+    blst_ecdh_shared_secret, blst_scalar_to_blst_sk,
+    blst_p1_to_pk, blst_p1_mult, random_blst_scalar};
+use blst::{blst_scalar, blst_p1, BLST_ERROR};
+use blst::min_pk::{Signature};
+use bls::{INFINITY_SIGNATURE};
 
+pub const DST: &[u8] = b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
+
+
+pub trait PrivateChannel {
+    fn encrypt_with_key(message: Bytes, key: Bytes) -> Bytes;
+    fn encrypt(&self, message: Bytes) -> Bytes;
+    fn decrypt_with_key(message: Bytes, key: Bytes) -> Bytes;
+    fn decrypt(&self, message: Bytes) -> Bytes;
+    fn shared_secret(&self) -> blst_p1;
+    fn self_private_key(&self) -> blst_scalar;
+    fn self_public_key(&self) -> blst_p1;
+    fn partner_public_key(&self) -> blst_p1;
+    fn sign(&self, message: Bytes) -> Signature;
+    fn verify_partner(&self, message: Bytes, sig: Signature) -> bool;
+}
 
 #[async_trait]
-pub trait IOChannel {
+pub trait IOChannel: Sync + Send  {
     async fn send(&self, message: Bytes);
     async fn recv(&self) -> Bytes;
 }
@@ -209,10 +235,13 @@ impl IOChannel for NetIOChannel {
     }
 }
 
-pub trait IOCommittee<T> {
+
+#[async_trait]
+pub trait IOCommittee<T>: Sync + Send {
     /// Return a channel that is used to for transmitting message from `from` to `to`.
     fn channel(&self, from: u64, to: u64) -> &T;
     fn ids(&self) -> &[u64];
+    async fn broadcast(&self, message: Bytes);
 }
 
 /// Simulate the communication among parties with memory channels.
@@ -240,6 +269,7 @@ impl MemIOCommittee {
     }
 }
 
+#[async_trait]
 impl IOCommittee<MemIOChannel> for MemIOCommittee {
 
     fn ids(&self) -> &[u64] {
@@ -252,6 +282,10 @@ impl IOCommittee<MemIOChannel> for MemIOCommittee {
             .unwrap()
             .get(&to)
             .unwrap()
+    }
+
+    async fn broadcast(&self, message: Bytes) {
+
     }
 }
 
@@ -291,8 +325,24 @@ impl NetIOCommittee {
             channels,
         }
     }
+
+    // pub async fn broadcast(&self, message: Bytes) {
+    //     for i in 0..self.ids.len() {
+    //         if self.ids[i] == self.party {
+    //             continue;
+    //         }
+    //         let send_channel = self.channel(self.party, self.ids[i]);
+    //         send_channel.send(message.clone()).await;
+    //     }
+    // }
+
+    pub fn unwrap(self) -> (u64, Vec<u64>, HashMap<u64, NetIOChannel>) {
+        (self.party, self.ids, self.channels)
+    }
+    
 }
 
+#[async_trait]
 impl IOCommittee<NetIOChannel> for NetIOCommittee {
 
     fn ids(&self) -> &[u64] {
@@ -313,5 +363,228 @@ impl IOCommittee<NetIOChannel> for NetIOCommittee {
                 .get(&from)
                 .unwrap()
         }
+    }
+
+    async fn broadcast(&self, message: Bytes) {
+        for i in 0..self.ids.len() {
+            if self.ids[i] == self.party {
+                continue;
+            }
+            let send_channel = self.channel(self.party, self.ids[i]);
+            send_channel.send(message.clone()).await;
+        }
+    }
+}
+
+
+/// Secure network IO committee
+pub struct SecureNetIOCommittee {
+    party: u64,
+    sk: blst_scalar,
+    ids: Vec<u64>,
+    channels: HashMap<u64, SecureNetIOChannel>,
+}
+
+impl SecureNetIOCommittee {
+    /// Construct a secure network IO committee for `party` who is listening on `port`.
+    /// The committee is identified by the id set `ids` and the address set `addresses`.
+    /// The communication is also secured.
+    pub async fn new(
+        party: u64, 
+        port: u16,
+        ids: &[u64],
+        addresses: &[SocketAddr]) -> SecureNetIOCommittee {
+        let plain_committee = NetIOCommittee::new(party, port, ids, addresses).await;
+        let sk = random_blst_scalar();
+        let pk = blst_sk_to_pk(&sk);
+
+        let pk_bytes = blst_p1_to_bytes(&pk);
+        plain_committee.broadcast(pk_bytes).await;
+        let (_, _, mut channels) = plain_committee.unwrap();
+        let mut sec_channels : HashMap<u64, SecureNetIOChannel> = Default::default();
+        
+        for i in 0..ids.len() {
+            if ids[i] == party {
+                continue;
+            }
+            else {
+                let recv_channel = channels.remove(&ids[i]).unwrap();
+                let other_pk_bytes = recv_channel.recv().await;
+                let other_pk = bytes_to_blst_p1(other_pk_bytes);
+                let sec_channel = SecureNetIOChannel::new(recv_channel, sk.clone(), other_pk);
+                sec_channels.insert(ids[i], sec_channel);
+            }
+        }
+        Self {
+            party,
+            sk,
+            ids: ids.to_vec(),
+            channels: sec_channels,
+        }
+    }
+}
+
+pub struct SecureNetIOChannel {
+    channel: NetIOChannel,
+    sk: blst_scalar,
+    other_pk: blst_p1,
+}
+
+impl SecureNetIOChannel {
+    pub fn new(channel: NetIOChannel, sk: blst_scalar, other_pk: blst_p1) -> Self {
+        Self {
+            channel,
+            sk,
+            other_pk,
+        }
+    }
+}
+
+#[async_trait]
+impl IOChannel for SecureNetIOChannel {
+
+    async fn send(&self, message: Bytes) {
+        let enc_msg = self.encrypt(message);
+        self.channel.send(enc_msg).await;
+    }
+
+    async fn recv(&self) -> Bytes {
+        let enc_msg = self.channel.recv().await;   
+        self.decrypt(enc_msg)
+    }
+}
+
+impl PrivateChannel for SecureNetIOChannel {
+    fn encrypt_with_key(message: Bytes, key: Bytes) -> Bytes {
+        let secret = hex::decode(digest_bytes(key.as_ref())).unwrap(); 
+
+        let key = Key::from_slice(&secret.as_slice()[0..16]); 
+        let cipher = Aes128Gcm::new(key);
+
+        let mut nonce_bytes = vec![0u8; 12]; // 96-bit nonce
+        rand::thread_rng().fill(&mut nonce_bytes[..]);
+        let nonce = Nonce::from_slice(nonce_bytes.as_slice());
+
+        let aes_ct = cipher.encrypt(nonce, message.as_ref()).expect("AES encryption failed!");
+        let aes_ct = [nonce_bytes, aes_ct].concat();
+
+        let enc_msg = Bytes::from(aes_ct);
+        enc_msg
+    }
+
+    fn encrypt(&self, message: Bytes) -> Bytes {
+        let point = self.shared_secret();
+        let point_bytes = blst_p1_to_bytes(&point);
+        Self::encrypt_with_key(message, point_bytes)
+    }
+
+    fn decrypt_with_key(enc_msg: Bytes, key: Bytes) -> Bytes {
+        let secret = hex::decode(digest_bytes(key.as_ref())).unwrap(); 
+
+        let key = Key::from_slice(&secret.as_slice()[0..16]); 
+        let cipher = Aes128Gcm::new(key);
+
+        let nonce_bytes = &enc_msg.as_ref()[0..12];
+        let nonce = Nonce::from_slice(nonce_bytes);
+
+        let aes_ct = &enc_msg.as_ref()[12..];
+        let msg = cipher.decrypt(nonce, aes_ct).expect("AES decryption failed!");
+        Bytes::from(msg)
+    }
+
+    fn decrypt(&self, enc_msg: Bytes) -> Bytes {
+        let point = self.shared_secret();
+        let point_bytes = blst_p1_to_bytes(&point);
+        Self::decrypt_with_key(enc_msg, point_bytes)
+    }
+
+    fn shared_secret(&self) -> blst_p1 {
+        blst_ecdh_shared_secret(&self.other_pk, &self.sk)
+    }
+    fn self_private_key(&self) -> blst_scalar {
+        self.sk.clone()
+    }
+    fn self_public_key(&self) -> blst_p1 {
+        blst_sk_to_pk(&self.sk)
+    }
+    fn partner_public_key(&self) -> blst_p1 {
+        self.other_pk
+    }
+    fn sign(&self, message: Bytes) -> Signature {
+        let sk = blst_scalar_to_blst_sk(&self.sk);
+        sk.sign(message.as_ref(), DST, &[])
+    }
+    fn verify_partner(&self, message: Bytes, sig: Signature) -> bool {
+        let pk = blst_p1_to_pk(&self.other_pk);
+        sig.verify(true, message.as_ref(), DST, &[], &pk, false) == BLST_ERROR::BLST_SUCCESS
+    }
+}
+
+#[async_trait]
+impl IOCommittee<SecureNetIOChannel> for SecureNetIOCommittee {
+
+    fn ids(&self) -> &[u64] {
+        self.ids.as_slice()
+    }
+
+    fn channel(&self, from: u64, to: u64) -> &SecureNetIOChannel {
+        if from == to || (from != self.party && to != self.party) {
+            panic!("Invalid channel");
+        }
+        if from == self.party {
+            self.channels
+                .get(&to)
+                .unwrap()
+        }
+        else {
+            self.channels
+                .get(&from)
+                .unwrap()
+        }
+    }
+
+    async fn broadcast(&self, message: Bytes) {
+        for i in 0..self.ids.len() {
+            if self.ids[i] == self.party {
+                continue;
+            }
+            let send_channel = self.channel(self.party, self.ids[i]);
+            send_channel.send(message.clone()).await;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::network::io_committee::{SecureNetIOCommittee};
+    use futures::future::join_all;
+    use crate::utils::blst_utils::{random_blst_scalar};
+
+    const t: usize = 3;
+    const ids: [u64; 4] = [1, 2, 3, 4];
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_secure_net_committee() {
+        let ports: Vec<u16> = ids.iter().map(|id| (25000 + *id) as u16).collect();
+        let addrs: Vec<SocketAddr> = ports.iter().map(|port| SocketAddr::new("127.0.0.1".parse().unwrap(), *port)).collect();
+
+        let ports_ref = &ports;
+        let addrs_ref = &addrs;
+        let futs = (0..ids.len()).map(|i| async move {
+            let io = &Arc::new(SecureNetIOCommittee::new(ids[i], ports_ref[i], ids.as_slice(), addrs_ref.as_slice()).await);
+            io.broadcast(Bytes::copy_from_slice(format!("hello from {}", ids[i]).as_bytes())).await;
+            for j in 0..ids.len() {
+                if i == j {
+                    continue;
+                }
+                let recv_channel = io.channel(ids[j], ids[i]);
+                let msg = recv_channel.recv().await;
+                println!("Party {} receive: {}", ids[i], String::from_utf8(msg.to_vec()).unwrap());
+            }
+            println!("all messages received");
+        });
+
+        join_all(futs).await;
     }
 }

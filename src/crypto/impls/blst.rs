@@ -6,6 +6,7 @@ use bls::{INFINITY_SIGNATURE};
 use crate::utils::error::{require, DvfError};
 pub use blst::min_pk as blst_core;
 use blst::{blst_scalar, blst_p2, blst_p2_affine};
+use crate::utils::blst_utils::{u64_to_blst_scalar};
 
 pub const DST: &[u8] = b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
 pub const RAND_BITS: usize = 64;
@@ -13,15 +14,6 @@ pub const RAND_BITS: usize = 64;
 /// Provides the externally-facing, core BLS types.
 pub mod types {
     pub use super::BlstThresholdSignature as ThresholdSignature;
-}
-
-
-fn u64_to_blst_scalar (v: u64) -> blst_scalar {
-    let mut x = std::mem::MaybeUninit::<blst_scalar>::uninit();
-    unsafe {
-        blst::blst_scalar_from_uint64(x.as_mut_ptr(), vec![v, 0, 0, 0].as_ptr());
-        x.assume_init()
-    }
 }
 
 fn lagrange_coeffs(coeffs: &mut [blst_scalar], x: &[u64]) {

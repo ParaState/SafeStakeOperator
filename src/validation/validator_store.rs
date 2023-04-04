@@ -958,7 +958,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         &self,
         pubkey: &PublicKey
     ) {
-        match self.validators.write().await.delete_keystore(pubkey).await {
+        match self.validators.write().await.disable_keystore(pubkey).await {
             Ok(_) => {
                 info!(self.log, "stop validator keystore";
                 "msg" => format!("Success: delete keystore {:?}", pubkey));

@@ -43,6 +43,8 @@ pub enum DvfError {
     /// Zero knowledge proof verification
     ZKVerificationFailed,
     InsufficientValidPks,
+    /// Socket address is not available
+    SocketAddrUnknown,
     /// Unknown error
     Unknown
 }

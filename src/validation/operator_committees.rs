@@ -7,9 +7,10 @@ use std::sync::Arc;
 use tokio::sync::{RwLock};
 use types::Hash256;
 use hsutils::monitored_channel::{MonitoredChannel, MonitoredSender};
+use crate::invalid_addr;
 
 
-impl OperatorCommittee { 
+impl OperatorCommittee {
     pub async fn from_definition(
         def: OperatorCommitteeDefinition,
     ) -> (Self, MonitoredSender<Hash256>) {
@@ -17,8 +18,18 @@ impl OperatorCommittee {
 
         let mut committee = Self::new(def.validator_id, def.validator_public_key.clone(), def.threshold as usize, rx);
         for i in 0..(def.total as usize) {
-            let mut addr = def.base_socket_addresses[i].clone();
-            addr.set_port(addr.port() + SIGNATURE_PORT_OFFSET);
+            let addr = match def.base_socket_addresses[i] {
+                Some(mut x) => {
+                    x.set_port(x.port() + SIGNATURE_PORT_OFFSET);
+                    x
+                }
+                None => invalid_addr(),
+            };
+                // .map(|mut x| {
+                //     x.set_port(x.port() + SIGNATURE_PORT_OFFSET);
+                //     x
+                // });
+            // addr.set_port(addr.port() + SIGNATURE_PORT_OFFSET);
             let operator = RemoteOperator::new(
                 def.validator_id,
                 def.operator_ids[i],

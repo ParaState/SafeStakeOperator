@@ -265,9 +265,8 @@ pub fn build_deterministic_distributed_validator_dirs(
                 .map(|id| node_public_keys.get(id).unwrap().clone())
                 .collect(),
             base_socket_addresses: node_ids.iter()
-                .map(|id| node_base_addresses.get(id).unwrap().clone())
+                .map(|id| node_base_addresses.get(id).cloned())
                 .collect(),
-                //.map(|j| SocketAddr::new("127.0.0.1".parse().unwrap(), (DEFAULT_BASE_PORT + j as u16 * 100) as u16)).collect(),
         };
         let committee_def_path = default_operator_committee_definition_path(
             &key_pack.kp.pk,

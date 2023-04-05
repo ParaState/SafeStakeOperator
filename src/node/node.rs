@@ -358,7 +358,7 @@ pub async fn add_validator<T: EthSpec>(
         return Err("Validator exists".to_string());
     }
 
-    let operator_base_address =
+    let operator_base_address: Vec<Option<SocketAddr>> =
         match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
             Ok(address) => address,
             Err(e) => {
@@ -637,7 +637,7 @@ pub async fn start_initializer<T: EthSpec>(
 ) -> Result<(), String> {
     let node = node.read().await;
     let base_port = node.config.base_address.port();
-    let mut operator_ips =
+    let mut operator_ips: Vec<Option<SocketAddr>> =
         match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
             Ok(ips) => ips,
             Err(e) => {
@@ -652,9 +652,13 @@ pub async fn start_initializer<T: EthSpec>(
                 return Err(e);
             }
         };
-    for x in operator_ips.iter_mut() {
-        (*x).set_port(base_port + DKG_PORT_OFFSET);
+    if operator_ips.iter().any(|x| x.is_none()) {
+        return Err("StartInitializer: Insufficient operators discovered for DKG".to_string());
     }
+    let operator_ips: Vec<SocketAddr> = operator_ips.iter().map(|mut x| {
+        SocketAddr::new(x.unwrap().ip(), base_port + DKG_PORT_OFFSET)
+    }).collect();
+
     let self_op_id = *SELF_OPERATOR_ID
         .get()
         .ok_or("Self operator has not been set".to_string())?;
@@ -719,9 +723,13 @@ pub async fn minipool_deposit<T: EthSpec>(
             return Err(e);
         }
     };
-    for x in operator_ips.iter_mut() {
-        (*x).set_port(base_port + DKG_PORT_OFFSET);
+    if operator_ips.iter().any(|x| x.is_none()) {
+        return Err("MinipoolDeposit: Insufficient operators discovered for distributed signing".to_string());
     }
+    let operator_ips: Vec<SocketAddr> = operator_ips.iter().map(|mut x| {
+        SocketAddr::new(x.unwrap().ip(), base_port + DKG_PORT_OFFSET)
+    }).collect();
+
     let op_ids: Vec<u64> = operator_ids.into_iter().map(|x| x as u64).collect();
     let self_op_id = *SELF_OPERATOR_ID
         .get()

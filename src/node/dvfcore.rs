@@ -170,7 +170,7 @@ impl DvfSigner {
                 .iter()
                 .enumerate()
                 .map(|(i, pk)| {
-                    let addr = committee_def.base_socket_addresses[i];
+                    let addr = committee_def.base_socket_addresses[i].unwrap();
                     (pk.clone(),
                      stake,
                      SocketAddr::new(addr.ip(), addr.port() + TRANSACTION_PORT_OFFSET),
@@ -186,7 +186,7 @@ impl DvfSigner {
                 .iter()
                 .enumerate()
                 .map(|(i, pk)| {
-                    let addr = committee_def.base_socket_addresses[i];
+                    let addr = committee_def.base_socket_addresses[i].unwrap();
                     (pk.clone(),
                      stake,
                      SocketAddr::new(addr.ip(), addr.port() + CONSENSUS_PORT_OFFSET),

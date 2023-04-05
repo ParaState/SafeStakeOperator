@@ -56,7 +56,7 @@ pub struct OperatorCommitteeDefinition {
     pub operator_ids: Vec<u64>,
     pub operator_public_keys: Vec<PublicKey>,
     pub node_public_keys: Vec<hscrypto::PublicKey>,
-    pub base_socket_addresses: Vec<SocketAddr>,
+    pub base_socket_addresses: Vec<Option<SocketAddr>>,
 }
 
 impl OperatorCommitteeDefinition {

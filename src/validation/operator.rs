@@ -9,6 +9,7 @@ use network::{DvfMessage, ReliableSender, SimpleSender, VERSION};
 use tokio::time::{Instant, sleep_until, timeout};
 use tracing::{debug, error, info, log, warn};
 use types::{Hash256, Keypair, PublicKey, Signature};
+use crate::is_addr_invalid;
 
 use crate::utils::error::DvfError;
 
@@ -70,6 +71,10 @@ pub struct RemoteOperator {
 #[async_trait]
 impl TOperator for RemoteOperator {
     async fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> {
+        if is_addr_invalid(self.signature_address) {
+            return Err(DvfError::SocketAddrUnknown);
+        }
+        
         let n_try: u64 = 3;
         let timeout_mill: u64 = 400;
         let dvf_message = DvfMessage { version: VERSION, validator_id: self.validator_id, message: msg.to_fixed_bytes().to_vec() };

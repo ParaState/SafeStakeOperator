@@ -98,7 +98,7 @@ pub async fn get_operator_ips(
     operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
     operator_public_keys: &OperatorPublicKeys,
     base_port: u16,
-) -> Result<Vec<SocketAddr>, String> {
+) -> Result<Vec<Option<SocketAddr>>, String> {
     let key_ip_map = operator_key_ip_map.read().await;
     let mut ip_not_founds: Vec<usize> = vec![];
     let mut operator_base_address: Vec<Option<IpAddr>> = operator_public_keys
@@ -121,12 +121,12 @@ pub async fn get_operator_ips(
     for index in ip_not_founds {
         operator_base_address[index] = query_ip_from_boot(&operator_public_keys[index]).await;
     }
-    if operator_base_address.iter().any(|x| x.is_none()) {
-        return Err("Insufficient operators discovered".to_string());
-    }
+    // if operator_base_address.iter().any(|x| x.is_none()) {
+    //     warn!("Insufficient operators discovered");
+    // }
     Ok(operator_base_address
         .into_iter()
-        .map(|x| SocketAddr::new(x.unwrap(), base_port))
+        .map(|x| x.map(|ip| SocketAddr::new(ip, base_port)))
         .collect())
 }
 

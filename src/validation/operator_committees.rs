@@ -25,11 +25,6 @@ impl OperatorCommittee {
                 }
                 None => invalid_addr(),
             };
-                // .map(|mut x| {
-                //     x.set_port(x.port() + SIGNATURE_PORT_OFFSET);
-                //     x
-                // });
-            // addr.set_port(addr.port() + SIGNATURE_PORT_OFFSET);
             let operator = RemoteOperator::new(
                 def.validator_id,
                 def.operator_ids[i],

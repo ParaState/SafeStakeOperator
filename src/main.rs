@@ -1,11 +1,9 @@
 #![recursion_limit = "256"]
 
-use std::io::Write;
 use std::path::PathBuf;
 use std::process::exit;
 
 use beacon_node::ProductionBeaconNode;
-use chrono::Local;
 use clap::{App, Arg, ArgMatches};
 use clap_utils::{flags::DISABLE_MALLOC_TUNING_FLAG, get_eth2_network_config};
 use directory::{parse_path_or_default, DEFAULT_BEACON_NODE_DIR, DEFAULT_VALIDATOR_DIR};
@@ -17,7 +15,7 @@ use eth2_network_config::{Eth2NetworkConfig, DEFAULT_HARDCODED_NETWORK, HARDCODE
 use lighthouse_version::VERSION;
 use malloc_utils::configure_memory_allocator;
 use task_executor::ShutdownReason;
-use tracing::{debug, error, info, log, warn};
+use tracing::{error, info, warn};
 use types::{EthSpec, EthSpecId};
 
 use dvf::validation::ProductionValidatorClient;
@@ -413,7 +411,7 @@ fn run<E: EthSpec>(
                     .join("beacon")
                     .with_extension("log"),
             ),
-            ("validator_client", Some(vc_matches)) => {
+            ("validator_client", Some(_)) => {
                 let base_path = get_default_base_dir(matches).join(DEFAULT_VALIDATOR_DIR);
 
                 Some(

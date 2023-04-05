@@ -725,7 +725,7 @@ where
                 continue;
             }
             self_abort = true;
-            self.issude_dispute_claim(*id, payloads.get(&id).unwrap()).await;
+            self.issude_dispute_claim(*id, payloads.get(&id).unwrap()).await?;
         }
         let mut futs: Vec<_> = Default::default();
         for (id1, other_vrfy_result) in other_vrfy_results.iter() {

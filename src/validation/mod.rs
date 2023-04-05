@@ -475,7 +475,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         // oversized from having not been pruned (by a prior version) we don't want to prune
         // concurrently, as it will hog the lock and cause the attestation service to spew CRITs.
         if let Some(slot) = slot_clock.now() {
-            validator_store.prune_slashing_protection_db(slot.epoch(T::slots_per_epoch()), true);
+            validator_store.prune_slashing_protection_db(slot.epoch(T::slots_per_epoch()), true).await;
         }
 
         let duties_context = context.service_context("duties".into());

@@ -1,11 +1,5 @@
-use parking_lot::RwLock;
-use std::sync::Arc;
-use std::fs::remove_dir_all;
-use store::Store;
 use env_logger::Env;
 use log::{info};
-use std::net::{SocketAddr, IpAddr};
-use serde_derive::{Deserialize, Serialize};
 use dvf::network::io_committee::ConnectionManager;
 
 
@@ -24,7 +18,7 @@ fn main() {
         .enable_all()
         .build()
         .unwrap();
-    let handle1 = runtime.spawn(async move {
+    let _ = runtime.spawn(async move {
         func1().await;
     });
     std::thread::sleep(std::time::Duration::from_millis(10000));

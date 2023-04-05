@@ -1,5 +1,3 @@
-use parking_lot::RwLock;
-use std::sync::Arc;
 use std::fs::remove_dir_all;
 use store::Store;
 use env_logger::Env;
@@ -22,10 +20,10 @@ pub async fn func1() {
     info!("store exit");
 
     tokio::time::sleep(std::time::Duration::from_millis(10000)).await;
-    store.read(Vec::from("key3".as_bytes())).await;
+    let _ = store.read(Vec::from("key3".as_bytes())).await;
     info!("key3 read");
     tokio::time::sleep(std::time::Duration::from_millis(10000)).await;
-    store.read(Vec::from("key2".as_bytes())).await;
+    let _ = store.read(Vec::from("key2".as_bytes())).await;
     info!("key2 read");
     tokio::time::sleep(std::time::Duration::from_millis(10000)).await;
 }
@@ -36,7 +34,7 @@ pub async fn func2() {
     remove_dir_all("/home/ubuntu/zico/dvf/data/store/").unwrap();
     info!("func2: dir removed");
     tokio::time::sleep(std::time::Duration::from_millis(20000)).await;
-    let store = Store::new("/home/ubuntu/zico/dvf/data/store/").expect("Failed to create store");
+    let _store = Store::new("/home/ubuntu/zico/dvf/data/store/").expect("Failed to create store");
     info!("func2: create another store");
 }
 
@@ -44,7 +42,7 @@ pub async fn func2() {
 pub async fn func3() {
     info!("func3: enter func3");
     tokio::time::sleep(std::time::Duration::from_millis(40000)).await;
-    let store = Store::new("/home/ubuntu/zico/dvf/data/store/").expect("Failed to create store");
+    let _store = Store::new("/home/ubuntu/zico/dvf/data/store/").expect("Failed to create store");
     info!("func3: create another store");
 }
 
@@ -58,14 +56,14 @@ fn main() {
         .enable_all()
         .build()
         .unwrap();
-    let handle1 = runtime.spawn(async move {
+    let _handle1 = runtime.spawn(async move {
         func1().await;
     });
     std::thread::sleep(std::time::Duration::from_millis(1000));
-    let handle2 = runtime.spawn(async move {
+    let _handle2 = runtime.spawn(async move {
         func2().await;
     });
-    let handle3 = runtime.spawn(async move {
+    let _handle3 = runtime.spawn(async move {
         func3().await;
     });
     std::thread::sleep(std::time::Duration::from_millis(60000));

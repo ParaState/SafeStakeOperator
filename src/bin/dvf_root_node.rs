@@ -2,8 +2,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::error::Error;
 use std::fs;
-use std::io::Write;
-use std::net::{IpAddr, ToSocketAddrs};
+use std::net::{IpAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{
@@ -13,17 +12,15 @@ use std::{
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use chrono::Local;
 use discv5::enr::EnrPublicKey;
 use discv5::{enr, enr::CombinedKey, Discv5, Discv5ConfigBuilder, Discv5Event};
-use env_logger::Env;
 use futures::SinkExt;
 use hsconfig::Export as _;
 use hsconfig::Secret;
 use network::{MessageHandler, Receiver as NetworkReceiver, Writer as NetworkWriter};
 use store::Store;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, log, warn};
+use tracing::{debug, error, info, log};
 
 pub const DEFAULT_SECRET_DIR: &str = "node_key.json";
 pub const DEFAULT_STORE_DIR: &str = "boot_store";

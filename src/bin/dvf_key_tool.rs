@@ -3,7 +3,7 @@ use std::fs;
 use dvf_version::ROOT_VERSION;
 use hsconfig::Export as _;
 use hsconfig::Secret;
-use tracing::{debug, error, info, log, warn};
+use tracing::{error, info, log};
 
 pub const DEFAULT_SECRET_DIR: &str = "node_key.json";
 pub const DEFAULT_ROOT_DIR: &str = ".lighthouse";

@@ -36,7 +36,4 @@ fn test_fake_operator_committee() {
     assert!(status1, "Signature verification failed");
     assert!(status2, "Aggregate signature verification failed");
     assert_eq!(sig1, sig2, "Signature not match");
-
-    //let a = Arc<RwLock<dyn TOperator>>> = Arc::new(RwLock::new(
-            //LocalOperator::from_keypair(Arc::new(kps[0].clone()))));
 }

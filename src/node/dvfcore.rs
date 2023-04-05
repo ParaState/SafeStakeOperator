@@ -23,7 +23,8 @@ use tracing::{debug, error, info, log, warn};
 use types::{EthSpec, Keypair};
 
 use crate::DEFAULT_CHANNEL_CAPACITY;
-use crate::node::config::{CONSENSUS_PORT_OFFSET, MEMPOOL_PORT_OFFSET, SIGNATURE_PORT_OFFSET, TRANSACTION_PORT_OFFSET};
+use crate::node::config::{invalid_addr, base_to_transaction_addr, base_to_mempool_addr,
+    base_to_consensus_addr, base_to_signature_addr, CONSENSUS_PORT_OFFSET, MEMPOOL_PORT_OFFSET, SIGNATURE_PORT_OFFSET, TRANSACTION_PORT_OFFSET};
 use crate::node::node::Node;
 use crate::utils::error::DvfError;
 use crate::validation::OperatorCommittee;
@@ -158,7 +159,7 @@ impl DvfSigner {
         // Construct the committee for validator signing
         let (mut operator_committee, tx_consensus) = OperatorCommittee::from_definition(committee_def.clone()).await;
         let local_operator = Arc::new(
-            RwLock::new(LocalOperator::new(validator_id, operator_id, Arc::new(keypair.clone()), node.config.transaction_address)));
+            RwLock::new(LocalOperator::new(validator_id, operator_id, Arc::new(keypair.clone()), node.config.base_address)));
         operator_committee.add_operator(operator_id, local_operator).await;
 
 
@@ -170,12 +171,12 @@ impl DvfSigner {
                 .iter()
                 .enumerate()
                 .map(|(i, pk)| {
-                    let addr = committee_def.base_socket_addresses[i].unwrap();
+                    let addr = committee_def.base_socket_addresses[i].unwrap_or(invalid_addr());
                     (pk.clone(),
                      stake,
-                     SocketAddr::new(addr.ip(), addr.port() + TRANSACTION_PORT_OFFSET),
-                     SocketAddr::new(addr.ip(), addr.port() + MEMPOOL_PORT_OFFSET),
-                     SocketAddr::new(addr.ip(), addr.port() + SIGNATURE_PORT_OFFSET),
+                     base_to_transaction_addr(addr),
+                     base_to_mempool_addr(addr),
+                     base_to_signature_addr(addr),
                     )
                 })
                 .collect(),
@@ -186,10 +187,10 @@ impl DvfSigner {
                 .iter()
                 .enumerate()
                 .map(|(i, pk)| {
-                    let addr = committee_def.base_socket_addresses[i].unwrap();
+                    let addr = committee_def.base_socket_addresses[i].unwrap_or(invalid_addr());
                     (pk.clone(),
                      stake,
-                     SocketAddr::new(addr.ip(), addr.port() + CONSENSUS_PORT_OFFSET),
+                     base_to_consensus_addr(addr),
                     )
                 })
                 .collect(),
@@ -273,7 +274,6 @@ pub struct DvfCore {
     pub operator_id: u64,
     pub bls_keypair: Keypair,
     pub tx_consensus: MonitoredSender<Hash256>,
-    pub operator: LocalOperator,
     pub exit: exit_future::Exit,
 }
 
@@ -339,9 +339,6 @@ impl DvfCore {
 
         info!("[Dvf {}/{}] successfully booted", operator_id, validator_id);
 
-        let operator = LocalOperator::new(validator_id, operator_id, Arc::new(keypair.clone()), node.config.transaction_address);
-
-
         tokio::spawn(async move {
             Self {
                 store: store,
@@ -350,7 +347,6 @@ impl DvfCore {
                 operator_id: operator_id,
                 bls_keypair: keypair,
                 tx_consensus,
-                operator,
                 exit,
             }
                 .run()

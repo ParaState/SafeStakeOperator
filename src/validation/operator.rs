@@ -9,8 +9,7 @@ use network::{DvfMessage, ReliableSender, SimpleSender, VERSION};
 use tokio::time::{Instant, sleep_until, timeout};
 use tracing::{debug, error, info, log, warn};
 use types::{Hash256, Keypair, PublicKey, Signature};
-use crate::is_addr_invalid;
-
+use crate::node::config::{is_addr_invalid, base_to_transaction_addr, base_to_mempool_addr, base_to_consensus_addr, base_to_signature_addr};
 use crate::utils::error::DvfError;
 
 pub enum OperatorMessage {}
@@ -20,6 +19,19 @@ pub trait TOperator: DowncastSync + Sync + Send {
     async fn sign(&self, msg: Hash256) -> Result<Signature, DvfError>;
     fn public_key(&self) -> PublicKey;
     async fn propose(&self, msg: Hash256);
+    fn base_address(&self) -> SocketAddr;
+    fn transaction_address(&self) -> SocketAddr {
+        base_to_transaction_addr(self.base_address())
+    }
+    fn mempool_address(&self) -> SocketAddr {
+        base_to_mempool_addr(self.base_address())
+    }
+    fn consensus_address(&self) -> SocketAddr {
+        base_to_consensus_addr(self.base_address())
+    }
+    fn signature_address(&self) -> SocketAddr {
+        base_to_signature_addr(self.base_address())
+    }
 }
 impl_downcast!(sync TOperator);
 
@@ -27,7 +39,7 @@ pub struct LocalOperator {
     pub validator_id: u64,
     pub operator_id: u64,
     pub operator_keypair: Arc<Keypair>,
-    pub transaction_address: SocketAddr,
+    pub base_address: SocketAddr,
     network: SimpleSender,
 }
 
@@ -44,17 +56,21 @@ impl TOperator for LocalOperator {
     async fn propose(&self, msg: Hash256) {
         info!("[Dvf {}/{}] Proposing msg {}", self.operator_id, self.validator_id, msg);
         let dvf_message = DvfMessage { version: VERSION, validator_id: self.validator_id, message: msg.to_fixed_bytes().to_vec() };
-        self.network.send(self.transaction_address, Bytes::from(bincode::serialize(&dvf_message).unwrap())).await;
+        self.network.send(self.transaction_address(), Bytes::from(bincode::serialize(&dvf_message).unwrap())).await;
+    }
+
+    fn base_address(&self) -> SocketAddr {
+        self.base_address
     }
 }
 
 impl LocalOperator {
-    pub fn new(validator_id: u64, operator_id: u64, operator_keypair: Arc<Keypair>, transaction_address: SocketAddr) -> Self {
+    pub fn new(validator_id: u64, operator_id: u64, operator_keypair: Arc<Keypair>, base_address: SocketAddr) -> Self {
         Self {
             validator_id,
             operator_id,
             operator_keypair,
-            transaction_address,
+            base_address,
             network: SimpleSender::new(),
         }
     }
@@ -64,14 +80,16 @@ pub struct RemoteOperator {
     pub validator_id: u64,
     pub operator_id: u64,
     pub operator_public_key: PublicKey,
-    pub signature_address: SocketAddr,
+    // pub signature_address: SocketAddr,
+    pub base_address: SocketAddr,
     network: ReliableSender,
 }
 
 #[async_trait]
 impl TOperator for RemoteOperator {
     async fn sign(&self, msg: Hash256) -> Result<Signature, DvfError> {
-        if is_addr_invalid(self.signature_address) {
+        // skip this function quickly
+        if is_addr_invalid(self.base_address()) {
             return Err(DvfError::SocketAddrUnknown);
         }
         
@@ -81,7 +99,7 @@ impl TOperator for RemoteOperator {
         let serialize_msg = bincode::serialize(&dvf_message).unwrap();
         for i in 0..n_try {
             let next_try_instant = Instant::now() + Duration::from_millis(timeout_mill);
-            let receiver = self.network.send(self.signature_address, Bytes::from(serialize_msg.clone())).await;
+            let receiver = self.network.send(self.signature_address(), Bytes::from(serialize_msg.clone())).await;
             let result = timeout(Duration::from_millis(timeout_mill), receiver).await;
             match result {
                 Ok(output) => {
@@ -89,7 +107,7 @@ impl TOperator for RemoteOperator {
                         Ok(data) => {
                             match bincode::deserialize::<Signature>(&data) {
                                 Ok(bls_signature) => {
-                                    info!("Received a signature from operator {}/{} ({:?})", self.operator_id, self.validator_id, self.signature_address);
+                                    info!("Received a signature from operator {}/{} ({:?})", self.operator_id, self.validator_id, self.signature_address());
                                     return Ok(bls_signature);
                                 }
                                 Err(_) => {
@@ -110,7 +128,7 @@ impl TOperator for RemoteOperator {
                 sleep_until(next_try_instant).await;
             }
         }
-        warn!("Failed to receive a signature from operator {}/{} ({:?})", self.operator_id, self.validator_id, self.signature_address);
+        warn!("Failed to receive a signature from operator {}/{} ({:?})", self.operator_id, self.validator_id, self.signature_address());
         Err(DvfError::Unknown)
     }
 
@@ -119,15 +137,19 @@ impl TOperator for RemoteOperator {
     }
 
     async fn propose(&self, _msg: Hash256) {}
+
+    fn base_address(&self) -> SocketAddr {
+        self.base_address
+    }
 }
 
 impl RemoteOperator {
-    pub fn new(validator_id: u64, operator_id: u64, operator_public_key: PublicKey, signature_address: SocketAddr) -> Self {
+    pub fn new(validator_id: u64, operator_id: u64, operator_public_key: PublicKey, base_address: SocketAddr) -> Self {
         Self {
             validator_id,
             operator_id,
             operator_public_key,
-            signature_address,
+            base_address,
             network: ReliableSender::new(),
         }
     }

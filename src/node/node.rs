@@ -29,6 +29,7 @@ use crate::DEFAULT_CHANNEL_CAPACITY;
 use crate::deposit::get_distributed_deposit;
 use crate::network::io_committee::{NetIOChannel, NetIOCommittee};
 use crate::node::config::{
+    base_to_transaction_addr, base_to_mempool_addr, base_to_consensus_addr, base_to_signature_addr,
     API_ADDRESS, BOOT_ENR, DB_FILENAME, DISCOVERY_PORT_OFFSET, DKG_PORT_OFFSET, NodeConfig,
     PRESTAKE_SIGNATURE_URL, STAKE_SIGNATURE_URL, VALIDATOR_PK_URL,
 };
@@ -89,7 +90,7 @@ impl<T: EthSpec> Node<T> {
                 config.base_address.ip().clone(),
             )])));
 
-        let transaction_address = with_wildcard_ip(config.transaction_address.clone());
+        let transaction_address = with_wildcard_ip(base_to_transaction_addr(config.base_address));
         NetworkReceiver::spawn(
             transaction_address,
             Arc::clone(&tx_handler_map),
@@ -100,14 +101,14 @@ impl<T: EthSpec> Node<T> {
             secret.name, transaction_address
         );
 
-        let mempool_address = with_wildcard_ip(config.mempool_address.clone());
+        let mempool_address = with_wildcard_ip(base_to_mempool_addr(config.base_address));
         NetworkReceiver::spawn(mempool_address, Arc::clone(&mempool_handler_map), "mempool");
         info!(
             "Node {} listening to mempool messages on {}",
             secret.name, mempool_address
         );
 
-        let consensus_address = with_wildcard_ip(config.consensus_address.clone());
+        let consensus_address = with_wildcard_ip(base_to_consensus_addr(config.base_address));
         NetworkReceiver::spawn(
             consensus_address,
             Arc::clone(&consensus_handler_map),
@@ -118,7 +119,7 @@ impl<T: EthSpec> Node<T> {
             secret.name, consensus_address
         );
 
-        let signature_address = with_wildcard_ip(config.signature_address.clone());
+        let signature_address = with_wildcard_ip(base_to_signature_addr(config.base_address));
         NetworkReceiver::spawn(
             signature_address,
             Arc::clone(&signature_handler_map),

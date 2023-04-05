@@ -6,6 +6,7 @@ use directory::{DEFAULT_ROOT_DIR, DEFAULT_SECRET_DIR, DEFAULT_VALIDATOR_DIR};
 use serde_derive::{Deserialize, Serialize};
 use tokio::sync::OnceCell;
 use tracing::{debug, error, info, log, warn};
+use lazy_static::lazy_static;
 
 /// The file name for the serialized `OperatorCommitteeDefinition` struct.
 pub const NODE_KEY_FILENAME: &str = "node_key.json";
@@ -27,14 +28,68 @@ pub const VALIDATOR_PK_URL: &str = "validator_pk";
 pub const PRESTAKE_SIGNATURE_URL: &str = "prestake_signature";
 pub const STAKE_SIGNATURE_URL: &str = "stake_signature";
 
+lazy_static!{
+    // [Issue] SocketAddr::new is not yet a const fn in stable release.
+    // Can change this variable to const once it becomes stable.
+    // Tracking issue: https://doc.rust-lang.org/std/net/enum.SocketAddr.html#method.new
+    pub static ref INVALID_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
+}
+
+pub fn invalid_addr() -> SocketAddr {
+    return *INVALID_ADDR;
+}
+
+pub fn is_addr_invalid(addr: SocketAddr) -> bool {
+    if addr == *INVALID_ADDR {
+        return true;
+    }
+    return false;
+}
+
+pub fn base_to_transaction_addr(base_addr: SocketAddr) -> SocketAddr {
+    if is_addr_invalid(base_addr) {
+        base_addr
+    }
+    else {
+        SocketAddr::new(base_addr.ip(), base_addr.port() + TRANSACTION_PORT_OFFSET)
+    }
+}
+
+pub fn base_to_mempool_addr(base_addr: SocketAddr) -> SocketAddr {
+    if is_addr_invalid(base_addr) {
+        base_addr
+    }
+    else {
+        SocketAddr::new(base_addr.ip(), base_addr.port() + MEMPOOL_PORT_OFFSET)
+    }
+}
+
+pub fn base_to_consensus_addr(base_addr: SocketAddr) -> SocketAddr {
+    if is_addr_invalid(base_addr) {
+        base_addr
+    }
+    else {
+        SocketAddr::new(base_addr.ip(), base_addr.port() + CONSENSUS_PORT_OFFSET)
+    }
+}
+
+pub fn base_to_signature_addr(base_addr: SocketAddr) -> SocketAddr {
+    if is_addr_invalid(base_addr) {
+        base_addr
+    }
+    else {
+        SocketAddr::new(base_addr.ip(), base_addr.port() + SIGNATURE_PORT_OFFSET)
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct NodeConfig {
     // pub id: u64,
     pub base_address: SocketAddr,
-    pub transaction_address: SocketAddr,
-    pub mempool_address: SocketAddr,
-    pub consensus_address: SocketAddr,
-    pub signature_address: SocketAddr,
+    // pub transaction_address: SocketAddr,
+    // pub mempool_address: SocketAddr,
+    // pub consensus_address: SocketAddr,
+    // pub signature_address: SocketAddr,
     pub base_store_path: PathBuf,
     pub node_key_path: PathBuf,
     pub validator_dir: PathBuf,
@@ -68,10 +123,10 @@ impl NodeConfig {
         Self {
             // id,
             base_address: SocketAddr::new(ip.clone(), base_port),
-            transaction_address: SocketAddr::new(ip.clone(), base_port + TRANSACTION_PORT_OFFSET),
-            mempool_address: SocketAddr::new(ip.clone(), base_port + MEMPOOL_PORT_OFFSET),
-            consensus_address: SocketAddr::new(ip.clone(), base_port + CONSENSUS_PORT_OFFSET),
-            signature_address: SocketAddr::new(ip.clone(), base_port + SIGNATURE_PORT_OFFSET),
+            // transaction_address: SocketAddr::new(ip.clone(), base_port + TRANSACTION_PORT_OFFSET),
+            // mempool_address: SocketAddr::new(ip.clone(), base_port + MEMPOOL_PORT_OFFSET),
+            // consensus_address: SocketAddr::new(ip.clone(), base_port + CONSENSUS_PORT_OFFSET),
+            // signature_address: SocketAddr::new(ip.clone(), base_port + SIGNATURE_PORT_OFFSET),
             base_store_path,
             node_key_path,
             validator_dir,
@@ -90,10 +145,10 @@ impl NodeConfig {
 
     pub fn set_base_port(mut self, new_port: u16) -> Self {
         self.base_address.set_port(new_port);
-        self.transaction_address.set_port(new_port + TRANSACTION_PORT_OFFSET);
-        self.mempool_address.set_port(new_port + MEMPOOL_PORT_OFFSET);
-        self.consensus_address.set_port(new_port + CONSENSUS_PORT_OFFSET);
-        self.signature_address.set_port(new_port + SIGNATURE_PORT_OFFSET);
+        // self.transaction_address.set_port(new_port + TRANSACTION_PORT_OFFSET);
+        // self.mempool_address.set_port(new_port + MEMPOOL_PORT_OFFSET);
+        // self.consensus_address.set_port(new_port + CONSENSUS_PORT_OFFSET);
+        // self.signature_address.set_port(new_port + SIGNATURE_PORT_OFFSET);
         self
     }
 

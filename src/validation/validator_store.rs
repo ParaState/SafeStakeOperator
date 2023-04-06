@@ -961,13 +961,41 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         match self.validators.write().await.disable_keystore(pubkey).await {
             Ok(_) => {
                 info!(self.log, "stop validator keystore";
-                "msg" => format!("Success: delete keystore {:?}", pubkey));
+                "msg" => format!("Success: stop keystore {:?}", pubkey));
             }
             Err(_e) => {
                 error!(self.log, "stop validator keystore";
-                "msg" => format!("Failure: delete keystore {:?}", pubkey));
+                "msg" => format!("Failure: stop keystore {:?}", pubkey));
             }
         }
+    }
+
+    /// Start a validator
+    pub async fn start_validator_keystore(
+        &self,
+        pubkey: &PublicKey
+    ) {
+        match self.validators.write().await.enable_keystore(pubkey).await {
+            Ok(_) => {
+                info!(self.log, "start validator keystore";
+                "msg" => format!("Success: start keystore {:?}", pubkey));
+            }
+            Err(_e) => {
+                error!(self.log, "start validator keystore";
+                "msg" => format!("Failure: start keystore {:?}", pubkey));
+            }
+        }
+    }
+
+    /// Restart a validator
+    pub async fn restart_validator_keystore(
+        &self,
+        pubkey: &PublicKey
+    ) {
+        self.stop_validator_keystore(pubkey).await;
+        // Cooling down
+        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+        self.start_validator_keystore(pubkey).await;
     }
 }
 

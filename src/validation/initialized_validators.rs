@@ -632,6 +632,15 @@ impl<T: EthSpec> InitializedValidators<T> {
         Ok(DeleteKeystoreStatus::Deleted)
     }
 
+    // enable a keystore
+    pub async fn enable_keystore(
+        &mut self,
+        pubkey: &PublicKey
+    ) ->  Result<(), Error> {
+        self.set_validator_definition_fields(pubkey, Some(true), None, None).await?;
+        Ok(())
+    }
+
     // remove keystore but preserve definition 
     pub async fn disable_keystore(
         &mut self,

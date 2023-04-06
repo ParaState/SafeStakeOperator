@@ -554,7 +554,7 @@ pub async fn activate_validator<T: EthSpec>(
                     keystore_share.share_id,
                 )
                 .await;
-            info!("[VA {}] reactive validator {}", validator_id, validator_pk);
+            info!("[VA {}] reactivate validator {}", validator_id, validator_pk);
         }
         _ => {
             error!(

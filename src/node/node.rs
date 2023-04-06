@@ -38,8 +38,9 @@ use crate::node::discovery::Discovery;
 use crate::node::dvfcore::DvfSignatureReceiverHandler;
 use crate::node::contract::{
     Contract, ContractCommand, EncryptedSecretKeys, Initiator, OperatorPublicKeys,
-    SharedPublicKeys, Validator, SELF_OPERATOR_ID, OperatorIds
+    SharedPublicKeys, Validator, SELF_OPERATOR_ID, OperatorIds, CONTRACT_DATABASE_FILE, ContractCommandType
 };
+use crate::node::db::Database;
 use crate::node::utils::{get_operator_ips, request_to_web_server, convert_address_to_withdraw_crendentials, ValidatorPkRequest, DepositRequest};
 use crate::validation::account_utils::default_keystore_share_password_path;
 use crate::validation::account_utils::default_keystore_share_path;
@@ -130,11 +131,11 @@ impl<T: EthSpec> Node<T> {
             secret.name, signature_address
         );
 
-        let (tx_validator_command, rx_validator_command) = MonitoredChannel::new(
-            DEFAULT_CHANNEL_CAPACITY,
-            "contract-command".to_string(),
-            "info",
-        );
+        // let (tx_validator_command, rx_validator_command) = MonitoredChannel::new(
+        //     DEFAULT_CHANNEL_CAPACITY,
+        //     "contract-command".to_string(),
+        //     "info",
+        // );
 
         info!("Node {} successfully booted", secret.name);
         let base_port = config.base_address.port();
@@ -155,19 +156,20 @@ impl<T: EthSpec> Node<T> {
             node.secret.clone(),
             BOOT_ENR.get().unwrap().clone(),
         );
-
+        let base_dir = secret_dir.parent().unwrap().to_path_buf();
+        let db = Database::new(base_dir.join(CONTRACT_DATABASE_FILE))
+            .map_err(|e| {error!("can't create contract database {:?}", e); ConfigError::ReadError { file: CONTRACT_DATABASE_FILE.to_string(), message: "can't create contract database".to_string() }})?;
         Contract::spawn(
-            secret_dir.parent().unwrap().to_path_buf(),
+            base_dir,
             secret.name,
-            tx_validator_command.clone(),
+            db.clone()
         );
         let node = Arc::new(RwLock::new(node));
         let initializer_store = Arc::new(RwLock::new(HashMap::new()));
         Node::process_contract_command(
             Arc::clone(&node),
             Arc::clone(&key_ip_map),
-            rx_validator_command,
-            tx_validator_command,
+            db,
             initializer_store,
         );
 
@@ -188,143 +190,174 @@ impl<T: EthSpec> Node<T> {
     pub fn process_contract_command(
         node: Arc<RwLock<Node<T>>>,
         operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
-        mut rx_contract_command: Receiver<ContractCommand>,
-        tx_contract_command: MonitoredSender<ContractCommand>,
+        db: Database,
         initializer_store: InitiatorStore,
     ) {
         tokio::spawn(async move {
             loop {
-                match rx_contract_command.recv().await {
-                    Some(validator_command) => match validator_command {
-                        ContractCommand::StartValidator(
-                            validator,
-                            operator_pks,
-                            shared_pks,
-                            encrypted_sks,
-                        ) => {
-                            info!("StartValidator");
-                            match add_validator(
-                                node.clone(),
-                                validator,
-                                operator_pks,
-                                shared_pks,
-                                encrypted_sks,
-                                operator_key_ip_map.clone(),
-                                tx_contract_command.clone(),
-                            )
-                                .await
-                            {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    error!("Failed to add validator: {}. Save validator information to database", e);
-                                    // save va information to database
+                // 
+                let mut query_interval = tokio::time::interval(Duration::from_secs(10));
+                tokio::select! {
+                    _ = query_interval.tick() => {
+                        match db.get_contract_command().await {
+                            Ok((command, sequence_num, id)) => {
+                                if id == 0 {
+                                    continue;
                                 }
+                                let cmd: ContractCommand = serde_json::from_str(&command).unwrap();
+                                match cmd {
+                                    ContractCommand::StartValidator(
+                                        validator,
+                                        operator_pks,
+                                        shared_pks,
+                                        encrypted_sks,
+                                    ) => {
+                                        let va_id = validator.id;
+                                        info!("StartValidator");
+                                        match add_validator(
+                                            node.clone(),
+                                            validator,
+                                            operator_pks,
+                                            shared_pks,
+                                            encrypted_sks,
+                                            operator_key_ip_map.clone(),
+                                        )
+                                            .await
+                                        {
+                                            Ok(_) => {
+                                                db.delete_contract_command(id).await;
+                                            }
+                                            Err(e) => {
+                                                error!("Failed to add validator: {}. Save validator information to database", e);
+                                                // save va information to database
+                                                db.insert_or_update_contract_command(va_id, command, ContractCommandType::StartValidator as u32, Some(sequence_num)).await;
+                                            }
+                                        }
+                                    }
+                                    ContractCommand::RemoveValidator(validator) => {
+                                        info!("RemoveValidator");
+                                        let va_id = validator.id;
+                                        match remove_validator(node.clone(), validator).await {
+                                            Ok(_) => {
+                                                db.delete_contract_command(id).await;
+                                            }
+                                            Err(e) => {
+                                                error!("Failed to remove validator: {}", e);
+                                                db.insert_or_update_contract_command(va_id, command, ContractCommandType::RemoveValidator as u32, Some(sequence_num)).await;
+                                            }
+                                        }
+                                    }
+                                    ContractCommand::ActivateValidator(validator) => {
+                                        info!("ActivateValidator");
+                                        let va_id = validator.id;
+                                        match activate_validator(node.clone(), validator).await {
+                                            Ok(_) => {
+                                                db.delete_contract_command(id).await;
+                                            }
+                                            Err(e) => {
+                                                error!("Failed to active validator: {}", e);
+                                                db.insert_or_update_contract_command(va_id, command, ContractCommandType::ActivateValidator as u32, Some(sequence_num)).await;
+                                            }
+                                        }
+                                    }
+                                    ContractCommand::StopValidator(validator) => {
+                                        info!("StopValidator");
+                                        let va_id = validator.id;
+                                        match stop_validator(node.clone(), validator).await {
+                                            Ok(_) => {
+                                                db.delete_contract_command(id).await;
+                                            }
+                                            Err(e) => {
+                                                error!("Failed to stop validator: {}", e);
+                                                db.insert_or_update_contract_command(va_id, command, ContractCommandType::StopValidator as u32, Some(sequence_num)).await;
+                                            }
+                                        }
+                                    }
+                                    ContractCommand::StartInitiator(initiator, operator_pks) => {
+                                        info!("StartInitiator");
+                                        let initiator_id = initiator.id;
+                                        match start_initializer(
+                                            node.clone(),
+                                            initiator,
+                                            operator_pks,
+                                            operator_key_ip_map.clone(),
+                                            initializer_store.clone(),
+                                        )
+                                            .await
+                                        {
+                                            Ok(_) => { db.delete_contract_command(id).await; }
+                                            Err(e) => {
+                                                error!("Failed to start initiator: {}", e);
+                                                db.insert_or_update_contract_command(initiator_id as u64, command, ContractCommandType::StartInitiator as u32, Some(sequence_num)).await;
+                                            }
+                                        }
+                                    }
+                                    ContractCommand::MiniPoolCreated(
+                                        initiator_id,
+                                        validator_pk,
+                                        op_pks,
+                                        op_ids,
+                                        minipool_address,
+                                    ) => {
+                                        info!("MiniPoolCreated");
+                                        match minipool_deposit(
+                                            node.clone(),
+                                            initiator_id,
+                                            validator_pk,
+                                            op_pks,
+                                            op_ids,
+                                            operator_key_ip_map.clone(),
+                                            minipool_address,
+                                            initializer_store.clone(),
+                                            8,
+                                        )
+                                            .await
+                                        {
+                                            Ok(_) => { db.delete_contract_command(id).await; }
+                                            Err(e) => {
+                                                error!("Failed to process minpool created: {}", e);
+                                                db.insert_or_update_contract_command(initiator_id as u64, command, ContractCommandType::MiniPoolCreated as u32, Some(sequence_num)).await;
+                                            }
+                                        }
+                                    }
+                                    ContractCommand::MiniPoolReady(
+                                        initiator_id,
+                                        validator_pk,
+                                        op_pks,
+                                        op_ids,
+                                        minipool_address,
+                                    ) => {
+                                        info!("MiniPoolReady");
+                                        match minipool_deposit(
+                                            node.clone(),
+                                            initiator_id,
+                                            validator_pk,
+                                            op_pks,
+                                            op_ids,
+                                            operator_key_ip_map.clone(),
+                                            minipool_address,
+                                            initializer_store.clone(),
+                                            24,
+                                        )
+                                            .await
+                                        {
+                                            Ok(_) => { 
+                                                db.delete_contract_command(id).await; 
+                                                let _ = initializer_store.write().await.remove(&initiator_id);
+                                            }
+                                            Err(e) => {
+                                                error!("Failed to process minpool ready: {}", e);
+                                                db.insert_or_update_contract_command(initiator_id as u64, command, ContractCommandType::MiniPoolReady as u32, Some(sequence_num)).await;
+                                            }
+                                        }
+                                        
+                                    }
+                                }
+                            },
+                            Err(e) => {
+                                error!("error happens when get contract command {}", e);
                             }
                         }
-                        ContractCommand::RemoveValidator(validator) => {
-                            info!("RemoveValidator");
-                            match remove_validator(node.clone(), validator).await {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    error!("Failed to remove validator: {}", e);
-                                }
-                            }
-                        }
-                        ContractCommand::ActivateValidator(validator) => {
-                            info!("ActivateValidator");
-                            match activate_validator(node.clone(), validator).await {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    error!("Failed to active validator: {}", e);
-                                }
-                            }
-                        }
-                        ContractCommand::StopValidator(validator) => {
-                            info!("StopValidator");
-                            match stop_validator(node.clone(), validator).await {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    error!("Failed to stop validator: {}", e);
-                                }
-                            }
-                        }
-                        ContractCommand::StartInitiator(initiator, operator_pks) => {
-                            info!("StartInitiator");
-                            match start_initializer(
-                                node.clone(),
-                                initiator,
-                                operator_pks,
-                                operator_key_ip_map.clone(),
-                                initializer_store.clone(),
-                                tx_contract_command.clone(),
-                            )
-                                .await
-                            {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    error!("Failed to start initiator: {}", e);
-                                }
-                            }
-                        }
-                        ContractCommand::MiniPoolCreated(
-                            initializer_id,
-                            validator_pk,
-                            op_pks,
-                            op_ids,
-                            minipool_address,
-                        ) => {
-                            info!("MiniPoolCreated");
-                            match minipool_deposit(
-                                node.clone(),
-                                initializer_id,
-                                validator_pk,
-                                op_pks,
-                                op_ids,
-                                operator_key_ip_map.clone(),
-                                minipool_address,
-                                initializer_store.clone(),
-                                8,
-                            )
-                                .await
-                            {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    error!("Failed to process minpool created: {}", e);
-                                }
-                            }
-                        }
-                        ContractCommand::MiniPoolReady(
-                            initializer_id,
-                            validator_pk,
-                            op_pks,
-                            op_ids,
-                            minipool_address,
-                        ) => {
-                            info!("MiniPoolReady");
-                            match minipool_deposit(
-                                node.clone(),
-                                initializer_id,
-                                validator_pk,
-                                op_pks,
-                                op_ids,
-                                operator_key_ip_map.clone(),
-                                minipool_address,
-                                initializer_store.clone(),
-                                24,
-                            )
-                                .await
-                            {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    error!("Failed to process minpool ready: {}", e);
-                                }
-                            }
-                            let _ = initializer_store.write().await.remove(&initializer_id);
-                        }
-                    },
-                    None => {
-                        error!("channel is closed unexpected");
-                        break;
                     }
                 }
             }
@@ -339,7 +372,7 @@ pub async fn add_validator<T: EthSpec>(
     shared_public_keys: SharedPublicKeys,
     encrypted_secret_keys: EncryptedSecretKeys,
     operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
-    tx_validator_command: MonitoredSender<ContractCommand>,
+    // tx_validator_command: MonitoredSender<ContractCommand>,
 ) -> Result<(), String> {
     let node = node.read().await;
     let base_port = node.config.base_address.port();
@@ -365,14 +398,14 @@ pub async fn add_validator<T: EthSpec>(
             Ok(address) => address,
             Err(e) => {
                 sleep(Duration::from_secs(60)).await;
-                let _ = tx_validator_command
-                    .send(ContractCommand::StartValidator(
-                        validator,
-                        operator_public_keys,
-                        shared_public_keys,
-                        encrypted_secret_keys,
-                    ))
-                    .await;
+                // let _ = tx_validator_command
+                //     .send(ContractCommand::StartValidator(
+                //         validator,
+                //         operator_public_keys,
+                //         shared_public_keys,
+                //         encrypted_secret_keys,
+                //     ))
+                //     .await;
                 info!("Will process the validator again");
                 cleanup_validator_dir(&validator_dir, &validator_pk, validator_id)?;
                 cleanup_password_dir(&secret_dir, &validator_pk, validator_id)?;
@@ -635,7 +668,7 @@ pub async fn start_initializer<T: EthSpec>(
     initializer_store: Arc<
         RwLock<HashMap<u32, (BlsKeypair, BlsPublicKey, HashMap<u64, BlsPublicKey>)>>,
     >,
-    tx_contract_command: MonitoredSender<ContractCommand>,
+    // tx_contract_command: MonitoredSender<ContractCommand>,
 ) -> Result<(), String> {
     let node = node.read().await;
     let base_port = node.config.base_address.port();
@@ -644,20 +677,20 @@ pub async fn start_initializer<T: EthSpec>(
             Ok(ips) => ips,
             Err(e) => {
                 sleep(Duration::from_secs(10)).await;
-                let _ = tx_contract_command
-                    .send(ContractCommand::StartInitiator(
-                        initiator,
-                        operator_public_keys,
-                    ))
-                    .await;
-                info!("Will process the initiator again");
+                // let _ = tx_contract_command
+                //     .send(ContractCommand::StartInitiator(
+                //         initiator,
+                //         operator_public_keys,
+                //     ))
+                //     .await;
+                // info!("Will process the initiator again");
                 return Err(e);
             }
         };
     if operator_ips.iter().any(|x| x.is_none()) {
         return Err("StartInitializer: Insufficient operators discovered for DKG".to_string());
     }
-    let operator_ips: Vec<SocketAddr> = operator_ips.iter().map(|mut x| {
+    let operator_ips: Vec<SocketAddr> = operator_ips.iter().map(|x| {
         SocketAddr::new(x.unwrap().ip(), base_port + DKG_PORT_OFFSET)
     }).collect();
 
@@ -688,7 +721,7 @@ pub async fn start_initializer<T: EthSpec>(
     // push va pk to web server
     let request_body = ValidatorPkRequest {
         validator_pk: pk_str,
-        initializer_id: initiator.id,
+        initiator_id: initiator.id,
         initializer_address: format!("{0:0x}", initiator.owner_address),
         operators: op_ids,
     };
@@ -706,7 +739,7 @@ pub async fn start_initializer<T: EthSpec>(
 // TODO process minipool created event
 pub async fn minipool_deposit<T: EthSpec>(
     node: Arc<RwLock<Node<T>>>,
-    initializer_id: u32,
+    initiator_id: u32,
     validator_pk: Vec<u8>,
     operator_public_keys: OperatorPublicKeys,
     operator_ids: OperatorIds,
@@ -717,11 +750,11 @@ pub async fn minipool_deposit<T: EthSpec>(
 ) -> Result<(), String> {
     let node = node.read().await;
     let base_port = node.config.base_address.port();
-    let mut operator_ips = match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
+    let operator_ips = match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
         Ok(ips) => ips,
         Err(e) => {
             error!("Some operators are not online, it's critical error, minipool exiting");
-            initializer_store.write().await.remove(&initializer_id).ok_or(format!("can't remove initiator store id: {}", initializer_id))?;
+            initializer_store.write().await.remove(&initiator_id).ok_or(format!("can't remove initiator store id: {}", initiator_id))?;
             return Err(e);
         }
     };
@@ -737,7 +770,7 @@ pub async fn minipool_deposit<T: EthSpec>(
         .get()
         .ok_or("Self operator has not been set".to_string())?;
     let store = initializer_store.read().await;
-    let (keypair, va_pk, op_bls_pks) = store.get(&initializer_id).ok_or(format!("can't get initiator store id: {}", initializer_id))?;
+    let (keypair, va_pk, op_bls_pks) = store.get(&initiator_id).ok_or(format!("can't get initiator store id: {}", initiator_id))?;
     let io_committee = Arc::new(NetIOCommittee::new(self_op_id as u64, base_port + DKG_PORT_OFFSET, &op_ids, &operator_ips).await);
     let signer = SimpleDistributedSigner::new(self_op_id as u64, keypair.clone(), va_pk.clone(), op_bls_pks.clone(), io_committee, THRESHOLD as usize);
     let mpk = BlsPublicKey::deserialize(&validator_pk).map_err(|e| format!("Can't deserilize bls pk {:?}", e))?;

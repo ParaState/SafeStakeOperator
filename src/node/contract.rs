@@ -30,8 +30,7 @@ use web3::ethabi::{Event, EventParam, ParamType, RawLog, token};
 
 const CONTRACT_CONFIG_FILE: &str = "contract_config/configs.yml";
 const CONTRACT_RECORD_FILE: &str = "contract_record.yml";
-const CONTRACT_STORE_FILE: &str = "contract_store";
-const CONTRACT_DATABASE_FILE: &str = "contract_database.db";
+pub const CONTRACT_DATABASE_FILE: &str = "contract_database.db";
 const CONTRACT_VA_REG_EVENT_NAME: &str = "ValidatorRegistration";
 const CONTRACT_VA_RM_EVENT_NAME: &str = "ValidatorRemoval";
 const CONTRACT_INI_REG_EVENT_NAME: &str = "InitiatorRegistration";
@@ -146,7 +145,7 @@ pub trait TopicHandler: Send + Sync + 'static {
         db: &Database,
         operator_pk_base64: &String,
         config: &ContractConfig,
-        sender: &MonitoredSender<ContractCommand>,
+        // sender: &MonitoredSender<ContractCommand>,
     ) -> Result<(), ContractError>;
 }
 
@@ -161,9 +160,9 @@ impl TopicHandler for ValidatorRegistrationHandler {
         db: &Database,
         operator_pk_base64: &String,
         config: &ContractConfig,
-        sender: &MonitoredSender<ContractCommand>,
+        // sender: &MonitoredSender<ContractCommand>,
     ) -> Result<(), ContractError> {
-        process_validator_registration(log, db, operator_pk_base64, config, sender)
+        process_validator_registration(log, db, operator_pk_base64, config)
             .await
             .map_err(|e| {
                 error!("error happens when process validator registration");
@@ -183,9 +182,9 @@ impl TopicHandler for ValidatorRemovalHandler {
         db: &Database,
         operator_pk_base64: &String,
         config: &ContractConfig,
-        sender: &MonitoredSender<ContractCommand>,
+        // sender: &MonitoredSender<ContractCommand>,
     ) -> Result<(), ContractError> {
-        process_validator_removal(log, db, operator_pk_base64, config, sender)
+        process_validator_removal(log, db, operator_pk_base64, config)
             .await
             .map_err(|e| {
                 error!("error happens when process validator removal");
@@ -205,9 +204,9 @@ impl TopicHandler for InitiatorRegistrationHandler {
         db: &Database,
         operator_pk_base64: &String,
         config: &ContractConfig,
-        sender: &MonitoredSender<ContractCommand>,
+        // sender: &MonitoredSender<ContractCommand>,
     ) -> Result<(), ContractError> {
-        process_initiator_registration(log, db, operator_pk_base64, config, sender)
+        process_initiator_registration(log, db, operator_pk_base64, config)
             .await
             .map_err(|e| {
                 error!("error happens when process initiator registration");
@@ -227,9 +226,9 @@ impl TopicHandler for MinipoolCreatedHandler {
         db: &Database,
         operator_pk_base64: &String,
         config: &ContractConfig,
-        sender: &MonitoredSender<ContractCommand>,
+        // sender: &MonitoredSender<ContractCommand>,
     ) -> Result<(), ContractError> {
-        process_minipool_created(log, db, operator_pk_base64, config, sender)
+        process_minipool_created(log, db, operator_pk_base64, config)
             .await
             .map_err(|e| {
                 error!("error happens when process minipool created");
@@ -249,9 +248,9 @@ impl TopicHandler for MinipoolReadyHandler {
         db: &Database,
         operator_pk_base64: &String,
         config: &ContractConfig,
-        sender: &MonitoredSender<ContractCommand>,
+        // sender: &MonitoredSender<ContractCommand>,
     ) -> Result<(), ContractError> {
-        process_minipool_ready(log, db, operator_pk_base64, config, sender)
+        process_minipool_ready(log, db, operator_pk_base64, config)
             .await
             .map_err(|e| {
                 error!("error happens when process minipool ready");
@@ -289,7 +288,6 @@ pub struct Contract {
     pub record: ContractRecord,
     pub db: Database,
     pub operator_pk: PublicKey,
-    pub store: Store,
     pub base_dir: PathBuf,
     pub handlers: Arc<RwLock<HashMap<H256, Box<dyn TopicHandler>>>>,
     pub va_filter_builder: Option<FilterBuilder>,
@@ -297,7 +295,7 @@ pub struct Contract {
 }
 
 impl Contract {
-    pub fn new<P: AsRef<Path>>(base_dir: P, operator_pk: PublicKey) -> Result<Self, String> {
+    pub fn new<P: AsRef<Path>>(base_dir: P, operator_pk: PublicKey, db: Database) -> Result<Self, String> {
         let config = ContractConfig::from_file(CONTRACT_CONFIG_FILE)?;
         let record = match ContractRecord::from_file(base_dir.as_ref().join(CONTRACT_RECORD_FILE)) {
             Ok(record) => record,
@@ -306,22 +304,13 @@ impl Contract {
                 ContractRecord { block_num: 0 }
             }
         };
-        let contract_store_path = base_dir
-            .as_ref()
-            .join(CONTRACT_STORE_FILE)
-            .to_str()
-            .ok_or(("Can't get contract store path").to_string())?
-            .to_owned();
-        let store =
-            Store::new(&contract_store_path).map_err(|e| format!("Can't create contract store {:?}", e))?;
-        let db = Database::new(base_dir.as_ref().join(CONTRACT_DATABASE_FILE))
-            .map_err(|e| format!("can't create contract database {:?}", e))?;
+        
         Ok(Self {
             config,
             record,
             db,
             operator_pk,
-            store,
+            // store,
             base_dir: base_dir.as_ref().to_path_buf(),
             handlers: Arc::new(RwLock::new(HashMap::new())),
             va_filter_builder: None,
@@ -337,18 +326,18 @@ impl Contract {
         self.db.insert_operator(op).await;
     }
 
-    pub fn spawn(base_dir: PathBuf, operator_pk: PublicKey, tx: MonitoredSender<ContractCommand>) {
+    pub fn spawn(base_dir: PathBuf, operator_pk: PublicKey, db: Database) {
         tokio::spawn(async move {
-            let mut contract = Contract::new(base_dir, operator_pk)
+            let mut contract = Contract::new(base_dir, operator_pk, db)
                 .map_err(|e| {
                     error!("contract error: {}", e);
                 })
                 .unwrap();
             contract.construct_filter().await;
             contract.check_operator_id().await;
-            contract.get_logs_from_contract(tx.clone()).await;
-            contract.monitor_validator_paidblock(tx.clone());
-            contract.listen_logs(tx).await;
+            contract.get_logs_from_contract().await;
+            contract.monitor_validator_paidblock();
+            // contract.listen_logs(tx).await;
         });
     }
 
@@ -404,7 +393,7 @@ impl Contract {
         handlers.insert(minipool_ready_topic, Box::new(MinipoolReadyHandler {}));
     }
 
-    pub fn monitor_validator_paidblock(&mut self, sender: MonitoredSender<ContractCommand>) {
+    pub fn monitor_validator_paidblock(&mut self) {
         let config = self.config.clone();
         let db = self.db.clone();
         tokio::spawn(async move {
@@ -424,7 +413,9 @@ impl Contract {
                                                         for va in validators {
                                                             if va.active {
                                                                 db.disable_validator(hex::encode(&va.public_key)).await;
-                                                                let _ = sender.send(ContractCommand::StopValidator(va)).await;
+                                                                let va_id = va.id;
+                                                                let cmd = ContractCommand::StopValidator(va);
+                                                                db.insert_or_update_contract_command(va_id, serde_json::to_string(&cmd).unwrap() , ContractCommandType::StopValidator as u32, None).await;
                                                             }
                                                         }
                                                     },
@@ -438,8 +429,9 @@ impl Contract {
                                                         for va in validators {
                                                             if !va.active {
                                                                 db.disable_validator(hex::encode(&va.public_key)).await;
-                                                                let _ = sender.send(ContractCommand::ActivateValidator(va)).await;
-                                                                
+                                                                let va_id = va.id;
+                                                                let cmd = ContractCommand::ActivateValidator(va);
+                                                                db.insert_or_update_contract_command(va_id, serde_json::to_string(&cmd).unwrap() , ContractCommandType::ActivateValidator as u32, None).await;
                                                             }
                                                         }
                                                     },
@@ -466,11 +458,10 @@ impl Contract {
     }
 
 
-    pub async fn get_logs_from_contract(&mut self, sender: MonitoredSender<ContractCommand>) {
+    pub async fn get_logs_from_contract(&mut self) {
         let mut record = self.record.clone();
         let config = self.config.clone();
         let record_path = self.base_dir.join(CONTRACT_RECORD_FILE);
-        let store = self.store.clone();
         let db = self.db.clone();
         let operator_pk = self.operator_pk.clone();
         let operator_pk_base64 = base64::encode(&operator_pk);
@@ -483,7 +474,7 @@ impl Contract {
                 get_block_number(&mut record).await;
                 update_record_file(&record, &record_path);
             }
-            let mut query_interval = tokio::time::interval(Duration::from_secs(60 * 5));
+            let mut query_interval = tokio::time::interval(Duration::from_secs(10));
             loop {
                 tokio::select! {
                     _ = query_interval.tick() => {
@@ -512,15 +503,6 @@ impl Contract {
                                     record.block_num = log
                                         .block_number
                                         .map_or_else(|| record.block_num, |bn| bn.as_u64()) + 1;
-
-                                    let listened = match log.transaction_hash {
-                                        Some(hash) => log_listened(&store, &hash).await,
-                                        None => false,
-                                    };
-                                    if listened {
-                                        info!("This log has been listened, continue");
-                                        continue;
-                                    }
                                     let topic = log.topics[0].clone();
                                     match handlers.read().await.get(&topic) {
                                         Some(handler) => {
@@ -530,7 +512,6 @@ impl Contract {
                                                     &db,
                                                     &operator_pk_base64,
                                                     &config,
-                                                    &sender,
                                                 )
                                                 .await
                                             {
@@ -559,9 +540,9 @@ impl Contract {
         });
     }
 
-    pub async fn listen_logs(&self, sender: MonitoredSender<ContractCommand>) {
+    pub async fn listen_logs(&self) {
         let config = self.config.clone();
-        let store = self.store.clone();
+        // let store = self.store.clone();
         let db = self.db.clone();
         let operator_pk = self.operator_pk.clone();
         let operator_pk_base64 = base64::encode(&operator_pk);
@@ -618,7 +599,6 @@ impl Contract {
                 }
                 for log in logs {
                     let topic = log.topics[0].clone();
-                    let transaction_hash = log.transaction_hash.clone();
                     match handlers.read().await.get(&topic) {
                         Some(handler) => {
                             match handler
@@ -627,16 +607,16 @@ impl Contract {
                                     &db,
                                     &operator_pk_base64,
                                     &config,
-                                    &sender,
+                                    // &sender,
                                 )
                                 .await
                             {
                                 Ok(_) => {
                                     // store hash to local database
-                                    match transaction_hash {
-                                        Some(hash) => store.write(hash.as_bytes().to_vec(), vec![0]).await,
-                                        None => {}
-                                    };
+                                    // match transaction_hash {
+                                    //     Some(hash) => store.write(hash.as_bytes().to_vec(), vec![0]).await,
+                                    //     None => {}
+                                    // };
                                 }
                                 Err(e) => {
                                     error!("error hapens, reason: {}", e.as_str());
@@ -699,7 +679,7 @@ pub async fn process_validator_registration(
     db: &Database,
     operator_pk_base64: &String,
     config: &ContractConfig,
-    sender: &MonitoredSender<ContractCommand>,
+    // sender: &MonitoredSender<ContractCommand>,
 ) -> Result<(), ContractError> {
     info!("process_validator_registration");
     let validator_reg_event = Event {
@@ -816,14 +796,12 @@ pub async fn process_validator_registration(
         };
         // save validator in local database
         db.insert_validator(validator.clone()).await;
-        let _ = sender
-            .send(ContractCommand::StartValidator(
+        let cmd = ContractCommand::StartValidator(
                 validator,
                 op_pk_bn,
                 shared_pks,
-                encrypted_sks,
-            ))
-            .await;
+                encrypted_sks);
+        db.insert_or_update_contract_command(validator_id, serde_json::to_string(&cmd).unwrap() , ContractCommandType::StartInitiator as u32, None).await;
     }
     Ok(())
 }
@@ -833,7 +811,7 @@ pub async fn process_validator_removal(
     db: &Database,
     _operator_pk_base64: &String,
     _config: &ContractConfig,
-    sender: &MonitoredSender<ContractCommand>,
+    // sender: &MonitoredSender<ContractCommand>,
 ) -> Result<(), ContractError> {
     info!("process_validator_removal");
     let validator_rm_event = Event {
@@ -874,15 +852,14 @@ pub async fn process_validator_removal(
 
     db.delete_validator(va_str).await;
 
-    let _ = sender
-        .send(ContractCommand::RemoveValidator(Validator {
+    let cmd = ContractCommand::RemoveValidator(Validator {
             id,
             owner_address,
             public_key: va_pk.try_into().unwrap(),
             releated_operators: vec![],
             active: true,
-        }))
-        .await;
+        });
+    db.insert_or_update_contract_command(id, serde_json::to_string(&cmd).unwrap() , ContractCommandType::RemoveValidator as u32, None).await;
     Ok(())
 }
 
@@ -891,7 +868,7 @@ pub async fn process_initiator_registration(
     db: &Database,
     operator_pk_base64: &String,
     config: &ContractConfig,
-    sender: &MonitoredSender<ContractCommand>,
+    // sender: &MonitoredSender<ContractCommand>,
 ) -> Result<(), ContractError> {
     let ini_reg_event = Event {
         name: CONTRACT_INI_REG_EVENT_NAME.to_string(),
@@ -976,7 +953,8 @@ pub async fn process_initiator_registration(
             .map(|s| base64::decode(s).unwrap())
             .collect();
         db.insert_initiator(initiator.clone()).await;
-        let _ = sender.send(ContractCommand::StartInitiator(initiator, op_pk_bn)).await;
+        let cmd =  ContractCommand::StartInitiator(initiator, op_pk_bn);
+        db.insert_or_update_contract_command(id.into(), serde_json::to_string(&cmd).unwrap() , ContractCommandType::StartInitiator as u32, None).await;
     } else {
         info!("This node is not included in this initiator registration event. Continue.");
     }
@@ -988,7 +966,7 @@ pub async fn process_minipool_created(
     db: &Database,
     _operator_pk_base64: &String,
     _config: &ContractConfig,
-    sender: &MonitoredSender<ContractCommand>,
+    // sender: &MonitoredSender<ContractCommand>,
 ) -> Result<(), ContractError> {
     let minipool_created_event = Event {
         name: CONTRACT_MINIPOOL_CREATED_EVENT_NAME.to_string(),
@@ -1050,13 +1028,14 @@ pub async fn process_minipool_created(
                 let op_pk_bns = op_pks.into_iter()
                     .map(|s| base64::decode(s).unwrap())
                     .collect();
-                let _ = sender.send(ContractCommand::MiniPoolCreated(
+                let cmd = ContractCommand::MiniPoolCreated(
                     id,
                     va_pk.try_into().unwrap(),
                     op_pk_bns,
                     op_ids,
                     minipool_address,
-                )).await;
+                );
+                db.insert_or_update_contract_command(id.into(), serde_json::to_string(&cmd).unwrap() , ContractCommandType::MiniPoolCreated as u32, None).await;
             }
             Ok(())
         }
@@ -1072,7 +1051,7 @@ pub async fn process_minipool_ready(
     db: &Database,
     _operator_pk_base64: &String,
     _config: &ContractConfig,
-    sender: &MonitoredSender<ContractCommand>,
+    // sender: &MonitoredSender<ContractCommand>,
 ) -> Result<(), ContractError> {
     let minipool_ready_event = Event {
         name: CONTRACT_MINIPOOL_READY_EVENT_NAME.to_string(),
@@ -1115,13 +1094,14 @@ pub async fn process_minipool_ready(
                 let op_pks_bn = op_pks.into_iter()
                     .map(|s| base64::decode(s).unwrap())
                     .collect();
-                let _ = sender.send(ContractCommand::MiniPoolReady(
+                let cmd = ContractCommand::MiniPoolReady(
                     id,
                     validator_pk,
                     op_pks_bn,
                     op_ids,
                     minipool_address,
-                )).await;
+                );
+                db.insert_or_update_contract_command(id.into(), serde_json::to_string(&cmd).unwrap() , ContractCommandType::MiniPoolReady as u32, None).await;
                 Ok(())
             }
             None => Ok(()),

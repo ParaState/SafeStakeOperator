@@ -31,8 +31,9 @@ pub enum DbCommand {
     DisableValidator(String),
     EnableValidator(String),
     ValidatorActive(String, oneshot::Sender<DbResult<bool>>),
-    InsertValidatorCommand(u64, String, u32, Option<u32>),
-    GetValidatorCommand(oneshot::Sender<DbResult<(String, u32, u64)>>)
+    InsertContractCommand(u64, String, u32, Option<u32>),
+    GetContractCommand(oneshot::Sender<DbResult<(String, u32, u32)>>),
+    DeleteContractCommand(u32)
 }
 
 #[derive(Clone)]
@@ -181,12 +182,15 @@ impl Database {
                         let response = if_validator_active(&conn, public_key);
                         let _ = sender.send(response);
                     }
-                    DbCommand::InsertValidatorCommand(validator_id, command, command_type, sequence_num) => {
+                    DbCommand::InsertContractCommand(validator_id, command, command_type, sequence_num) => {
                         insert_or_update_contract_command(&conn, validator_id, command, command_type, sequence_num);
                     }
-                    DbCommand::GetValidatorCommand(sender) => {
+                    DbCommand::GetContractCommand(sender) => {
                         let response = get_contract_command(&conn);
                         let _ = sender.send(response);
+                    }
+                    DbCommand::DeleteContractCommand(id) => {
+                        delete_contract_command(&conn, id);
                     }
                 }
             }
@@ -317,17 +321,23 @@ impl Database {
     }
 
     pub async fn insert_or_update_contract_command(&self, validator_or_initiator_id: u64, command: String, command_type: u32, sequence_num: Option<u32>) {
-        if let Err(e) = self.channel.send(DbCommand::InsertValidatorCommand(validator_or_initiator_id, command, command_type, sequence_num)).await {
+        if let Err(e) = self.channel.send(DbCommand::InsertContractCommand(validator_or_initiator_id, command, command_type, sequence_num)).await {
             panic!("Failed to send insert validator command to store: {}", e);
         }
     }
 
-    pub async fn get_contract_command(&self) -> DbResult<(String, u32, u64)> {
+    pub async fn get_contract_command(&self) -> DbResult<(String, u32, u32)> {
         let (sender, receiver) = oneshot::channel();
-        if let Err(e) = self.channel.send(DbCommand::GetValidatorCommand(sender)).await {
+        if let Err(e) = self.channel.send(DbCommand::GetContractCommand(sender)).await {
             panic!("Failed to send get validator command to store: {}", e);
         }
         receiver.await.expect("Failed to receive reply to query initiator command from db")
+    }
+
+    pub async fn delete_contract_command(&self, id: u32) {
+        if let Err(e) = self.channel.send(DbCommand::DeleteContractCommand(id)).await {
+            panic!("Failed to send insert validator command to store: {}", e);
+        }
     }
 }
 
@@ -671,7 +681,7 @@ fn increase_va_sequence(conn: &Connection, validator_or_initiator_id: u64) -> Db
     Ok(sequence_num + 1)
 } 
 
-fn delete_command(conn: &Connection, id: u32) {
+fn delete_contract_command(conn: &Connection, id: u32) {
     if let Err(e) = conn.execute("delete from contract_commands where id = ?1", params![id]) {
         error!("Can't delete contract_commands, error: {} {}", e, id);
     }
@@ -697,7 +707,7 @@ fn insert_or_update_contract_command(conn: &Connection, validator_or_initiator_i
             //             if let Some(row) = rows.next().unwrap() {
             //                 let id: u32 = row.get(0).unwrap();
             //                 // delete the record
-            //                 delete_command(conn, id);
+            //                 delete_contract_command(conn, id);
             //                 println!("query {}{}", validator_or_initiator_id, id);
             //             } else {
             //                 if let Err(e) = conn.execute("insert into contract_commands(validator_or_initiator_id, sequence_num, command, command_type) values (?1, ?2, ?3, ?4)", params![validator_or_initiator_id.to_string(), sequence_num, command, command_type]) {
@@ -719,10 +729,10 @@ fn insert_or_update_contract_command(conn: &Connection, validator_or_initiator_i
     
 }
 
-fn get_contract_command(conn: &Connection) -> DbResult<(String, u32, u64)> {
+fn get_contract_command(conn: &Connection) -> DbResult<(String, u32, u32)> {
     let mut command: String = String::new();
     let mut sequence_num: u32 = 0;
-    let mut id: u64 = 0;
+    let mut id: u32 = 0;
     // select the validator by update_time, and select a command with smallest sequence_num
     match conn.prepare("select id, command, sequence_num from contract_commands where validator_or_initiator_id = (select validator_or_initiator_id from contract_commands order by update_time asc limit 1) order by sequence_num asc limit 1") {
         Ok(mut stmt) => {

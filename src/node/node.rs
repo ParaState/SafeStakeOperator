@@ -216,7 +216,8 @@ impl<T: EthSpec> Node<T> {
                             {
                                 Ok(_) => {}
                                 Err(e) => {
-                                    error!("Failed to add validator: {}", e);
+                                    error!("Failed to add validator: {}. Save validator information to database", e);
+                                    // save va information to database
                                 }
                             }
                         }
@@ -234,7 +235,7 @@ impl<T: EthSpec> Node<T> {
                             match activate_validator(node.clone(), validator).await {
                                 Ok(_) => {}
                                 Err(e) => {
-                                    error!("Failed to remove validator: {}", e);
+                                    error!("Failed to active validator: {}", e);
                                 }
                             }
                         }
@@ -315,7 +316,7 @@ impl<T: EthSpec> Node<T> {
                             {
                                 Ok(_) => {}
                                 Err(e) => {
-                                    error!("Failed to process minpool created: {}", e);
+                                    error!("Failed to process minpool ready: {}", e);
                                 }
                             }
                             let _ = initializer_store.write().await.remove(&initializer_id);
@@ -706,7 +707,7 @@ pub async fn start_initializer<T: EthSpec>(
 pub async fn minipool_deposit<T: EthSpec>(
     node: Arc<RwLock<Node<T>>>,
     initializer_id: u32,
-    validator_pk: [u8; 48],
+    validator_pk: Vec<u8>,
     operator_public_keys: OperatorPublicKeys,
     operator_ids: OperatorIds,
     operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,

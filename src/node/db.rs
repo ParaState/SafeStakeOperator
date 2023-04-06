@@ -31,6 +31,8 @@ pub enum DbCommand {
     DisableValidator(String),
     EnableValidator(String),
     ValidatorActive(String, oneshot::Sender<DbResult<bool>>),
+    InsertValidatorCommand(u64, String, u32, Option<u32>),
+    GetValidatorCommand(oneshot::Sender<DbResult<(String, u32, u64)>>)
 }
 
 #[derive(Clone)]
@@ -84,8 +86,25 @@ impl Database {
             CONSTRAINT initiator_select_operators_2 FOREIGN KEY (operator_id) REFERENCES operators(id) ON DELETE CASCADE
         )";
 
-        let create_failure_adding_vas_sql = "CREATE TABLE IF NOT EXISTS failure_validators(
-            
+        let create_contract_command_sql = "CREATE TABLE IF NOT EXISTS contract_commands(
+            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            validator_or_initiator_id CHARACTER(32) NOT NULL,
+            sequence_num INTEGER NOT NULL,
+            command VARCHAR NOT NULL,
+            command_type INTEGER NOT NULL,
+            update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )";
+
+        let create_update_time_trigger_sql = "CREATE TRIGGER IF NOT EXISTS update_time_trigger 
+            AFTER UPDATE ON contract_commands 
+            for each row
+            BEGIN 
+            update contract_commands set update_time = CURRENT_TIMESTAMP where id = NEW.id; 
+            END;";
+
+        let create_contract_cmd_sequence_sql = "CREATE TABLE IF NOT EXISTS contract_cmd_sequence(
+            validator_or_initiator_id CHARACTER(32) NOT NULL PRIMARY KEY,
+            sequence_num INTEGER NOT NULL
         )";
 
         conn.execute(create_operators_sql, [],)?;
@@ -93,6 +112,9 @@ impl Database {
         conn.execute(create_releation_sql, [],)?;
         conn.execute(create_initiator_sql,[])?;
         conn.execute(create_initiator_releation_sql, [])?;
+        conn.execute(create_contract_command_sql, [])?;
+        conn.execute(create_contract_cmd_sequence_sql, [])?;
+        conn.execute(create_update_time_trigger_sql, [])?;
         let (tx, mut rx) = channel(1000);
 
         tokio::spawn(async move {
@@ -157,6 +179,13 @@ impl Database {
                     }
                     DbCommand::ValidatorActive(public_key, sender) => {
                         let response = if_validator_active(&conn, public_key);
+                        let _ = sender.send(response);
+                    }
+                    DbCommand::InsertValidatorCommand(validator_id, command, command_type, sequence_num) => {
+                        insert_or_update_contract_command(&conn, validator_id, command, command_type, sequence_num);
+                    }
+                    DbCommand::GetValidatorCommand(sender) => {
+                        let response = get_contract_command(&conn);
                         let _ = sender.send(response);
                     }
                 }
@@ -277,14 +306,28 @@ impl Database {
 
     pub async fn disable_validator(&self, public_key: String) {
         if let Err(e) = self.channel.send(DbCommand::DisableValidator(public_key)).await {
-            panic!("Failed to send query validator owners command to store: {}", e);
+            panic!("Failed to send disable validator command to store: {}", e);
         }
     }
 
     pub async fn enable_validator(&self, public_key: String) {
         if let Err(e) = self.channel.send(DbCommand::EnableValidator(public_key)).await {
-            panic!("Failed to send query validator owners command to store: {}", e);
+            panic!("Failed to send enable validator command to store: {}", e);
         }
+    }
+
+    pub async fn insert_or_update_contract_command(&self, validator_or_initiator_id: u64, command: String, command_type: u32, sequence_num: Option<u32>) {
+        if let Err(e) = self.channel.send(DbCommand::InsertValidatorCommand(validator_or_initiator_id, command, command_type, sequence_num)).await {
+            panic!("Failed to send insert validator command to store: {}", e);
+        }
+    }
+
+    pub async fn get_contract_command(&self) -> DbResult<(String, u32, u64)> {
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self.channel.send(DbCommand::GetValidatorCommand(sender)).await {
+            panic!("Failed to send get validator command to store: {}", e);
+        }
+        receiver.await.expect("Failed to receive reply to query initiator command from db")
     }
 }
 
@@ -603,31 +646,121 @@ fn if_validator_active(conn: &Connection, public_key: String) -> DbResult<bool> 
     Ok(true)
 }
 
-#[test]
-fn test_database() {
-    let mut conn = Connection::open("./test.db").unwrap();
-    let create_validators_sql = "CREATE TABLE IF NOT EXISTS validators(
-        public_key CHARACTER(96) PRIMARY KEY,
-        id CHARACTER(32) NOT NULL, 
-        owner_address CHARACTER(40) NOT NULL,
-        active INTEGER DEFAULT 1 NOT NULL
-    )";
-    conn.execute(create_validators_sql, []).unwrap();
-    conn.execute("INSERT INTO validators(public_key, id, owner_address) values(?1, ?2, ?3)", params!["123123", (12222501569673719727 as u64).to_string(), "adasdasd"]).unwrap();
-    disable_validator(&conn, "123123".to_string());
-    match conn.prepare("select public_key, id, owner_address, active from validators where owner_address = (?)") {
+fn increase_va_sequence(conn: &Connection, validator_or_initiator_id: u64) -> DbResult<u32> {
+    let mut sequence_num: u32 = 0;
+    match conn.prepare("select sequence_num from contract_cmd_sequence where validator_or_initiator_id = (?)") {
         Ok(mut stmt) => {
-            let mut rows = stmt.query(["adasdasd"]).unwrap();
-
+            let mut rows = stmt.query([validator_or_initiator_id.to_string()]).unwrap();
             while let Some(row) = rows.next().unwrap() {
-                let active: bool = row.get(3).unwrap();
-                let id: String = row.get(1).unwrap();
-                let id_u64: u64 = id.parse().unwrap();
-                println!("{} {}", active, id_u64);
+                sequence_num = row.get(0).unwrap();
             }
         }
         Err(e) => {
             error!("Can't prepare statement {}", e);
         }
-    };
+    }
+    if sequence_num == 0 {
+        if let Err(e) = conn.execute("insert into contract_cmd_sequence(validator_or_initiator_id, sequence_num) values (?1, ?2)", params![validator_or_initiator_id.to_string(), 1]) {
+            error!("Can't insert into contract_cmd_sequence, error: {} {}", e, validator_or_initiator_id);
+        }
+    } else {
+        if let Err(e) = conn.execute("update contract_cmd_sequence set sequence_num =?1 where validator_or_initiator_id = ?2", params![sequence_num + 1,validator_or_initiator_id.to_string()]) {
+            error!("Can't update contract_cmd_sequence, error: {} {}", e, validator_or_initiator_id);
+        }
+    }
+    Ok(sequence_num + 1)
+} 
+
+fn delete_command(conn: &Connection, id: u32) {
+    if let Err(e) = conn.execute("delete from contract_commands where id = ?1", params![id]) {
+        error!("Can't delete contract_commands, error: {} {}", e, id);
+    }
+}
+
+fn insert_or_update_contract_command(conn: &Connection, validator_or_initiator_id: u64, command: String, command_type: u32, sequence_num_op: Option<u32>) {
+    // if sequence_num_op has some value, don't need to insert, just update time
+    match sequence_num_op {
+        Some(seq) => { 
+            // happens when reprocess command failed
+            if let Err(e) = conn.execute("update contract_commands set validator_or_initiator_id = ?1 where (validator_or_initiator_id = ?1 and sequence_num = ?2)", params![validator_or_initiator_id, seq]) {
+                error!("Can't update contract_commands, error: {} {}", e, validator_or_initiator_id);
+            }
+        }
+        None => {
+            let sequence_num = increase_va_sequence(conn, validator_or_initiator_id).unwrap();
+            // if command_type == ContractCommandType::RemoveValidator as u32 {
+            //     // if command is remove validator, check if the database has a start validator command. if true, ignore this command and remove the previous start command
+            //     println!("remove {} {}", validator_or_initiator_id, sequence_num);
+            //     match conn.prepare("select id from contract_commands where (command_type = 1 and validator_or_initiator_id = ?1 and sequence_num < ?2)") {
+            //         Ok(mut stmt) => {
+            //             let mut rows = stmt.query(params![validator_or_initiator_id.to_string(), sequence_num]).unwrap();
+            //             if let Some(row) = rows.next().unwrap() {
+            //                 let id: u32 = row.get(0).unwrap();
+            //                 // delete the record
+            //                 delete_command(conn, id);
+            //                 println!("query {}{}", validator_or_initiator_id, id);
+            //             } else {
+            //                 if let Err(e) = conn.execute("insert into contract_commands(validator_or_initiator_id, sequence_num, command, command_type) values (?1, ?2, ?3, ?4)", params![validator_or_initiator_id.to_string(), sequence_num, command, command_type]) {
+            //                     error!("Can't insert into contract_commands, error: {} {}", e, validator_or_initiator_id);
+            //                 }
+            //             }
+            //         },
+            //         Err(e) => {
+            //             error!("Can't select contract_commands, error: {} {}", e, validator_or_initiator_id);
+            //         }
+            //     }
+            // } else {
+            if let Err(e) = conn.execute("insert into contract_commands(validator_or_initiator_id, sequence_num, command, command_type) values (?1, ?2, ?3, ?4)", params![validator_or_initiator_id.to_string(), sequence_num, command, command_type]) {
+                error!("Can't insert into contract_commands, error: {} {}", e, validator_or_initiator_id);
+            }
+            // }
+        }
+    }
+    
+}
+
+fn get_contract_command(conn: &Connection) -> DbResult<(String, u32, u64)> {
+    let mut command: String = String::new();
+    let mut sequence_num: u32 = 0;
+    let mut id: u64 = 0;
+    // select the validator by update_time, and select a command with smallest sequence_num
+    match conn.prepare("select id, command, sequence_num from contract_commands where validator_or_initiator_id = (select validator_or_initiator_id from contract_commands order by update_time asc limit 1) order by sequence_num asc limit 1") {
+        Ok(mut stmt) => {
+            let mut rows = stmt.query([]).unwrap();
+            while let Some(row) = rows.next().unwrap() {
+                id = row.get(0).unwrap();
+                command = row.get(1).unwrap();
+                sequence_num = row.get(2).unwrap();
+                if let Err(e) = conn.execute("update contract_commands set id = ?1 where id = ?1", params![id]) {
+                    error!("Can't update contract_commands, error: {} {}", e, id);
+                }
+            }
+        },
+        Err(e) => {
+            error!("Can't select command {}", e);
+        }
+    }
+    Ok((command, sequence_num, id))
+}
+
+#[tokio::test]
+async fn test_database() {
+    use tokio::time::{sleep, Duration};
+    let db = Database::new("./test.db").unwrap();
+    let ten_millis = Duration::from_secs(2);
+    db.insert_or_update_contract_command(1515, "add validator 1515".to_string(), 1, None).await;
+    sleep(ten_millis).await;
+    db.insert_or_update_contract_command(1513, "add validator 1513".to_string(), 1, None).await;
+    sleep(ten_millis).await;
+    db.insert_or_update_contract_command(1515, "remove validator 1515".to_string(), 2, None).await;
+    sleep(ten_millis).await;   
+    db.insert_or_update_contract_command(1515, "add validator 1515".to_string(), 1, None).await;
+
+    let (command1, seq1, id) = db.get_contract_command().await.unwrap();
+
+    println!("{} {}", command1, seq1);
+    sleep(ten_millis).await;
+    println!("{:?}", db.insert_or_update_contract_command(1515, "add validator 1515".to_string(), 1, Some(seq1)).await);
+
+    println!("{:?}", db.get_contract_command().await);
 }

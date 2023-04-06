@@ -5,18 +5,13 @@ use hscrypto::PublicKey;
 use hsutils::monitored_channel::MonitoredSender;
 use tokio::sync::RwLock;
 use serde_derive::{Deserialize as DeriveDeserialize, Serialize as DeriveSerialize};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use core::panic;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-
-// use async_trait::async_trait;
-// use hscrypto::PublicKey;
-// use hsutils::monitored_channel::MonitoredSender;
-// use serde_derive::{Deserialize as DeriveDeserialize, Serialize as DeriveSerialize};
-// use serde_json::Value;
 use store::Store;
 use tokio::sync::OnceCell;
 // use tokio::sync::RwLock;
@@ -82,8 +77,8 @@ impl ContractError {
     }
 }
 
-type ValidatorPublicKey = [u8; 48];
-type OperatorPublicKey = [u8; 33];
+type ValidatorPublicKey = Vec<u8>;
+type OperatorPublicKey = Vec<u8>;
 
 #[derive(Clone, Debug)]
 pub struct Operator {
@@ -93,7 +88,7 @@ pub struct Operator {
     pub public_key: OperatorPublicKey, // ecc256 public key
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Validator {
     pub id: u64,
     pub owner_address: Address,
@@ -103,7 +98,7 @@ pub struct Validator {
     pub active: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Initiator {
     pub id: u32,
     pub owner_address: Address,
@@ -117,7 +112,7 @@ pub type EncryptedSecretKeys = Vec<Vec<u8>>;
 pub type OperatorPublicKeys = Vec<Vec<u8>>;
 pub type OperatorIds = Vec<u32>;
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum ContractCommand {
     StartValidator(
         Validator,
@@ -131,6 +126,16 @@ pub enum ContractCommand {
     StartInitiator(Initiator, OperatorPublicKeys),
     MiniPoolCreated(u32, ValidatorPublicKey, OperatorPublicKeys, OperatorIds, Address),
     MiniPoolReady(u32, ValidatorPublicKey, OperatorPublicKeys, OperatorIds, Address),
+}
+
+pub enum ContractCommandType {
+    StartValidator = 1, 
+    RemoveValidator,
+    ActivateValidator,
+    StopValidator,
+    StartInitiator,
+    MiniPoolCreated,
+    MiniPoolReady
 }
 
 #[async_trait]
@@ -1093,10 +1098,10 @@ pub async fn process_minipool_ready(
     match db.query_initiator(id).await {
         Ok(initiator_option) => match initiator_option {
             Some(initiator) => {
-                let _ = initiator
+                let validator_pk = initiator
                     .validator_pk
                     .ok_or(ContractError::DatabaseError)?;
-                let _ = initiator
+                let minipool_address = initiator
                     .minipool_address
                     .ok_or(ContractError::DatabaseError)?;
                 let (op_pks, op_ids) = db
@@ -1112,10 +1117,10 @@ pub async fn process_minipool_ready(
                     .collect();
                 let _ = sender.send(ContractCommand::MiniPoolReady(
                     id,
-                    initiator.validator_pk.unwrap(),
+                    validator_pk,
                     op_pks_bn,
                     op_ids,
-                    initiator.minipool_address.unwrap(),
+                    minipool_address,
                 )).await;
                 Ok(())
             }

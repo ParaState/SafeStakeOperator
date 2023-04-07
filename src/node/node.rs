@@ -9,11 +9,9 @@ use consensus::ConsensusReceiverHandler;
 use eth2_keystore::KeystoreBuilder;
 use hsconfig::{ConfigError, Secret};
 use hsconfig::Export as _;
-use hsutils::monitored_channel::{MonitoredChannel, MonitoredSender};
 use mempool::{MempoolReceiverHandler, TxReceiverHandler};
 use network::Receiver as NetworkReceiver;
 use slot_clock::SystemTimeSlotClock;
-use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
 use tokio::time::{Duration, sleep};
 use tracing::{error, info, warn};
@@ -25,7 +23,6 @@ use web3::types::H160;
 use crate::crypto::dkg::{DKGSemiHonest, SimpleDistributedSigner, DKGTrait};
 
 use crate::crypto::elgamal::{Ciphertext, Elgamal};
-use crate::DEFAULT_CHANNEL_CAPACITY;
 use crate::deposit::get_distributed_deposit;
 use crate::network::io_committee::{NetIOChannel, NetIOCommittee};
 use crate::node::config::{

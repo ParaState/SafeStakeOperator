@@ -129,7 +129,7 @@ impl Discovery {
                                     m.insert(public_key, IpAddr::V4(ip));
                                 };
                             },
-                            Discv5Event::SessionEstablished(enr,  addr) => {
+                            Discv5Event::SessionEstablished(enr,  _addr) => {
                                 info!("------Discv5Event::SessionEstablished,enr:{},base64 enr:{}", enr,enr.to_base64());
                                 info!("------A peer has established session: public key: {}, ip: {:?}", base64::encode(enr.public_key().encode()), enr.ip4());
                             },
@@ -146,7 +146,6 @@ impl Discovery {
                                 }
                             },
                             Discv5Event::TalkRequest(t_req) => info!("------Discv5Event::TalkRequest,TalkRequest:{:?}",t_req),
-                            _ => {}
                         };
                     }
                 }

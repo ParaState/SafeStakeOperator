@@ -872,19 +872,18 @@ mod tests {
     use bls::{Keypair, Signature, PublicKey};
     use std::net::SocketAddr;
     use std::collections::HashMap;
-    use crate::utils::blst_utils::{random_blst_scalar};
 
-    const t: usize = 3;
-    const ids: [u64; 4] = [1, 2, 3, 4];
+    const T: usize = 3;
+    const IDS: [u64; 4] = [1, 2, 3, 4];
 
     fn verify_dkg_results(results: HashMap<u64, (Keypair, PublicKey, HashMap<u64, PublicKey>)>) {
         // Verify master public keys
-        for i in 1..ids.len() {
-            assert_eq!(results[&ids[i]].1, results[&ids[0]].1, "Master public keys are not the same");
+        for i in 1..IDS.len() {
+            assert_eq!(results[&IDS[i]].1, results[&IDS[0]].1, "Master public keys are not the same");
         }
 
         // Sign something with the shared keys
-        let kps: Vec<Keypair> = ids.iter().map(|id| results[id].0.clone()).collect();
+        let kps: Vec<Keypair> = IDS.iter().map(|id| results[id].0.clone()).collect();
         let pks: Vec<&PublicKey> = kps.iter().map(|kp| &kp.pk).collect();
         let message = "hello world";
         let mut context = Context::new();
@@ -896,11 +895,11 @@ mod tests {
             sigs.push(kp.sk.sign(message));
         }
         let sigs_ref: Vec<&Signature> = sigs.iter().map(|s| s).collect();
-        let mut m_threshold = ThresholdSignature::new(t);
-        let agg_sig = m_threshold.threshold_aggregate(&sigs_ref[..], &pks[..], &ids[..], message).unwrap();
+        let m_threshold = ThresholdSignature::new(T);
+        let agg_sig = m_threshold.threshold_aggregate(&sigs_ref[..], &pks[..], &IDS[..], message).unwrap();
 
         // Verification with the master public key
-        let status1 = agg_sig.verify(&results[&ids[0]].1, message);
+        let status1 = agg_sig.verify(&results[&IDS[0]].1, message);
 
         assert!(status1, "Signature verification failed");
     }
@@ -908,9 +907,9 @@ mod tests {
     #[test]
     fn test_dkg() {
         // Use dkg to generate secret-shared keys
-        let io = &Arc::new(MemIOCommittee::new(ids.as_slice()));
-        let futs = ids.iter().map(|id| async move {
-            let mut dkg = DKGSemiHonest::new(*id, io.clone(), t);
+        let io = &Arc::new(MemIOCommittee::new(IDS.as_slice()));
+        let futs = IDS.iter().map(|id| async move {
+            let dkg = DKGSemiHonest::new(*id, io.clone(), T);
             let result = dkg.run().await;
             match result {
                 Ok(v) => Ok((*id, v)),
@@ -931,20 +930,20 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_dkg_net() {
-        let ports: Vec<u16> = ids.iter().map(|id| (25000 + *id) as u16).collect();
+        let ports: Vec<u16> = IDS.iter().map(|id| (25000 + *id) as u16).collect();
         let addrs: Vec<SocketAddr> = ports.iter().map(|port| SocketAddr::new("127.0.0.1".parse().unwrap(), *port)).collect();
 
         let ports_ref = &ports;
         let addrs_ref = &addrs;
         // Use dkg to generate secret-shared keys
-        let futs = (0..ids.len()).map(|i| async move {
-            let io = &Arc::new(NetIOCommittee::new(ids[i], ports_ref[i], ids.as_slice(), addrs_ref.as_slice()).await);
-            let mut dkg = DKGSemiHonest::new(ids[i], io.clone(), t);
+        let futs = (0..IDS.len()).map(|i| async move {
+            let io = &Arc::new(NetIOCommittee::new(IDS[i], ports_ref[i], IDS.as_slice(), addrs_ref.as_slice()).await);
+            let dkg = DKGSemiHonest::new(IDS[i], io.clone(), T);
             let result = dkg.run().await;
             match result {
-                Ok(v) => Ok((ids[i], v)),
+                Ok(v) => Ok((IDS[i], v)),
                 Err(e) => {
-                    println!("Error in Dkg of party {}: {:?}", ids[i], e);
+                    println!("Error in Dkg of party {}: {:?}", IDS[i], e);
                     Err(e)
                 }
             }
@@ -963,21 +962,21 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_dkg_secure_net() {
         println!("enter test_dkg_secure_net");
-        let ports: Vec<u16> = ids.iter().map(|id| (25000 + *id) as u16).collect();
+        let ports: Vec<u16> = IDS.iter().map(|id| (25000 + *id) as u16).collect();
         let addrs: Vec<SocketAddr> = ports.iter().map(|port| SocketAddr::new("127.0.0.1".parse().unwrap(), *port)).collect();
 
         let ports_ref = &ports;
         let addrs_ref = &addrs;
         // Use dkg to generate secret-shared keys
-        let futs = (0..ids.len()).map(|i| async move {
-            println!("Enter thread for party {}", ids[i]);
-            let io = &Arc::new(SecureNetIOCommittee::new(ids[i], ports_ref[i], ids.as_slice(), addrs_ref.as_slice()).await);
-            let mut dkg = DKGMalicious::new(ids[i], io.clone(), t);
+        let futs = (0..IDS.len()).map(|i| async move {
+            println!("Enter thread for party {}", IDS[i]);
+            let io = &Arc::new(SecureNetIOCommittee::new(IDS[i], ports_ref[i], IDS.as_slice(), addrs_ref.as_slice()).await);
+            let dkg = DKGMalicious::new(IDS[i], io.clone(), T);
             let result = dkg.run().await;
             match result {
-                Ok(v) => Ok((ids[i], v)),
+                Ok(v) => Ok((IDS[i], v)),
                 Err(e) => {
-                    println!("Error in Dkg of party {}: {:?}", ids[i], e);
+                    println!("Error in Dkg of party {}: {:?}", IDS[i], e);
                     Err(e)
                 }
             }
@@ -996,7 +995,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_dkg_sig_net() {
-        let ports: Vec<u16> = ids.iter().map(|id| (25000 + *id) as u16).collect();
+        let ports: Vec<u16> = IDS.iter().map(|id| (25000 + *id) as u16).collect();
         let addrs: Vec<SocketAddr> = ports.iter().map(|port| SocketAddr::new("127.0.0.1".parse().unwrap(), *port)).collect();
 
         let message = "hello world";
@@ -1007,13 +1006,13 @@ mod tests {
         let ports_ref = &ports;
         let addrs_ref = &addrs;
         // Use dkg to generate secret-shared keys
-        let futs = (0..ids.len()).map(|i| async move {
-            let io = &Arc::new(NetIOCommittee::new(ids[i], ports_ref[i], ids.as_slice(), addrs_ref.as_slice()).await);
-            let mut dkg = DKGSemiHonest::new(ids[i], io.clone(), t);
+        let futs = (0..IDS.len()).map(|i| async move {
+            let io = &Arc::new(NetIOCommittee::new(IDS[i], ports_ref[i], IDS.as_slice(), addrs_ref.as_slice()).await);
+            let dkg = DKGSemiHonest::new(IDS[i], io.clone(), T);
             let (kp, mpk, pks) = dkg.run().await?;
 
             // Sign with dkg result
-            let signer = SimpleDistributedSigner::new(ids[i], kp, mpk.clone(), pks, io.clone(), t);
+            let signer = SimpleDistributedSigner::new(IDS[i], kp, mpk.clone(), pks, io.clone(), T);
             let sig = signer.sign(message).await?;
             Ok::<(PublicKey, Signature), DvfError>((mpk, sig))
         });

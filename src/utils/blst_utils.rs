@@ -33,6 +33,7 @@ pub fn blst_scalar_to_bigint (s: &blst_scalar) -> BigInt {
     BigInt::from_bytes_le(Sign::Plus, &s.b)
 }
 
+#[allow(unused_assignments)]
 pub fn fixed_p1_generator() -> blst_p1 {
     let mut g = blst_p1::default();
     unsafe {

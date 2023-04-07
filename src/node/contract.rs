@@ -2,7 +2,6 @@ use super::db::Database;
 use super::utils::{convert_va_pk_to_u64, FromFile, ToFile};
 use async_trait::async_trait;
 use hscrypto::PublicKey;
-use hsutils::monitored_channel::MonitoredSender;
 use tokio::sync::RwLock;
 use serde_derive::{Deserialize as DeriveDeserialize, Serialize as DeriveSerialize};
 use serde::{Deserialize, Serialize};

@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 use dvf::validation::{OperatorCommittee};
 use dvf::validation::operator::{LocalOperator};
 use dvf::crypto::{ThresholdSignature};

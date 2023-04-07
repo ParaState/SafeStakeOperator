@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn test_commit() {
         let g = fixed_p1_generator();
-        let mut coeffs: Vec<BigInt> = vec![3.into(), 5.into(), 4.into(), 2.into()];
+        let coeffs: Vec<BigInt> = vec![3.into(), 5.into(), 4.into(), 2.into()];
         let poly = Polynomial::new(coeffs);
         let committed_poly = poly.commit(&g);
 
@@ -192,9 +192,10 @@ mod tests {
         assert_eq!(y, y_, "Verification failed");
     }
 
+    #[test]
     fn test_commit2() {
         let g = fixed_p1_generator();
-        let mut coeffs: Vec<BigInt> = vec![
+        let coeffs: Vec<BigInt> = vec![
             blst_scalar_to_bigint(&random_blst_scalar()), 
             blst_scalar_to_bigint(&random_blst_scalar()), 
             blst_scalar_to_bigint(&random_blst_scalar()), 

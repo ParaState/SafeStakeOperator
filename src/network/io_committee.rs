@@ -16,7 +16,7 @@ use tokio::task::JoinHandle;
 use tokio::sync::{Notify};
 use tokio::time::{sleep, Duration};
 use std::cmp::min;
-use sha256::{digest_bytes};
+use sha256::{digest};
 use aes_gcm::{Aes128Gcm, Key, Nonce};
 use aes_gcm::aead::{Aead, NewAead};
 use rand::Rng;
@@ -283,8 +283,8 @@ impl IOCommittee<MemIOChannel> for MemIOCommittee {
             .unwrap()
     }
 
-    async fn broadcast(&self, message: Bytes) {
-
+    async fn broadcast(&self, _message: Bytes) {
+        
     }
 }
 
@@ -379,7 +379,6 @@ impl IOCommittee<NetIOChannel> for NetIOCommittee {
 /// Secure network IO committee
 pub struct SecureNetIOCommittee {
     party: u64,
-    sk: blst_scalar,
     ids: Vec<u64>,
     channels: HashMap<u64, SecureNetIOChannel>,
 }
@@ -416,7 +415,6 @@ impl SecureNetIOCommittee {
         }
         Self {
             party,
-            sk,
             ids: ids.to_vec(),
             channels: sec_channels,
         }
@@ -455,7 +453,7 @@ impl IOChannel for SecureNetIOChannel {
 
 impl PrivateChannel for SecureNetIOChannel {
     fn encrypt_with_key(message: Bytes, key: Bytes) -> Bytes {
-        let secret = hex::decode(digest_bytes(key.as_ref())).unwrap(); 
+        let secret = hex::decode(digest(key.as_ref())).unwrap(); 
 
         let key = Key::from_slice(&secret.as_slice()[0..16]); 
         let cipher = Aes128Gcm::new(key);
@@ -478,7 +476,7 @@ impl PrivateChannel for SecureNetIOChannel {
     }
 
     fn decrypt_with_key(enc_msg: Bytes, key: Bytes) -> Bytes {
-        let secret = hex::decode(digest_bytes(key.as_ref())).unwrap(); 
+        let secret = hex::decode(digest(key.as_ref())).unwrap(); 
 
         let key = Key::from_slice(&secret.as_slice()[0..16]); 
         let cipher = Aes128Gcm::new(key);
@@ -558,28 +556,26 @@ mod tests {
     use super::*;
     use crate::network::io_committee::{SecureNetIOCommittee};
     use futures::future::join_all;
-    use crate::utils::blst_utils::{random_blst_scalar};
 
-    const t: usize = 3;
-    const ids: [u64; 4] = [1, 2, 3, 4];
+    const IDS: [u64; 4] = [1, 2, 3, 4];
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_secure_net_committee() {
-        let ports: Vec<u16> = ids.iter().map(|id| (25000 + *id) as u16).collect();
+        let ports: Vec<u16> = IDS.iter().map(|id| (25000 + *id) as u16).collect();
         let addrs: Vec<SocketAddr> = ports.iter().map(|port| SocketAddr::new("127.0.0.1".parse().unwrap(), *port)).collect();
 
         let ports_ref = &ports;
         let addrs_ref = &addrs;
-        let futs = (0..ids.len()).map(|i| async move {
-            let io = &Arc::new(SecureNetIOCommittee::new(ids[i], ports_ref[i], ids.as_slice(), addrs_ref.as_slice()).await);
-            io.broadcast(Bytes::copy_from_slice(format!("hello from {}", ids[i]).as_bytes())).await;
-            for j in 0..ids.len() {
+        let futs = (0..IDS.len()).map(|i| async move {
+            let io = &Arc::new(SecureNetIOCommittee::new(IDS[i], ports_ref[i], IDS.as_slice(), addrs_ref.as_slice()).await);
+            io.broadcast(Bytes::copy_from_slice(format!("hello from {}", IDS[i]).as_bytes())).await;
+            for j in 0..IDS.len() {
                 if i == j {
                     continue;
                 }
-                let recv_channel = io.channel(ids[j], ids[i]);
+                let recv_channel = io.channel(IDS[j], IDS[i]);
                 let msg = recv_channel.recv().await;
-                println!("Party {} receive: {}", ids[i], String::from_utf8(msg.to_vec()).unwrap());
+                println!("Party {} receive: {}", IDS[i], String::from_utf8(msg.to_vec()).unwrap());
             }
             println!("all messages received");
         });

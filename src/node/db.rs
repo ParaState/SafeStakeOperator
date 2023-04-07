@@ -766,7 +766,7 @@ async fn test_database() {
     sleep(ten_millis).await;   
     db.insert_or_update_contract_command(1515, "add validator 1515".to_string(), 1, None).await;
 
-    let (command1, seq1, id) = db.get_contract_command().await.unwrap();
+    let (command1, seq1, _id) = db.get_contract_command().await.unwrap();
 
     println!("{} {}", command1, seq1);
     sleep(ten_millis).await;

@@ -1,7 +1,7 @@
 use tokio::sync::mpsc::{channel, Sender, Receiver};
 use tokio::sync::mpsc::error::SendError;
 use tokio::time::{sleep, Duration};
-use log::{info, debug, warn};
+use log::{warn};
 
 #[derive(Clone)]
 pub struct MonitoredSender<T> {
@@ -35,7 +35,7 @@ where T: Send + 'static {
         self.inner.send(msg).await
     }
 
-    async fn log(sender: Sender<T>, tag: String, level: String) {
+    async fn log(sender: Sender<T>, tag: String, _level: String) {
         loop {
             sleep(Duration::from_millis(60_000)).await;
             if sender.is_closed() {

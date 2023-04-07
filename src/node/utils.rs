@@ -52,7 +52,7 @@ pub struct ValidatorPkRequest {
     #[serde(rename = "validatorPk")]
     pub validator_pk: String,
     #[serde(rename = "initializerId")]
-    pub initializer_id: u32,
+    pub initiator_id: u32,
     #[serde(rename = "initializerAddress")]
     pub initializer_address: String,
     pub operators: Vec<u64>,

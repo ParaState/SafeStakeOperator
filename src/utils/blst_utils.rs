@@ -1,4 +1,4 @@
-use blst::{blst_scalar, blst_p1, blst_p1_affine, blst_p2, blst_p2_affine};
+use blst::{blst_scalar, blst_p1, blst_p1_affine};
 use num_bigint::{BigInt, Sign};
 use bytes::{Bytes, BytesMut};
 use bls::{PUBLIC_KEY_BYTES_LEN, SecretKey as WrapSecretKey, PublicKey as WrapPublicKey};

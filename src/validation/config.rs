@@ -4,7 +4,7 @@ use crate::validation::{http_api, http_metrics};
 use clap::ArgMatches;
 use clap_utils::{parse_optional, parse_required};
 use directory::{
-    get_network_dir, DEFAULT_HARDCODED_NETWORK, DEFAULT_ROOT_DIR, DEFAULT_SECRET_DIR,
+    DEFAULT_HARDCODED_NETWORK, DEFAULT_ROOT_DIR, DEFAULT_SECRET_DIR,
     DEFAULT_VALIDATOR_DIR,
 };
 use directory::ensure_dir_exists;
@@ -18,7 +18,6 @@ use std::path::PathBuf;
 use types::{Address, GRAFFITI_BYTES_LEN};
 use crate::node::config::{NodeConfig,API_ADDRESS, BOOT_ENR};
 use crate::node::contract::{DEFAULT_TRANSPORT_URL, SELF_OPERATOR_ID, NETWORK_CONTRACT, REGISTRY_CONTRACT};
-use dvf_version::{ROOT_VERSION};
 use dvf_directory::{get_default_base_dir};
 
 pub const DEFAULT_BEACON_NODE: &str = "http://localhost:5052/";
@@ -133,7 +132,7 @@ impl Config {
         //     .map(|home| home.join(DEFAULT_ROOT_DIR))
         //     .unwrap_or_else(|| PathBuf::from("."));
 
-        let (mut validator_dir, mut secrets_dir) = (None, None);
+        let (validator_dir, secrets_dir) = (None, None);
         // if cli_args.value_of("datadir").is_some() {
         //     let base_dir: PathBuf = parse_required(cli_args, "datadir")?;
         //     validator_dir = Some(base_dir.join(DEFAULT_VALIDATOR_DIR));

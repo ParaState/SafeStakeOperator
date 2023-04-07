@@ -1,6 +1,5 @@
 use std::error::Error;
 use std::fmt;
-use std::net::SocketAddr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -19,16 +18,16 @@ use serde::{Deserialize, Serialize};
 use store::Store;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tracing::{debug, error, info, log, warn};
+use tracing::{error, info, warn};
 use types::{EthSpec, Keypair};
 
 use crate::DEFAULT_CHANNEL_CAPACITY;
 use crate::node::config::{invalid_addr, base_to_transaction_addr, base_to_mempool_addr,
-    base_to_consensus_addr, base_to_signature_addr, CONSENSUS_PORT_OFFSET, MEMPOOL_PORT_OFFSET, SIGNATURE_PORT_OFFSET, TRANSACTION_PORT_OFFSET};
+    base_to_consensus_addr, base_to_signature_addr};
 use crate::node::node::Node;
 use crate::utils::error::DvfError;
 use crate::validation::OperatorCommittee;
-use crate::validation::operator::{LocalOperator, TOperator};
+use crate::validation::operator::{LocalOperator};
 use crate::validation::operator_committee_definitions::OperatorCommitteeDefinition;
 
 #[derive(Serialize, Deserialize, Clone)]

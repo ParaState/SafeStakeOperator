@@ -17,16 +17,15 @@ use tokio::sync::{Notify};
 use tokio::time::{sleep, Duration};
 use std::cmp::min;
 use sha256::{digest_bytes};
-use aes_gcm::{Aes128Gcm, Key, Nonce, Error};
+use aes_gcm::{Aes128Gcm, Key, Nonce};
 use aes_gcm::aead::{Aead, NewAead};
 use rand::Rng;
 use crate::utils::blst_utils::{blst_sk_to_pk, 
     bytes_to_blst_p1, blst_p1_to_bytes, 
     blst_ecdh_shared_secret, blst_scalar_to_blst_sk,
-    blst_p1_to_pk, blst_p1_mult, random_blst_scalar};
+    blst_p1_to_pk, random_blst_scalar};
 use blst::{blst_scalar, blst_p1, BLST_ERROR};
 use blst::min_pk::{Signature};
-use bls::{INFINITY_SIGNATURE};
 
 pub const DST: &[u8] = b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
 

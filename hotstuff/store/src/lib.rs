@@ -113,7 +113,7 @@ impl Store {
                     }
                     StoreCommand::Exit(sender) => {
                         info!("Store receives exit signal");
-                        sender.send(());
+                        let _ = sender.send(());
                         break;
                     }
                 }
@@ -164,7 +164,7 @@ impl Store {
     }
 
     pub async fn notify_destroy(&self) {
-        let (sender, receiver) = oneshot::channel();
+        let (sender, _receiver) = oneshot::channel();
         if let Err(e) = self
             .channel
             .send(StoreCommand::NotifyDestroy(sender))
@@ -175,7 +175,7 @@ impl Store {
     }
 
     pub async fn exit(&self) {
-        let (sender, receiver) = oneshot::channel();
+        let (sender, _receiver) = oneshot::channel();
         if let Err(e) = self.channel.send(StoreCommand::Exit(sender)).await {
             error!("Failed to send Exit command to store: {}", e);
         }

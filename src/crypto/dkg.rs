@@ -1,8 +1,8 @@
 use crate::crypto::ThresholdSignature;
 use crate::crypto::define::{MODULUS};
 use std::ptr;
-use bls::{Hash256, Signature as WrapSignature, SecretKey as WrapSecretKey, PublicKey as WrapPublicKey, Keypair as WrapKeypair, PUBLIC_KEY_BYTES_LEN, SECRET_KEY_BYTES_LEN, SIGNATURE_BYTES_LEN};
-use blst::min_pk::{SecretKey, PublicKey, Signature};
+use bls::{Hash256, Signature as WrapSignature, SecretKey as WrapSecretKey, PublicKey as WrapPublicKey, Keypair as WrapKeypair, PUBLIC_KEY_BYTES_LEN, SECRET_KEY_BYTES_LEN};
+use blst::min_pk::{Signature};
 use num_bigint::{BigInt, Sign};
 use num_bigint::ToBigInt;
 use crate::math::bigint_ext::Ring;
@@ -17,8 +17,7 @@ use std::collections::HashMap;
 use crate::utils::blst_utils::*;
 use crate::math::polynomial::{Commitable, CommittedPoly, Polynomial};
 use serde_derive::{Serialize, Deserialize};
-use serde::{Serialize as SerializeTrait, Deserialize as DeserializeTrait, Serializer, Deserializer, 
-    ser::{SerializeStruct}};
+use serde::{Serialize as SerializeTrait, Deserialize as DeserializeTrait, Serializer, Deserializer};
 use async_trait::async_trait;
 
 pub struct PlainVssShare {
@@ -218,7 +217,6 @@ pub struct DKGSemiHonest<T, U> {
     party: u64,
     io: Arc<T>,
     threshold: usize,
-    h: blst_p1,
     _phantom: PhantomData<U>, // Allow to use generic type U when no concrete member is related to U
 }
 
@@ -228,13 +226,11 @@ where
     T: IOCommittee<U> {
 
     pub fn new(party: u64, io: Arc<T>, threshold: usize) -> Self {
-        let h = another_p1_generator();
 
         Self {
             party,
             io,
             threshold,
-            h,
             _phantom: PhantomData,
         }
     }
@@ -253,7 +249,7 @@ where
     async fn run(&self) -> Result<(WrapKeypair, WrapPublicKey, HashMap<u64, WrapPublicKey>), DvfError> {
         let mut threshold_sig = ThresholdSignature::new(self.threshold);
         let ids = self.io.ids();
-        let (kp, kps, poly) = threshold_sig.key_gen_with_poly(ids)?;
+        let (kp, kps, _poly) = threshold_sig.key_gen_with_poly(ids)?;
 
         // 0. Broadcast shares and commitments
         let kps_ref = &kps; // Take reference so that it can be used in async move
@@ -383,7 +379,6 @@ where
     pub async fn share_transmission(&self,
         kps: &HashMap<u64, WrapKeypair>,
         committed_poly: &CommittedPoly,
-        poly: &Polynomial<BigInt>,
     ) -> Result<HashMap<u64, VssSharePayload>, DvfError> {
 
         let mut futs: Vec<_> = Default::default();
@@ -583,7 +578,7 @@ where
 
     pub fn construct_group_key(&self, shares: &HashMap<u64, blst_scalar>) -> (blst_scalar, blst_p1) {
         let mut gsk = blst_scalar::default();
-        for (id, s) in shares.iter() {
+        for (_id, s) in shares.iter() {
             gsk = blst_scalar_add(&gsk, s);
         }
         let gpk = blst_sk_to_pk(&gsk);
@@ -713,8 +708,8 @@ where
     /// 2. Master public key
     /// 3. A hashmap from a party's ID to its shared public key
     async fn run(&self) -> Result<(WrapKeypair, WrapPublicKey, HashMap<u64, WrapPublicKey>), DvfError> {
-        let (kp, kps, poly, committed_poly) = self.share_generation()?;
-        let payloads: HashMap<u64, VssSharePayload> = self.share_transmission(&kps, &committed_poly, &poly).await?;
+        let (kp, kps, _poly, committed_poly) = self.share_generation()?;
+        let payloads: HashMap<u64, VssSharePayload> = self.share_transmission(&kps, &committed_poly).await?;
         let vrfy_result = self.share_verification(&payloads);
         let other_vrfy_results = self.exchange_verification_results(&vrfy_result).await;
 
@@ -746,7 +741,7 @@ where
             .await
             .into_iter()
             .filter(|(_, _, x)| *x)
-            .map(|(a, b, c)| (a, b))
+            .map(|(a, b, _c)| (a, b))
             .collect::<Vec<(u64, u64)>>();
         if valid_claims.len() > 0 {
             return Err(DvfError::InvalidDkgShare(valid_claims));

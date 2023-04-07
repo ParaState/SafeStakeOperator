@@ -16,7 +16,7 @@ use slot_clock::SystemTimeSlotClock;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
 use tokio::time::{Duration, sleep};
-use tracing::{debug, error, info, log, warn};
+use tracing::{error, info, warn};
 use types::EthSpec;
 use types::PublicKey;
 use validator_dir::insecure_keys::INSECURE_PASSWORD;
@@ -638,7 +638,7 @@ pub async fn start_initializer<T: EthSpec>(
 ) -> Result<(), String> {
     let node = node.read().await;
     let base_port = node.config.base_address.port();
-    let mut operator_ips: Vec<Option<SocketAddr>> =
+    let operator_ips: Vec<Option<SocketAddr>> =
         match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
             Ok(ips) => ips,
             Err(e) => {
@@ -656,7 +656,7 @@ pub async fn start_initializer<T: EthSpec>(
     if operator_ips.iter().any(|x| x.is_none()) {
         return Err("StartInitializer: Insufficient operators discovered for DKG".to_string());
     }
-    let operator_ips: Vec<SocketAddr> = operator_ips.iter().map(|mut x| {
+    let operator_ips: Vec<SocketAddr> = operator_ips.iter().map(|x| {
         SocketAddr::new(x.unwrap().ip(), base_port + DKG_PORT_OFFSET)
     }).collect();
 
@@ -716,7 +716,7 @@ pub async fn minipool_deposit<T: EthSpec>(
 ) -> Result<(), String> {
     let node = node.read().await;
     let base_port = node.config.base_address.port();
-    let mut operator_ips = match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
+    let operator_ips = match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
         Ok(ips) => ips,
         Err(e) => {
             error!("Some operators are not online, it's critical error, minipool exiting");
@@ -727,7 +727,7 @@ pub async fn minipool_deposit<T: EthSpec>(
     if operator_ips.iter().any(|x| x.is_none()) {
         return Err("MinipoolDeposit: Insufficient operators discovered for distributed signing".to_string());
     }
-    let operator_ips: Vec<SocketAddr> = operator_ips.iter().map(|mut x| {
+    let operator_ips: Vec<SocketAddr> = operator_ips.iter().map(|x| {
         SocketAddr::new(x.unwrap().ip(), base_port + DKG_PORT_OFFSET)
     }).collect();
 

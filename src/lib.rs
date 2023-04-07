@@ -1,5 +1,3 @@
-use std::net::{SocketAddr, IpAddr, Ipv4Addr};
-use lazy_static::lazy_static;
 
 #[macro_use]
 extern crate downcast_rs;

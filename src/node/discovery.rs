@@ -12,7 +12,7 @@ use discv5::{
 };
 use hsconfig::Secret;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, log, warn};
+use tracing::{error, info};
 
 use super::config::BOOT_SOCKETADDR;
 

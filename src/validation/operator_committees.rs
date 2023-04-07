@@ -2,7 +2,6 @@ use crate::validation::OperatorCommittee;
 use crate::validation::operator_committee_definitions::{OperatorCommitteeDefinition};
 use crate::validation::operator::RemoteOperator;
 use crate::DEFAULT_CHANNEL_CAPACITY;
-use crate::node::config::SIGNATURE_PORT_OFFSET;
 use std::sync::Arc;
 use tokio::sync::{RwLock};
 use types::Hash256;

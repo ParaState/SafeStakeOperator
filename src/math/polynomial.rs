@@ -101,7 +101,7 @@ impl CommittedPoly {
         let mut index = std::mem::size_of::<u32>();
         let size = u32::from_be_bytes(size_bytes.try_into().unwrap());
         let mut commitments = Vec::with_capacity(size as usize);
-        for i in 0..size {
+        for _i in 0..size {
             let ser_cm = &bytes[index..index+PUBLIC_KEY_BYTES_LEN];
             let mut cm = blst_p1::default();
             unsafe {

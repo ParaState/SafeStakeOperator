@@ -12,7 +12,7 @@ use serde_json::Value;
 use store::Store;
 use tokio::sync::OnceCell;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, log, warn};
+use tracing::{error, info, warn};
 use web3::{
     contract::{Contract as EthContract, Options},
     futures::TryStreamExt,

@@ -463,11 +463,11 @@ impl Contract {
         let db = self.db.clone();
         let operator_pk = self.operator_pk.clone();
         let operator_pk_base64 = base64::encode(&operator_pk);
-        let filter_builder = self.va_filter_builder.as_ref().unwrap().clone();
+        let va_filter_builder = self.va_filter_builder.as_ref().unwrap().clone();
+        let initiator_filter_builder = self.initiator_filter_builder.as_ref().unwrap().clone();
         let handlers = self.handlers.clone();
         let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
         tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(60 * 3)).await;
             if record.block_num == 0 {
                 get_block_number(&mut record).await;
                 update_record_file(&record, &record_path);
@@ -481,54 +481,70 @@ impl Contract {
                             Ok(_) => {},
                             Err(e) => {
                                 warn!("can't connect to websocket {}", e);
-                                tokio::time::sleep(Duration::from_secs(60 * 3)).await;
                                 continue;
                             }
                         }
                         let web3 = Web3::new(transport.unwrap());
-                        let filter = filter_builder
+                        let va_filter = va_filter_builder
                             .clone()
                             .from_block(BlockNumber::Number(U64::from(record.block_num)))
                             .limit(20)
                             .build();
-                        match web3.eth().logs(filter).await {
-                            Ok(logs) => {
-                                info!("Get {} logs.", &logs.len());
-                                if logs.len() == 0 {
-                                    get_block_number(&mut record).await;
-                                }
-                                for log in logs {
-                                    record.block_num = log
-                                        .block_number
-                                        .map_or_else(|| record.block_num, |bn| bn.as_u64()) + 1;
-                                    let topic = log.topics[0].clone();
-                                    match handlers.read().await.get(&topic) {
-                                        Some(handler) => {
-                                            match handler
-                                                .process(
-                                                    log,
-                                                    &db,
-                                                    &operator_pk_base64,
-                                                    &config,
-                                                )
-                                                .await
-                                            {
-                                                Ok(_) => {}
-                                                Err(e) => {
-                                                    error!("error hapens, reason: {}", e.as_str());
-                                                }
-                                            }
-                                        }
-                                        None => {
-                                            error!("Can't find handler");
-                                        }
-                                    };
-                                }
-                                
-                            }
+                        let initiator_filter = initiator_filter_builder
+                            .clone()
+                            .from_block(BlockNumber::Number(U64::from(record.block_num)))
+                            .limit(20)
+                            .build(); 
+                        let mut all_logs: Vec<Log> = Vec::new();
+                        match web3.eth().logs(va_filter).await {
+                            Ok(mut logs) => {
+                                info!("Get {} va logs.", &logs.len());
+                                all_logs.append(&mut logs);
+                            },
                             Err(e) => {
                                 error!("{}, {}", ContractError::LogError.as_str(), e);
-                                continue;
+                            }
+                        }
+                        match web3.eth().logs(initiator_filter).await {
+                            Ok(mut logs) => {
+                                info!("Get {} initiator logs.", &logs.len());
+                                all_logs.append(&mut logs);
+                            },
+                            Err(e) => {
+                                error!("{}, {}", ContractError::LogError.as_str(), e);
+                            }
+                        }
+                        if all_logs.len() == 0 {
+                            record.block_num += 20;
+                        } else {
+                            all_logs.sort_by(|a, b| {
+                                a.block_number.unwrap().cmp(&b.block_number.unwrap())
+                            });
+                            for log in all_logs {
+                                record.block_num = log
+                                    .block_number.unwrap().as_u64() + 1;
+                                let topic = log.topics[0].clone();
+                                match handlers.read().await.get(&topic) {
+                                    Some(handler) => {
+                                        match handler
+                                            .process(
+                                                log,
+                                                &db,
+                                                &operator_pk_base64,
+                                                &config,
+                                            )
+                                            .await
+                                        {
+                                            Ok(_) => {}
+                                            Err(e) => {
+                                                error!("error hapens, reason: {}", e.as_str());
+                                            }
+                                        }
+                                    }
+                                    None => {
+                                        error!("Can't find handler");
+                                    }
+                                };
                             }
                         }
                         update_record_file(&record, &record_path);

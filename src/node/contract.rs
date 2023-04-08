@@ -515,7 +515,8 @@ impl Contract {
                             }
                         }
                         if all_logs.len() == 0 {
-                            record.block_num += 20;
+                            // record.block_num += 20;
+                            get_block_number(&mut record);
                         } else {
                             all_logs.sort_by(|a, b| {
                                 a.block_number.unwrap().cmp(&b.block_number.unwrap())

@@ -128,12 +128,6 @@ impl<T: EthSpec> Node<T> {
             secret.name, signature_address
         );
 
-        // let (tx_validator_command, rx_validator_command) = MonitoredChannel::new(
-        //     DEFAULT_CHANNEL_CAPACITY,
-        //     "contract-command".to_string(),
-        //     "info",
-        // );
-
         info!("Node {} successfully booted", secret.name);
         let base_port = config.base_address.port();
         let node = Self {

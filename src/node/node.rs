@@ -187,7 +187,7 @@ impl<T: EthSpec> Node<T> {
         tokio::spawn(async move {
             loop {
                 // 
-                let mut query_interval = tokio::time::interval(Duration::from_secs(10));
+                let mut query_interval = tokio::time::interval(Duration::from_secs(60));
                 tokio::select! {
                     _ = query_interval.tick() => {
                         match db.get_contract_command().await {
@@ -219,7 +219,7 @@ impl<T: EthSpec> Node<T> {
                                                 db.delete_contract_command(id).await;
                                             }
                                             Err(e) => {
-                                                error!("Failed to add validator: {}. Save validator information to database", e);
+                                                error!("Failed to add validator: {} {} {}", e, va_id, sequence_num);
                                                 // save va information to database
                                                 db.insert_or_update_contract_command(va_id, command, ContractCommandType::StartValidator as u32, Some(sequence_num)).await;
                                             }
@@ -233,7 +233,7 @@ impl<T: EthSpec> Node<T> {
                                                 db.delete_contract_command(id).await;
                                             }
                                             Err(e) => {
-                                                error!("Failed to remove validator: {}", e);
+                                                error!("Failed to remove validator:  {} {} {}", e, va_id, sequence_num);
                                                 db.insert_or_update_contract_command(va_id, command, ContractCommandType::RemoveValidator as u32, Some(sequence_num)).await;
                                             }
                                         }
@@ -246,7 +246,7 @@ impl<T: EthSpec> Node<T> {
                                                 db.delete_contract_command(id).await;
                                             }
                                             Err(e) => {
-                                                error!("Failed to active validator: {}", e);
+                                                error!("Failed to active validator:  {} {} {}", e, va_id, sequence_num);
                                                 db.insert_or_update_contract_command(va_id, command, ContractCommandType::ActivateValidator as u32, Some(sequence_num)).await;
                                             }
                                         }
@@ -259,7 +259,7 @@ impl<T: EthSpec> Node<T> {
                                                 db.delete_contract_command(id).await;
                                             }
                                             Err(e) => {
-                                                error!("Failed to stop validator: {}", e);
+                                                error!("Failed to stop validator: {} {} {}", e, va_id, sequence_num);
                                                 db.insert_or_update_contract_command(va_id, command, ContractCommandType::StopValidator as u32, Some(sequence_num)).await;
                                             }
                                         }
@@ -278,7 +278,7 @@ impl<T: EthSpec> Node<T> {
                                         {
                                             Ok(_) => { db.delete_contract_command(id).await; }
                                             Err(e) => {
-                                                error!("Failed to start initiator: {}", e);
+                                                error!("Failed to start initiator:  {} {} {}", e, initiator_id, sequence_num);
                                                 db.insert_or_update_contract_command(initiator_id as u64, command, ContractCommandType::StartInitiator as u32, Some(sequence_num)).await;
                                             }
                                         }
@@ -306,7 +306,7 @@ impl<T: EthSpec> Node<T> {
                                         {
                                             Ok(_) => { db.delete_contract_command(id).await; }
                                             Err(e) => {
-                                                error!("Failed to process minpool created: {}", e);
+                                                error!("Failed to process minpool created: {} {} {}", e, initiator_id, sequence_num);
                                                 db.insert_or_update_contract_command(initiator_id as u64, command, ContractCommandType::MiniPoolCreated as u32, Some(sequence_num)).await;
                                             }
                                         }
@@ -337,7 +337,7 @@ impl<T: EthSpec> Node<T> {
                                                 let _ = initializer_store.write().await.remove(&initiator_id);
                                             }
                                             Err(e) => {
-                                                error!("Failed to process minpool ready: {}", e);
+                                                error!("Failed to process minpool ready: {} {} {}", e, initiator_id, sequence_num);
                                                 db.insert_or_update_contract_command(initiator_id as u64, command, ContractCommandType::MiniPoolReady as u32, Some(sequence_num)).await;
                                             }
                                         }
@@ -388,15 +388,6 @@ pub async fn add_validator<T: EthSpec>(
         match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
             Ok(address) => address,
             Err(e) => {
-                sleep(Duration::from_secs(60)).await;
-                // let _ = tx_validator_command
-                //     .send(ContractCommand::StartValidator(
-                //         validator,
-                //         operator_public_keys,
-                //         shared_public_keys,
-                //         encrypted_secret_keys,
-                //     ))
-                //     .await;
                 info!("Will process the validator again");
                 cleanup_validator_dir(&validator_dir, &validator_pk, validator_id)?;
                 cleanup_password_dir(&secret_dir, &validator_pk, validator_id)?;

@@ -472,7 +472,7 @@ impl Contract {
                 get_block_number(&mut record).await;
                 update_record_file(&record, &record_path);
             }
-            let mut query_interval = tokio::time::interval(Duration::from_secs(10));
+            let mut query_interval = tokio::time::interval(Duration::from_secs(60));
             loop {
                 tokio::select! {
                     _ = query_interval.tick() => {
@@ -515,7 +515,6 @@ impl Contract {
                             }
                         }
                         if all_logs.len() == 0 {
-                            // record.block_num += 20;
                             get_block_number(&mut record);
                         } else {
                             all_logs.sort_by(|a, b| {
@@ -937,7 +936,6 @@ pub async fn process_initiator_registration(
         .collect();
 
     let mut operator_pks: Vec<String> = Vec::new();
-    println!("operator ids {:?}", op_ids);
     for op_id in &op_ids {
         match db
             .query_operator_public_key_by_id(*op_id)

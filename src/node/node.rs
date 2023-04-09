@@ -35,7 +35,7 @@ use crate::node::discovery::Discovery;
 use crate::node::dvfcore::DvfSignatureReceiverHandler;
 use crate::node::contract::{
     Contract, ContractCommand, EncryptedSecretKeys, Initiator, OperatorPublicKeys,
-    SharedPublicKeys, Validator, SELF_OPERATOR_ID, OperatorIds, CONTRACT_DATABASE_FILE, ContractCommandType
+    SharedPublicKeys, Validator, SELF_OPERATOR_ID, OperatorIds, CONTRACT_DATABASE_FILE
 };
 use crate::node::db::Database;
 use crate::node::utils::{get_operator_ips, request_to_web_server, convert_address_to_withdraw_crendentials, ValidatorPkRequest, DepositRequest};
@@ -186,169 +186,165 @@ impl<T: EthSpec> Node<T> {
     ) {
         tokio::spawn(async move {
             loop {
-                // 
-                let mut query_interval = tokio::time::interval(Duration::from_secs(60));
-                tokio::select! {
-                    _ = query_interval.tick() => {
-                        match db.get_contract_command().await {
-                            Ok((command, sequence_num, id)) => {
-                                if id == 0 {
-                                    continue;
-                                }
-                                let cmd: ContractCommand = serde_json::from_str(&command).unwrap();
-                                match cmd {
-                                    ContractCommand::StartValidator(
-                                        validator,
-                                        operator_pks,
-                                        shared_pks,
-                                        encrypted_sks,
-                                    ) => {
-                                        let va_id = validator.id;
-                                        info!("StartValidator");
-                                        match add_validator(
-                                            node.clone(),
-                                            validator,
-                                            operator_pks,
-                                            shared_pks,
-                                            encrypted_sks,
-                                            operator_key_ip_map.clone(),
-                                        )
-                                            .await
-                                        {
-                                            Ok(_) => {
-                                                db.delete_contract_command(id).await;
-                                            }
-                                            Err(e) => {
-                                                error!("Failed to add validator: {} {} {}", e, va_id, sequence_num);
-                                                // save va information to database
-                                                db.insert_or_update_contract_command(va_id, command, ContractCommandType::StartValidator as u32, Some(sequence_num)).await;
-                                            }
-                                        }
+                let mut query_interval = tokio::time::interval(Duration::from_secs(12));
+                query_interval.tick().await;
+                match db.get_contract_command().await {
+                    Ok((command, id)) => {
+                        if id == 0 {
+                            continue;
+                        }
+                        let cmd: ContractCommand = serde_json::from_str(&command).unwrap();
+                        match cmd {
+                            ContractCommand::StartValidator(
+                                validator,
+                                operator_pks,
+                                shared_pks,
+                                encrypted_sks,
+                            ) => {
+                                let va_id = validator.id;
+                                info!("StartValidator");
+                                match add_validator(
+                                    node.clone(),
+                                    validator,
+                                    operator_pks,
+                                    shared_pks,
+                                    encrypted_sks,
+                                    operator_key_ip_map.clone(),
+                                )
+                                    .await
+                                {
+                                    Ok(_) => {
+                                        db.delete_contract_command(id).await;
                                     }
-                                    ContractCommand::RemoveValidator(validator) => {
-                                        info!("RemoveValidator");
-                                        let va_id = validator.id;
-                                        match remove_validator(node.clone(), validator).await {
-                                            Ok(_) => {
-                                                db.delete_contract_command(id).await;
-                                            }
-                                            Err(e) => {
-                                                error!("Failed to remove validator:  {} {} {}", e, va_id, sequence_num);
-                                                db.insert_or_update_contract_command(va_id, command, ContractCommandType::RemoveValidator as u32, Some(sequence_num)).await;
-                                            }
-                                        }
-                                    }
-                                    ContractCommand::ActivateValidator(validator) => {
-                                        info!("ActivateValidator");
-                                        let va_id = validator.id;
-                                        match activate_validator(node.clone(), validator).await {
-                                            Ok(_) => {
-                                                db.delete_contract_command(id).await;
-                                            }
-                                            Err(e) => {
-                                                error!("Failed to active validator:  {} {} {}", e, va_id, sequence_num);
-                                                db.insert_or_update_contract_command(va_id, command, ContractCommandType::ActivateValidator as u32, Some(sequence_num)).await;
-                                            }
-                                        }
-                                    }
-                                    ContractCommand::StopValidator(validator) => {
-                                        info!("StopValidator");
-                                        let va_id = validator.id;
-                                        match stop_validator(node.clone(), validator).await {
-                                            Ok(_) => {
-                                                db.delete_contract_command(id).await;
-                                            }
-                                            Err(e) => {
-                                                error!("Failed to stop validator: {} {} {}", e, va_id, sequence_num);
-                                                db.insert_or_update_contract_command(va_id, command, ContractCommandType::StopValidator as u32, Some(sequence_num)).await;
-                                            }
-                                        }
-                                    }
-                                    ContractCommand::StartInitiator(initiator, operator_pks) => {
-                                        info!("StartInitiator");
-                                        let initiator_id = initiator.id;
-                                        match start_initializer(
-                                            node.clone(),
-                                            initiator,
-                                            operator_pks,
-                                            operator_key_ip_map.clone(),
-                                            initializer_store.clone(),
-                                        )
-                                            .await
-                                        {
-                                            Ok(_) => { db.delete_contract_command(id).await; }
-                                            Err(e) => {
-                                                error!("Failed to start initiator:  {} {} {}", e, initiator_id, sequence_num);
-                                                db.insert_or_update_contract_command(initiator_id as u64, command, ContractCommandType::StartInitiator as u32, Some(sequence_num)).await;
-                                            }
-                                        }
-                                    }
-                                    ContractCommand::MiniPoolCreated(
-                                        initiator_id,
-                                        validator_pk,
-                                        op_pks,
-                                        op_ids,
-                                        minipool_address,
-                                    ) => {
-                                        info!("MiniPoolCreated");
-                                        match minipool_deposit(
-                                            node.clone(),
-                                            initiator_id,
-                                            validator_pk,
-                                            op_pks,
-                                            op_ids,
-                                            operator_key_ip_map.clone(),
-                                            minipool_address,
-                                            initializer_store.clone(),
-                                            8,
-                                        )
-                                            .await
-                                        {
-                                            Ok(_) => { db.delete_contract_command(id).await; }
-                                            Err(e) => {
-                                                error!("Failed to process minpool created: {} {} {}", e, initiator_id, sequence_num);
-                                                db.insert_or_update_contract_command(initiator_id as u64, command, ContractCommandType::MiniPoolCreated as u32, Some(sequence_num)).await;
-                                            }
-                                        }
-                                    }
-                                    ContractCommand::MiniPoolReady(
-                                        initiator_id,
-                                        validator_pk,
-                                        op_pks,
-                                        op_ids,
-                                        minipool_address,
-                                    ) => {
-                                        info!("MiniPoolReady");
-                                        match minipool_deposit(
-                                            node.clone(),
-                                            initiator_id,
-                                            validator_pk,
-                                            op_pks,
-                                            op_ids,
-                                            operator_key_ip_map.clone(),
-                                            minipool_address,
-                                            initializer_store.clone(),
-                                            24,
-                                        )
-                                            .await
-                                        {
-                                            Ok(_) => { 
-                                                db.delete_contract_command(id).await; 
-                                                let _ = initializer_store.write().await.remove(&initiator_id);
-                                            }
-                                            Err(e) => {
-                                                error!("Failed to process minpool ready: {} {} {}", e, initiator_id, sequence_num);
-                                                db.insert_or_update_contract_command(initiator_id as u64, command, ContractCommandType::MiniPoolReady as u32, Some(sequence_num)).await;
-                                            }
-                                        }
-                                        
+                                    Err(e) => {
+                                        error!("Failed to add validator: {} {}", e, va_id);
+                                        // save va information to database
+                                        db.updatetime_contract_command(id).await;
                                     }
                                 }
-                            },
-                            Err(e) => {
-                                error!("error happens when get contract command {}", e);
+                            }
+                            ContractCommand::RemoveValidator(validator) => {
+                                info!("RemoveValidator");
+                                let va_id = validator.id;
+                                match remove_validator(node.clone(), validator).await {
+                                    Ok(_) => {
+                                        db.delete_contract_command(id).await;
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to remove validator:  {} {}", e, va_id);
+                                        db.updatetime_contract_command(id).await;
+                                    }
+                                }
+                            }
+                            ContractCommand::ActivateValidator(validator) => {
+                                info!("ActivateValidator");
+                                let va_id = validator.id;
+                                match activate_validator(node.clone(), validator).await {
+                                    Ok(_) => {
+                                        db.delete_contract_command(id).await;
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to active validator:  {} {}", e, va_id);
+                                        db.updatetime_contract_command(id).await;
+                                    }
+                                }
+                            }
+                            ContractCommand::StopValidator(validator) => {
+                                info!("StopValidator");
+                                let va_id = validator.id;
+                                match stop_validator(node.clone(), validator).await {
+                                    Ok(_) => {
+                                        db.delete_contract_command(id).await;
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to stop validator: {} {}", e, va_id);
+                                        db.updatetime_contract_command(id).await;
+                                    }
+                                }
+                            }
+                            ContractCommand::StartInitiator(initiator, operator_pks) => {
+                                info!("StartInitiator");
+                                let initiator_id = initiator.id;
+                                match start_initializer(
+                                    node.clone(),
+                                    initiator,
+                                    operator_pks,
+                                    operator_key_ip_map.clone(),
+                                    initializer_store.clone(),
+                                )
+                                    .await
+                                {
+                                    Ok(_) => { db.delete_contract_command(id).await; }
+                                    Err(e) => {
+                                        error!("Failed to start initiator:  {} {}", e, initiator_id);
+                                        db.updatetime_contract_command(id).await;
+                                    }
+                                }
+                            }
+                            ContractCommand::MiniPoolCreated(
+                                initiator_id,
+                                validator_pk,
+                                op_pks,
+                                op_ids,
+                                minipool_address,
+                            ) => {
+                                info!("MiniPoolCreated");
+                                match minipool_deposit(
+                                    node.clone(),
+                                    initiator_id,
+                                    validator_pk,
+                                    op_pks,
+                                    op_ids,
+                                    operator_key_ip_map.clone(),
+                                    minipool_address,
+                                    initializer_store.clone(),
+                                    8,
+                                )
+                                    .await
+                                {
+                                    Ok(_) => { db.delete_contract_command(id).await; }
+                                    Err(e) => {
+                                        error!("Failed to process minpool created: {} {}", e, initiator_id);
+                                        db.updatetime_contract_command(id).await;
+                                    }
+                                }
+                            }
+                            ContractCommand::MiniPoolReady(
+                                initiator_id,
+                                validator_pk,
+                                op_pks,
+                                op_ids,
+                                minipool_address,
+                            ) => {
+                                info!("MiniPoolReady");
+                                match minipool_deposit(
+                                    node.clone(),
+                                    initiator_id,
+                                    validator_pk,
+                                    op_pks,
+                                    op_ids,
+                                    operator_key_ip_map.clone(),
+                                    minipool_address,
+                                    initializer_store.clone(),
+                                    24,
+                                )
+                                    .await
+                                {
+                                    Ok(_) => { 
+                                        db.delete_contract_command(id).await; 
+                                        let _ = initializer_store.write().await.remove(&initiator_id);
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to process minpool ready: {} {}", e, initiator_id);
+                                        db.updatetime_contract_command(id).await;
+                                    }
+                                }
+                                
                             }
                         }
+                    },
+                    Err(e) => {
+                        error!("error happens when get contract command {}", e);
                     }
                 }
             }

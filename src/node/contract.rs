@@ -125,16 +125,6 @@ pub enum ContractCommand {
     MiniPoolReady(u32, ValidatorPublicKey, OperatorPublicKeys, OperatorIds, Address),
 }
 
-pub enum ContractCommandType {
-    StartValidator = 1, 
-    RemoveValidator,
-    ActivateValidator,
-    StopValidator,
-    StartInitiator,
-    MiniPoolCreated,
-    MiniPoolReady
-}
-
 #[async_trait]
 pub trait TopicHandler: Send + Sync + 'static {
     async fn process(
@@ -397,58 +387,55 @@ impl Contract {
         tokio::spawn(async move {
             let mut query_interval = tokio::time::interval(Duration::from_secs(3600 * 6));
             loop {
-                tokio::select! {
-                    _ = query_interval.tick() => {
-                        match db.query_all_validator_address().await {
-                            Ok(owners) => {
-                                for owner in owners {
-                                    match check_account(&config, owner).await {
-                                        Ok(t) => {
-                                            if t {
-                                                // stop validators releated to the block
-                                                match db.query_validator_by_address(owner).await {
-                                                    Ok(validators) => { 
-                                                        for va in validators {
-                                                            if va.active {
-                                                                db.disable_validator(hex::encode(&va.public_key)).await;
-                                                                let va_id = va.id;
-                                                                let cmd = ContractCommand::StopValidator(va);
-                                                                db.insert_or_update_contract_command(va_id, serde_json::to_string(&cmd).unwrap() , ContractCommandType::StopValidator as u32, None).await;
-                                                            }
-                                                        }
-                                                    },
-                                                    Err(e) => {
-                                                        error!("query validator releated to the address failed {:?}", e);
+                query_interval.tick().await;
+                match db.query_all_validator_address().await {
+                    Ok(owners) => {
+                        for owner in owners {
+                            match check_account(&config, owner).await {
+                                Ok(t) => {
+                                    if t {
+                                        // stop validators releated to the block
+                                        match db.query_validator_by_address(owner).await {
+                                            Ok(validators) => { 
+                                                for va in validators {
+                                                    if va.active {
+                                                        db.disable_validator(hex::encode(&va.public_key)).await;
+                                                        let va_id = va.id;
+                                                        let cmd = ContractCommand::StopValidator(va);
+                                                        db.insert_contract_command(va_id, serde_json::to_string(&cmd).unwrap()).await;
                                                     }
                                                 }
-                                            } else {
-                                                match db.query_validator_by_address(owner).await {
-                                                    Ok(validators) => { 
-                                                        for va in validators {
-                                                            if !va.active {
-                                                                db.disable_validator(hex::encode(&va.public_key)).await;
-                                                                let va_id = va.id;
-                                                                let cmd = ContractCommand::ActivateValidator(va);
-                                                                db.insert_or_update_contract_command(va_id, serde_json::to_string(&cmd).unwrap() , ContractCommandType::ActivateValidator as u32, None).await;
-                                                            }
-                                                        }
-                                                    },
-                                                    Err(e) => {
-                                                        error!("query validator releated to the address failed {:?}", e);
-                                                    }
-                                                }
+                                            },
+                                            Err(e) => {
+                                                error!("query validator releated to the address failed {:?}", e);
                                             }
-                                        },
-                                        Err(e) => {
-                                            error!("check account failed {}", e.as_str());
+                                        }
+                                    } else {
+                                        match db.query_validator_by_address(owner).await {
+                                            Ok(validators) => { 
+                                                for va in validators {
+                                                    if !va.active {
+                                                        db.disable_validator(hex::encode(&va.public_key)).await;
+                                                        let va_id = va.id;
+                                                        let cmd = ContractCommand::ActivateValidator(va);
+                                                        db.insert_contract_command(va_id, serde_json::to_string(&cmd).unwrap()).await;
+                                                    }
+                                                }
+                                            },
+                                            Err(e) => {
+                                                error!("query validator releated to the address failed {:?}", e);
+                                            }
                                         }
                                     }
+                                },
+                                Err(e) => {
+                                    error!("check account failed {}", e.as_str());
                                 }
-                            },
-                            Err(e) => {
-                                error!("query validator address failed {:?}", e);
                             }
                         }
+                    },
+                    Err(e) => {
+                        error!("query validator address failed {:?}", e);
                     }
                 }
             }
@@ -474,82 +461,79 @@ impl Contract {
             }
             let mut query_interval = tokio::time::interval(Duration::from_secs(60));
             loop {
-                tokio::select! {
-                    _ = query_interval.tick() => {
-                        let transport = WebSocket::new(transport_url).await;
-                        match &transport {
-                            Ok(_) => {},
-                            Err(e) => {
-                                warn!("can't connect to websocket {}", e);
-                                continue;
-                            }
-                        }
-                        let web3 = Web3::new(transport.unwrap());
-                        let va_filter = va_filter_builder
-                            .clone()
-                            .from_block(BlockNumber::Number(U64::from(record.block_num)))
-                            .limit(20)
-                            .build();
-                        let initiator_filter = initiator_filter_builder
-                            .clone()
-                            .from_block(BlockNumber::Number(U64::from(record.block_num)))
-                            .limit(20)
-                            .build(); 
-                        let mut all_logs: Vec<Log> = Vec::new();
-                        match web3.eth().logs(va_filter).await {
-                            Ok(mut logs) => {
-                                info!("Get {} va logs.", &logs.len());
-                                all_logs.append(&mut logs);
-                            },
-                            Err(e) => {
-                                error!("{}, {}", ContractError::LogError.as_str(), e);
-                            }
-                        }
-                        match web3.eth().logs(initiator_filter).await {
-                            Ok(mut logs) => {
-                                info!("Get {} initiator logs.", &logs.len());
-                                all_logs.append(&mut logs);
-                            },
-                            Err(e) => {
-                                error!("{}, {}", ContractError::LogError.as_str(), e);
-                            }
-                        }
-                        if all_logs.len() == 0 {
-                            get_block_number(&mut record);
-                        } else {
-                            all_logs.sort_by(|a, b| {
-                                a.block_number.unwrap().cmp(&b.block_number.unwrap())
-                            });
-                            for log in all_logs {
-                                record.block_num = log
-                                    .block_number.unwrap().as_u64() + 1;
-                                let topic = log.topics[0].clone();
-                                match handlers.read().await.get(&topic) {
-                                    Some(handler) => {
-                                        match handler
-                                            .process(
-                                                log,
-                                                &db,
-                                                &operator_pk_base64,
-                                                &config,
-                                            )
-                                            .await
-                                        {
-                                            Ok(_) => {}
-                                            Err(e) => {
-                                                error!("error hapens, reason: {}", e.as_str());
-                                            }
-                                        }
-                                    }
-                                    None => {
-                                        error!("Can't find handler");
-                                    }
-                                };
-                            }
-                        }
-                        update_record_file(&record, &record_path);
+                query_interval.tick().await;
+                let transport = WebSocket::new(transport_url).await;
+                match &transport {
+                    Ok(_) => {},
+                    Err(e) => {
+                        warn!("can't connect to websocket {}", e);
+                        continue;
                     }
                 }
+                let web3 = Web3::new(transport.unwrap());
+                let va_filter = va_filter_builder
+                    .clone()
+                    .from_block(BlockNumber::Number(U64::from(record.block_num)))
+                    .limit(20)
+                    .build();
+                let initiator_filter = initiator_filter_builder
+                    .clone()
+                    .from_block(BlockNumber::Number(U64::from(record.block_num)))
+                    .limit(20)
+                    .build(); 
+                let mut all_logs: Vec<Log> = Vec::new();
+                match web3.eth().logs(va_filter).await {
+                    Ok(mut logs) => {
+                        info!("Get {} va logs.", &logs.len());
+                        all_logs.append(&mut logs);
+                    },
+                    Err(e) => {
+                        error!("{}, {}", ContractError::LogError.as_str(), e);
+                    }
+                }
+                match web3.eth().logs(initiator_filter).await {
+                    Ok(mut logs) => {
+                        info!("Get {} initiator logs.", &logs.len());
+                        all_logs.append(&mut logs);
+                    },
+                    Err(e) => {
+                        error!("{}, {}", ContractError::LogError.as_str(), e);
+                    }
+                }
+                if all_logs.len() == 0 {
+                    get_block_number(&mut record).await;
+                } else {
+                    all_logs.sort_by(|a, b| {
+                        a.block_number.unwrap().cmp(&b.block_number.unwrap())
+                    });
+                    for log in all_logs {
+                        record.block_num = log
+                            .block_number.unwrap().as_u64() + 1;
+                        let topic = log.topics[0].clone();
+                        match handlers.read().await.get(&topic) {
+                            Some(handler) => {
+                                match handler
+                                    .process(
+                                        log,
+                                        &db,
+                                        &operator_pk_base64,
+                                        &config,
+                                    )
+                                    .await
+                                {
+                                    Ok(_) => {}
+                                    Err(e) => {
+                                        error!("error hapens, reason: {}", e.as_str());
+                                    }
+                                }
+                            }
+                            None => {
+                                error!("Can't find handler");
+                            }
+                        };
+                    }
+                }
+                update_record_file(&record, &record_path);
             }
         });
     }
@@ -815,7 +799,7 @@ pub async fn process_validator_registration(
                 op_pk_bn,
                 shared_pks,
                 encrypted_sks);
-        db.insert_or_update_contract_command(validator_id, serde_json::to_string(&cmd).unwrap() , ContractCommandType::StartInitiator as u32, None).await;
+        db.insert_contract_command(validator_id, serde_json::to_string(&cmd).unwrap()).await;
     }
     Ok(())
 }
@@ -873,7 +857,7 @@ pub async fn process_validator_removal(
             releated_operators: vec![],
             active: true,
         });
-    db.insert_or_update_contract_command(id, serde_json::to_string(&cmd).unwrap() , ContractCommandType::RemoveValidator as u32, None).await;
+    db.insert_contract_command(id, serde_json::to_string(&cmd).unwrap()).await;
     Ok(())
 }
 
@@ -967,7 +951,7 @@ pub async fn process_initiator_registration(
             .collect();
         db.insert_initiator(initiator.clone()).await;
         let cmd =  ContractCommand::StartInitiator(initiator, op_pk_bn);
-        db.insert_or_update_contract_command(id.into(), serde_json::to_string(&cmd).unwrap() , ContractCommandType::StartInitiator as u32, None).await;
+        db.insert_contract_command(id.into(), serde_json::to_string(&cmd).unwrap()).await;
     } else {
         info!("This node is not included in this initiator registration event. Continue.");
     }
@@ -1048,7 +1032,7 @@ pub async fn process_minipool_created(
                     op_ids,
                     minipool_address,
                 );
-                db.insert_or_update_contract_command(id.into(), serde_json::to_string(&cmd).unwrap() , ContractCommandType::MiniPoolCreated as u32, None).await;
+                db.insert_contract_command(id.into(), serde_json::to_string(&cmd).unwrap()).await;
             }
             Ok(())
         }
@@ -1114,7 +1098,7 @@ pub async fn process_minipool_ready(
                     op_ids,
                     minipool_address,
                 );
-                db.insert_or_update_contract_command(id.into(), serde_json::to_string(&cmd).unwrap() , ContractCommandType::MiniPoolReady as u32, None).await;
+                db.insert_contract_command(id.into(), serde_json::to_string(&cmd).unwrap()).await;
                 Ok(())
             }
             None => Ok(()),

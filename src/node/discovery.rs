@@ -4,6 +4,7 @@ use std::{
     net::{IpAddr, SocketAddr},
     time::Duration,
 };
+use std::error::Error;
 
 use discv5::enr::EnrPublicKey;
 use discv5::{
@@ -13,7 +14,17 @@ use discv5::{
 use hsconfig::Secret;
 use tokio::sync::RwLock;
 use tracing::{error, info};
-
+use futures::{future::Either, prelude::*, select};
+use libp2p::{
+    gossipsub, identity, mdns, noise,
+    swarm::NetworkBehaviour,
+    swarm::{SwarmBuilder, SwarmEvent},
+    tcp, yamux, PeerId, Swarm, Transport,
+};
+use tracing_subscriber::fmt::format;
+use crate::node::config::TOPIC_NODE_INFO;
+use crate::node::gossipsub_event::{gossipsub_listen, init_gossipsub, MyBehaviourEvent};
+use crate::utils::ip_util::get_public_ip;
 use super::config::BOOT_SOCKETADDR;
 
 pub struct Discovery {}
@@ -26,6 +37,16 @@ impl Discovery {
         secret: Secret,
         boot_enr: String,
     ) {
+    
+        let (local_peer_id, transport, mut gossipsub) = init_gossipsub();
+        // Create a Gossipsub topic
+        let topic = gossipsub::IdentTopic::new(TOPIC_NODE_INFO);
+        // subscribes to our topic
+        gossipsub.subscribe(&topic).expect(format!("subscribe topic:{} error",TOPIC_NODE_INFO).as_str());
+        info!("gossipsub subscribe topic {}", topic);
+    
+        let mut swarm = gossipsub_listen(local_peer_id, transport, gossipsub);
+        
         // let mut enr_key = CombinedKey::generate_secp256k1();
         let mut secret_key = secret.secret.0[..].to_vec();
         let enr_key = CombinedKey::secp256k1_from_bytes(&mut secret_key[..]).unwrap();
@@ -111,6 +132,14 @@ impl Discovery {
                                         m.insert(public_key, IpAddr::V4(ip));
                                     };
                                 };
+                                
+                                let curr_pub_ip=get_public_ip();
+                                info!("------curr_pub_ip:{}",curr_pub_ip);
+                                let str_socket_addr=[curr_pub_ip,udp_port.to_string()].join(":");
+                                // TODO
+                                swarm.behaviour_mut().gossipsub.publish(topic.clone(), str_socket_addr.as_bytes());
+                                info!("gossipsub publish topic: {},msg:{}", topic,str_socket_addr);
+                                
                             }
                         }
                     }
@@ -148,6 +177,34 @@ impl Discovery {
                             Discv5Event::TalkRequest(t_req) => info!("------Discv5Event::TalkRequest,TalkRequest:{:?}",t_req),
                         };
                     }
+                    
+                    event = swarm.select_next_some() => match event {
+                        SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
+                            for (peer_id, _multiaddr) in list {
+                                info!("mDNS discovered a new peer: {peer_id}");
+                                swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+                            }
+                        },
+                        SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
+                            for (peer_id, _multiaddr) in list {
+                                info!("mDNS discover peer has expired: {peer_id}");
+                                swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
+                            }
+                        },
+                        SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(gossipsub::Event::Message {
+                            propagation_source: peer_id,
+                            message_id: id,
+                            message,
+                        })) => info!(
+                                "Got message: '{}' with id: {id} from peer: {peer_id}",
+                                String::from_utf8_lossy(&message.data),
+                            ),
+                        SwarmEvent::NewListenAddr { address, .. } => {
+                            info!("------Local node is listening on {address}");
+                        }
+                        _ => {}
+                    }
+                    
                 }
             }
         });

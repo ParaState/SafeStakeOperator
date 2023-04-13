@@ -27,6 +27,7 @@ use libp2p::{
     swarm::{SwarmBuilder, SwarmEvent},
     tcp, yamux, PeerId, Swarm, Transport,
 };
+use dvf::node::config::TOPIC_NODE_INFO;
 use dvf::node::gossipsub_event::{gossipsub_listen, init_gossipsub,MyBehaviourEvent};
 
 pub const DEFAULT_SECRET_DIR: &str = "node_key.json";
@@ -76,7 +77,7 @@ async fn main() -> Result<(), Box<dyn Error>>{
     
     let (local_peer_id, transport, mut gossipsub) = init_gossipsub();
     // Create a Gossipsub topic
-    let topic = gossipsub::IdentTopic::new("test-net");
+    let topic = gossipsub::IdentTopic::new(TOPIC_NODE_INFO);
     // subscribes to our topic
     gossipsub.subscribe(&topic)?;
     info!("gossipsub subscribe topic {}", topic);
@@ -211,9 +212,11 @@ async fn main() -> Result<(), Box<dyn Error>>{
                         
                         let curr_pub_ip=dvf::utils::ip_util::get_public_ip();
                         info!("------curr_pub_ip:{}",curr_pub_ip);
-
-                        swarm.behaviour_mut().gossipsub.publish(topic.clone(), curr_pub_ip.as_bytes());
-                        info!("gossipsub publish topic: {},msg:{}", topic,curr_pub_ip);
+                        
+                        let str_socket_addr=[curr_pub_ip,port.to_string()].join(":");
+                        // TODO
+                        swarm.behaviour_mut().gossipsub.publish(topic.clone(), str_socket_addr.as_bytes());
+                        info!("gossipsub publish topic: {},msg:{}", topic,str_socket_addr);
                     }
                 }
             }
@@ -286,5 +289,22 @@ async fn main() -> Result<(), Box<dyn Error>>{
             }
             
         }
+    }
+}
+
+/// tracing_test https://docs.rs/tracing-test/latest/tracing_test/
+/// https://stackoverflow.com/questions/72884779/how-to-print-tracing-output-in-tests
+#[cfg(test)]
+mod tests {
+    use tracing::debug;
+    use tracing_test::traced_test;
+    
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+    
+    #[traced_test]
+    #[test]
+    fn test() {
+        println!("Testing")
     }
 }

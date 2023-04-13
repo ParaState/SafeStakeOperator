@@ -27,6 +27,7 @@ pub const COLLECT_PERFORMANCE_URL: &str = "collect_performance";
 pub const VALIDATOR_PK_URL: &str = "validator_pk";
 pub const PRESTAKE_SIGNATURE_URL: &str = "prestake_signature";
 pub const STAKE_SIGNATURE_URL: &str = "stake_signature";
+pub const TOPIC_NODE_INFO: &str = "dvf/topic_node_info";
 
 lazy_static!{
     // [Issue] SocketAddr::new is not yet a const fn in stable release.

@@ -14,13 +14,20 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use discv5::enr::EnrPublicKey;
 use discv5::{enr, enr::CombinedKey, Discv5, Discv5ConfigBuilder, Discv5Event};
-use futures::SinkExt;
+use futures::{future::Either, prelude::*, select};
 use hsconfig::Export as _;
 use hsconfig::Secret;
 use network::{MessageHandler, Receiver as NetworkReceiver, Writer as NetworkWriter};
 use store::Store;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, log};
+use libp2p::{
+    gossipsub, identity, mdns, noise,
+    swarm::NetworkBehaviour,
+    swarm::{SwarmBuilder, SwarmEvent},
+    tcp, yamux, PeerId, Swarm, Transport,
+};
+use dvf::node::gossipsub_event::{gossipsub_listen, init_gossipsub,MyBehaviourEvent};
 
 pub const DEFAULT_SECRET_DIR: &str = "node_key.json";
 pub const DEFAULT_STORE_DIR: &str = "boot_store";
@@ -63,10 +70,19 @@ impl MessageHandler for IpQueryReceiverHandler {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn Error>>{
     tracing_subscriber::fmt().json().init();
     log::info!("------dvf_root_node------");
-
+    
+    let (local_peer_id, transport, mut gossipsub) = init_gossipsub();
+    // Create a Gossipsub topic
+    let topic = gossipsub::IdentTopic::new("test-net");
+    // subscribes to our topic
+    gossipsub.subscribe(&topic)?;
+    info!("gossipsub subscribe topic {}", topic);
+    
+    let mut swarm = gossipsub_listen(local_peer_id, transport, gossipsub);
+    
     let network = std::env::args()
         .nth(1)
         .expect("ERRPR: there is no valid network argument");
@@ -141,7 +157,7 @@ async fn main() {
     let listen_addr = SocketAddr::new("0.0.0.0".parse().expect("valid ip"), port);
 
     // construct the discv5 server
-    let mut discv5 = Discv5::new(local_enr, enr_key, config).unwrap();
+    let mut discv5:Discv5 = Discv5::new(local_enr, enr_key, config).unwrap();
 
     // start the discv5 service
     discv5.start(listen_addr).await.unwrap();
@@ -192,6 +208,12 @@ async fn main() {
                                 None => { }
                             };
                         }
+                        
+                        let curr_pub_ip=dvf::utils::ip_util::get_public_ip();
+                        info!("------curr_pub_ip:{}",curr_pub_ip);
+
+                        swarm.behaviour_mut().gossipsub.publish(topic.clone(), curr_pub_ip.as_bytes());
+                        info!("gossipsub publish topic: {},msg:{}", topic,curr_pub_ip);
                     }
                 }
             }
@@ -235,6 +257,34 @@ async fn main() {
                     Discv5Event::TalkRequest(t_req) => info!("------Discv5Event::TalkRequest,TalkRequest:{:?}",t_req),
                 };
             }
+            
+            event = swarm.select_next_some() => match event {
+                SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
+                    for (peer_id, _multiaddr) in list {
+                        info!("mDNS discovered a new peer: {peer_id}");
+                        swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+                    }
+                },
+                SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
+                    for (peer_id, _multiaddr) in list {
+                        info!("mDNS discover peer has expired: {peer_id}");
+                        swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
+                    }
+                },
+                SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(gossipsub::Event::Message {
+                    propagation_source: peer_id,
+                    message_id: id,
+                    message,
+                })) => info!(
+                        "Got message: '{}' with id: {id} from peer: {peer_id}",
+                        String::from_utf8_lossy(&message.data),
+                    ),
+                SwarmEvent::NewListenAddr { address, .. } => {
+                    info!("------Local node is listening on {address}");
+                }
+                _ => {}
+            }
+            
         }
     }
 }

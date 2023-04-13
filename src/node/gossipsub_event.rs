@@ -13,6 +13,7 @@ use libp2p::{
 	tcp, yamux, PeerId, Swarm, Transport,
 };
 use libp2p_quic as quic;
+use tracing::info;
 
 // We create a custom network behaviour that combines Gossipsub and Mdns.
 #[derive(NetworkBehaviour)]
@@ -42,7 +43,7 @@ pub fn gossipsub_listen(
 		.listen_on("/ip4/0.0.0.0/tcp/0".parse().unwrap())
 		.unwrap();
 	
-	println!("pub/sub messages and they will be sent to connected peers using Gossipsub");
+	info!("pub/sub messages and they will be sent to connected peers using Gossipsub");
 	swarm
 }
 
@@ -50,7 +51,7 @@ pub fn init_gossipsub() -> (PeerId, Boxed<(PeerId, StreamMuxerBox)>, Behaviour) 
 	// Create a random PeerId
 	let id_keys = identity::Keypair::generate_ed25519();
 	let local_peer_id = PeerId::from(id_keys.public());
-	println!("Local peer id: {local_peer_id}");
+	info!("Local peer id: {local_peer_id}");
 	
 	// Set up an encrypted DNS-enabled TCP Transport over the Mplex protocol.
 	let tcp_transport = tcp::async_io::Transport::new(tcp::Config::default().nodelay(true))

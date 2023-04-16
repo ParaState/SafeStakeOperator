@@ -1,34 +1,35 @@
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::error::Error;
-use std::fs;
-use std::net::{IpAddr};
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::{
-    net::{Ipv4Addr, SocketAddr},
-    time::Duration,
-};
-use chrono::{Local, Utc};
 use async_trait::async_trait;
 use bytes::Bytes;
+use chrono::{Local, Utc};
 use discv5::enr::EnrPublicKey;
 use discv5::{enr, enr::CombinedKey, Discv5, Discv5ConfigBuilder, Discv5Event};
+use dvf::node::config::TOPIC_NODE_INFO;
+use dvf::node::gossipsub_event::{gossipsub_listen, init_gossipsub, MyBehaviourEvent, MyMessage};
+use dvf::utils::ip_util::get_public_ip;
 use futures::{future::Either, prelude::*, select};
 use hsconfig::Export as _;
 use hsconfig::Secret;
-use network::{MessageHandler, Receiver as NetworkReceiver, Writer as NetworkWriter};
-use store::Store;
-use tokio::sync::RwLock;
-use tracing::{debug, error, info, log};
 use libp2p::{
     gossipsub, identity, mdns, noise,
     swarm::NetworkBehaviour,
     swarm::{SwarmBuilder, SwarmEvent},
     tcp, yamux, PeerId, Swarm, Transport,
 };
-use dvf::node::config::TOPIC_NODE_INFO;
-use dvf::node::gossipsub_event::{gossipsub_listen, init_gossipsub,MyBehaviourEvent,MyMessage};
+use network::{MessageHandler, Receiver as NetworkReceiver, Writer as NetworkWriter};
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::error::Error;
+use std::fs;
+use std::net::IpAddr;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::{
+    net::{Ipv4Addr, SocketAddr},
+    time::Duration,
+};
+use store::Store;
+use tokio::sync::RwLock;
+use tracing::{debug, error, info, log};
 
 pub const DEFAULT_SECRET_DIR: &str = "node_key.json";
 pub const DEFAULT_STORE_DIR: &str = "boot_store";
@@ -71,19 +72,19 @@ impl MessageHandler for IpQueryReceiverHandler {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>>{
+async fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt().json().init();
     log::info!("------dvf_root_node------");
-    
+
     let (local_peer_id, transport, mut gossipsub) = init_gossipsub();
     // Create a Gossipsub topic
     let topic = gossipsub::IdentTopic::new(TOPIC_NODE_INFO);
     // subscribes to our topic
     gossipsub.subscribe(&topic)?;
     info!("gossipsub subscribe topic {}", topic);
-    
-    let mut swarm = gossipsub_listen(local_peer_id, transport, gossipsub,"9006".to_string());
-    
+
+    let mut swarm = gossipsub_listen(local_peer_id, transport, gossipsub, "9006".to_string());
+
     let network = std::env::args()
         .nth(1)
         .expect("ERRPR: there is no valid network argument");
@@ -151,20 +152,25 @@ async fn main() -> Result<(), Box<dyn Error>>{
         local_enr,
         local_enr.to_base64()
     );
-    
+
     let local_enr_pub_key = base64::encode(local_enr.clone().public_key().encode());
     info!("------local_enr_pub_key:{}", local_enr_pub_key);
 
     let config = Discv5ConfigBuilder::new().build();
 
+    let curr_pub_ip = get_public_ip();
     // the address to listen on
-    let listen_addr = SocketAddr::new("0.0.0.0".parse().expect("valid ip"), port);
+    let mut listen_addr = SocketAddr::new(curr_pub_ip.parse().expect("valid ip"), port);
 
     // construct the discv5 server
-    let mut discv5:Discv5 = Discv5::new(local_enr.clone(), enr_key, config).unwrap();
+    let mut discv5: Discv5 = Discv5::new(local_enr.clone(), enr_key, config).unwrap();
 
     // start the discv5 service
-    discv5.start(listen_addr).await.unwrap();
+    if let Err(e) = discv5.start(listen_addr).await {
+        error!("discv5.start in curr_pub_ip:{curr_pub_ip:?},error:{e:?}");
+        listen_addr = SocketAddr::new("0.0.0.0".parse().expect("valid ip"), port);
+        discv5.start(listen_addr).await;
+    };
 
     // construct a 60 second interval to search for new peers.
     let mut query_interval = tokio::time::interval(Duration::from_secs(60));
@@ -212,7 +218,7 @@ async fn main() -> Result<(), Box<dyn Error>>{
                                 None => { }
                             };
                         }
-                        
+
                         let curr_pub_ip=dvf::utils::ip_util::get_public_ip();
                         info!("------curr_pub_ip:{}",curr_pub_ip);
                         let msg = MyMessage{pub_key:local_enr_pub_key.clone(),addr:[curr_pub_ip,port.to_string()].join(":"),enr:local_enr.clone().to_base64(),desc:"".to_string(),timestamp_nanos_utc:Utc::now().timestamp_nanos(),timestamp_nanos_local:Local::now().timestamp_nanos()};
@@ -262,7 +268,7 @@ async fn main() -> Result<(), Box<dyn Error>>{
                     Discv5Event::TalkRequest(t_req) => info!("------Discv5Event::TalkRequest,TalkRequest:{:?}",t_req),
                 };
             }
-            
+
             event = swarm.select_next_some() => match event {
                 SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
                     for (peer_id, _multiaddr) in list {
@@ -289,7 +295,7 @@ async fn main() -> Result<(), Box<dyn Error>>{
                 }
                 _ => {}
             }
-            
+
         }
     }
 }
@@ -300,10 +306,10 @@ async fn main() -> Result<(), Box<dyn Error>>{
 mod tests {
     use tracing::debug;
     use tracing_test::traced_test;
-    
+
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
-    
+
     #[traced_test]
     #[test]
     fn test() {

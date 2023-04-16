@@ -1,31 +1,32 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::{
-    net::{IpAddr, SocketAddr},
-    time::Duration,
-};
-use std::error::Error;
+use super::config::BOOT_SOCKETADDR;
+use crate::node::config::TOPIC_NODE_INFO;
+use crate::node::gossipsub_event::{gossipsub_listen, init_gossipsub, MyBehaviourEvent, MyMessage};
+use crate::utils::ip_util::get_public_ip;
 use chrono::{Local, Utc};
 use discv5::enr::EnrPublicKey;
 use discv5::{
     enr::{CombinedKey, Enr},
     Discv5, Discv5ConfigBuilder, Discv5Event,
 };
-use hsconfig::Secret;
-use tokio::sync::RwLock;
-use tracing::{error, info};
 use futures::{future::Either, prelude::*, select};
+use hsconfig::Secret;
 use libp2p::{
     gossipsub, identity, mdns, noise,
     swarm::NetworkBehaviour,
     swarm::{SwarmBuilder, SwarmEvent},
     tcp, yamux, PeerId, Swarm, Transport,
 };
+use std::collections::HashMap;
+use std::error::Error;
+use std::sync::Arc;
+use std::{
+    net::{IpAddr, SocketAddr},
+    time::Duration,
+};
+use tokio::sync::RwLock;
+use tracing::{error, info};
 use tracing_subscriber::fmt::format;
-use crate::node::config::TOPIC_NODE_INFO;
-use crate::node::gossipsub_event::{gossipsub_listen, init_gossipsub, MyBehaviourEvent,MyMessage};
-use crate::utils::ip_util::get_public_ip;
-use super::config::BOOT_SOCKETADDR;
+use url::quirks::port;
 
 pub struct Discovery {}
 
@@ -37,16 +38,17 @@ impl Discovery {
         secret: Secret,
         boot_enr: String,
     ) {
-    
         let (local_peer_id, transport, mut gossipsub) = init_gossipsub();
         // Create a Gossipsub topic
         let topic = gossipsub::IdentTopic::new(TOPIC_NODE_INFO);
         // subscribes to our topic
-        gossipsub.subscribe(&topic).expect(format!("subscribe topic:{} error",TOPIC_NODE_INFO).as_str());
+        gossipsub
+            .subscribe(&topic)
+            .expect(format!("subscribe topic:{} error", TOPIC_NODE_INFO).as_str());
         info!("gossipsub subscribe topic {}", topic);
-    
-        let mut swarm = gossipsub_listen(local_peer_id, transport, gossipsub,"27000".to_string());
-        
+
+        let mut swarm = gossipsub_listen(local_peer_id, transport, gossipsub, "27000".to_string());
+
         // let mut enr_key = CombinedKey::generate_secp256k1();
         let mut secret_key = secret.secret.0[..].to_vec();
         let enr_key = CombinedKey::secp256k1_from_bytes(&mut secret_key[..]).unwrap();
@@ -63,15 +65,16 @@ impl Discovery {
             local_enr,
             local_enr.to_base64()
         );
-    
+
         let local_enr_pub_key = base64::encode(local_enr.clone().public_key().encode());
         info!("------local_enr_pub_key:{}", local_enr_pub_key);
 
         // default configuration without packet filtering
         let config = Discv5ConfigBuilder::new().build();
 
+        let curr_pub_ip = get_public_ip();
         // the address to listen on
-        let listen_addr = SocketAddr::new("0.0.0.0".parse().expect("valid ip"), udp_port);
+        let mut listen_addr = SocketAddr::new(curr_pub_ip.parse().expect("valid ip"), udp_port);
 
         // construct the discv5 server
         let mut discv5: Discv5 = Discv5::new(local_enr.clone(), enr_key, config).unwrap();
@@ -102,7 +105,13 @@ impl Discovery {
         }
 
         tokio::spawn(async move {
-            discv5.start(listen_addr).await.unwrap();
+            // start the discv5 service
+            if let Err(e) = discv5.start(listen_addr).await {
+                error!("discv5.start in curr_pub_ip:{curr_pub_ip:?},error:{e:?}");
+                listen_addr = SocketAddr::new("0.0.0.0".parse().expect("valid ip"), udp_port);
+                discv5.start(listen_addr).await;
+            };
+
             let mut event_stream = discv5.event_stream().await.unwrap();
             // construct a 30 second interval to search for new peers.
             let mut query_interval = tokio::time::interval(Duration::from_secs(30));
@@ -135,14 +144,14 @@ impl Discovery {
                                         m.insert(public_key, IpAddr::V4(ip));
                                     };
                                 };
-                                
+
                                 let curr_pub_ip=get_public_ip();
                                 info!("------curr_pub_ip:{}",curr_pub_ip);
                                 let msg = MyMessage{pub_key:local_enr_pub_key.clone(),addr:[curr_pub_ip,udp_port.to_string()].join(":"),enr:local_enr.clone().to_base64(),desc:"".to_string(),timestamp_nanos_utc:Utc::now().timestamp_nanos(),timestamp_nanos_local:Local::now().timestamp_nanos()};
                                 let msg_str = serde_json::to_string(&msg).unwrap();
                                 swarm.behaviour_mut().gossipsub.publish(topic.clone(), msg_str.as_bytes());
                                 info!("------gossipsub publish topic: {},msg:{}", topic,msg_str);
-                                
+
                             }
                         }
                     }
@@ -180,7 +189,7 @@ impl Discovery {
                             Discv5Event::TalkRequest(t_req) => info!("------Discv5Event::TalkRequest,TalkRequest:{:?}",t_req),
                         };
                     }
-                    
+
                     event = swarm.select_next_some() => match event {
                         SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
                             for (peer_id, _multiaddr) in list {
@@ -207,7 +216,7 @@ impl Discovery {
                         }
                         _ => {}
                     }
-                    
+
                 }
             }
         });

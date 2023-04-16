@@ -16,6 +16,7 @@ use libp2p::{
     tcp, yamux, PeerId, Swarm, Transport,
 };
 use libp2p_quic as quic;
+use log::error;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
@@ -58,6 +59,7 @@ pub fn gossipsub_listen(
             .parse()
             .unwrap(),
     ) {
+        error!("quic-v1,curr_pub_ip:{curr_pub_ip:?}, udp_port:{udp_port:?},err:{e:?}");
         swarm.listen_on(
             format!("/ip4/0.0.0.0/udp/{}/quic-v1", udp_port)
                 .parse()
@@ -70,6 +72,7 @@ pub fn gossipsub_listen(
             .parse()
             .unwrap(),
     ) {
+        error!("curr_pub_ip:{curr_pub_ip:?}, udp_port:{udp_port:?},err:{e:?}");
         swarm.listen_on(format!("/ip4/0.0.0.0/tcp/{}", udp_port).parse().unwrap());
     }
 

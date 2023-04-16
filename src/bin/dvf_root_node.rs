@@ -9,7 +9,7 @@ use std::{
     net::{Ipv4Addr, SocketAddr},
     time::Duration,
 };
-
+use chrono::{Local, Utc};
 use async_trait::async_trait;
 use bytes::Bytes;
 use discv5::enr::EnrPublicKey;
@@ -28,7 +28,7 @@ use libp2p::{
     tcp, yamux, PeerId, Swarm, Transport,
 };
 use dvf::node::config::TOPIC_NODE_INFO;
-use dvf::node::gossipsub_event::{gossipsub_listen, init_gossipsub,MyBehaviourEvent};
+use dvf::node::gossipsub_event::{gossipsub_listen, init_gossipsub,MyBehaviourEvent,MyMessage};
 
 pub const DEFAULT_SECRET_DIR: &str = "node_key.json";
 pub const DEFAULT_STORE_DIR: &str = "boot_store";
@@ -151,6 +151,9 @@ async fn main() -> Result<(), Box<dyn Error>>{
         local_enr,
         local_enr.to_base64()
     );
+    
+    let local_enr_pub_key = base64::encode(local_enr.clone().public_key().encode());
+    info!("------local_enr_pub_key:{}", local_enr_pub_key);
 
     let config = Discv5ConfigBuilder::new().build();
 
@@ -158,7 +161,7 @@ async fn main() -> Result<(), Box<dyn Error>>{
     let listen_addr = SocketAddr::new("0.0.0.0".parse().expect("valid ip"), port);
 
     // construct the discv5 server
-    let mut discv5:Discv5 = Discv5::new(local_enr, enr_key, config).unwrap();
+    let mut discv5:Discv5 = Discv5::new(local_enr.clone(), enr_key, config).unwrap();
 
     // start the discv5 service
     discv5.start(listen_addr).await.unwrap();
@@ -212,11 +215,10 @@ async fn main() -> Result<(), Box<dyn Error>>{
                         
                         let curr_pub_ip=dvf::utils::ip_util::get_public_ip();
                         info!("------curr_pub_ip:{}",curr_pub_ip);
-                        
-                        let str_socket_addr=[curr_pub_ip,port.to_string()].join(":");
-                        // TODO
-                        swarm.behaviour_mut().gossipsub.publish(topic.clone(), str_socket_addr.as_bytes());
-                        info!("gossipsub publish topic: {},msg:{}", topic,str_socket_addr);
+                        let msg = MyMessage{pub_key:local_enr_pub_key.clone(),addr:[curr_pub_ip,port.to_string()].join(":"),enr:local_enr.clone().to_base64(),desc:"".to_string(),timestamp_nanos_utc:Utc::now().timestamp_nanos(),timestamp_nanos_local:Local::now().timestamp_nanos()};
+                        let msg_str = serde_json::to_string(&msg).unwrap();
+                        swarm.behaviour_mut().gossipsub.publish(topic.clone(), msg_str.as_bytes());
+                        info!("------gossipsub publish topic: {},msg:{}", topic,msg_str);
                     }
                 }
             }

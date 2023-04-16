@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 use std::error::Error;
-
+use chrono::{Local, Utc};
 use discv5::enr::EnrPublicKey;
 use discv5::{
     enr::{CombinedKey, Enr},
@@ -23,7 +23,7 @@ use libp2p::{
 };
 use tracing_subscriber::fmt::format;
 use crate::node::config::TOPIC_NODE_INFO;
-use crate::node::gossipsub_event::{gossipsub_listen, init_gossipsub, MyBehaviourEvent};
+use crate::node::gossipsub_event::{gossipsub_listen, init_gossipsub, MyBehaviourEvent,MyMessage};
 use crate::utils::ip_util::get_public_ip;
 use super::config::BOOT_SOCKETADDR;
 
@@ -51,7 +51,7 @@ impl Discovery {
         let mut secret_key = secret.secret.0[..].to_vec();
         let enr_key = CombinedKey::secp256k1_from_bytes(&mut secret_key[..]).unwrap();
 
-        let self_enr = {
+        let local_enr = {
             let mut builder = discv5::enr::EnrBuilder::new("v4");
             builder.ip(ip_address);
             // don't need to set udp port
@@ -60,9 +60,12 @@ impl Discovery {
         };
         info!(
             "------local enr: {}, local base64 enr: {}",
-            self_enr,
-            self_enr.to_base64()
+            local_enr,
+            local_enr.to_base64()
         );
+    
+        let local_enr_pub_key = base64::encode(local_enr.clone().public_key().encode());
+        info!("------local_enr_pub_key:{}", local_enr_pub_key);
 
         // default configuration without packet filtering
         let config = Discv5ConfigBuilder::new().build();
@@ -71,7 +74,7 @@ impl Discovery {
         let listen_addr = SocketAddr::new("0.0.0.0".parse().expect("valid ip"), udp_port);
 
         // construct the discv5 server
-        let mut discv5: Discv5 = Discv5::new(self_enr, enr_key, config).unwrap();
+        let mut discv5: Discv5 = Discv5::new(local_enr.clone(), enr_key, config).unwrap();
 
         match boot_enr.parse::<Enr<CombinedKey>>() {
             Ok(enr) => {
@@ -135,10 +138,10 @@ impl Discovery {
                                 
                                 let curr_pub_ip=get_public_ip();
                                 info!("------curr_pub_ip:{}",curr_pub_ip);
-                                let str_socket_addr=[curr_pub_ip,udp_port.to_string()].join(":");
-                                // TODO
-                                swarm.behaviour_mut().gossipsub.publish(topic.clone(), str_socket_addr.as_bytes());
-                                info!("gossipsub publish topic: {},msg:{}", topic,str_socket_addr);
+                                let msg = MyMessage{pub_key:local_enr_pub_key.clone(),addr:[curr_pub_ip,udp_port.to_string()].join(":"),enr:local_enr.clone().to_base64(),desc:"".to_string(),timestamp_nanos_utc:Utc::now().timestamp_nanos(),timestamp_nanos_local:Local::now().timestamp_nanos()};
+                                let msg_str = serde_json::to_string(&msg).unwrap();
+                                swarm.behaviour_mut().gossipsub.publish(topic.clone(), msg_str.as_bytes());
+                                info!("------gossipsub publish topic: {},msg:{}", topic,msg_str);
                                 
                             }
                         }

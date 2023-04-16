@@ -2,6 +2,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
 
+use chrono::{DateTime, Utc};
 use futures::{future::Either, prelude::*, select};
 use libp2p::core::transport::Boxed;
 use libp2p::gossipsub::{Behaviour, Event, Gossipsub, GossipsubEvent};
@@ -13,6 +14,7 @@ use libp2p::{
 	tcp, yamux, PeerId, Swarm, Transport,
 };
 use libp2p_quic as quic;
+use serde::{Deserialize, Serialize};
 use tracing::info;
 
 // We create a custom network behaviour that combines Gossipsub and Mdns.
@@ -20,6 +22,17 @@ use tracing::info;
 pub struct MyBehaviour {
 	pub gossipsub: gossipsub::Behaviour,
 	pub mdns: mdns::async_io::Behaviour,
+}
+
+#[repr(C)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MyMessage {
+	pub pub_key: String,
+	pub addr: String,
+	pub enr: String,
+	pub desc: String,
+	pub timestamp_nanos_utc: i64,
+	pub timestamp_nanos_local: i64,
 }
 
 pub fn gossipsub_listen(
@@ -92,4 +105,25 @@ pub fn init_gossipsub() -> (PeerId, Boxed<(PeerId, StreamMuxerBox)>, Behaviour) 
 	)
 		.expect("Correct configuration");
 	(local_peer_id, transport, gossipsub)
+}
+
+/// tracing_test https://docs.rs/tracing-test/latest/tracing_test/
+/// https://stackoverflow.com/questions/72884779/how-to-print-tracing-output-in-tests
+#[cfg(test)]
+mod tests {
+	use chrono::Local;
+	use tracing::debug;
+	use tracing_test::traced_test;
+	
+	// Note this useful idiom: importing names from outer (for mod tests) scope.
+	use super::*;
+	
+	#[traced_test]
+	#[test]
+	fn test() {
+		let mut now = Utc::now();
+		println!("{},{}", now, now.timestamp_nanos());
+		let local_now = Local::now();
+		println!("{},{}", now, now.timestamp_nanos());
+	}
 }

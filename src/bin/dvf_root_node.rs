@@ -82,7 +82,7 @@ async fn main() -> Result<(), Box<dyn Error>>{
     gossipsub.subscribe(&topic)?;
     info!("gossipsub subscribe topic {}", topic);
     
-    let mut swarm = gossipsub_listen(local_peer_id, transport, gossipsub);
+    let mut swarm = gossipsub_listen(local_peer_id, transport, gossipsub,"9006".to_string());
     
     let network = std::env::args()
         .nth(1)

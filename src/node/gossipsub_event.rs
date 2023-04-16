@@ -1,4 +1,5 @@
 use std::collections::hash_map::DefaultHasher;
+use std::fmt::format;
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
 
@@ -39,6 +40,7 @@ pub fn gossipsub_listen(
 	local_peer_id: PeerId,
 	transport: Boxed<(PeerId, StreamMuxerBox)>,
 	gossipsub: Behaviour,
+	udp_port: String
 ) -> Swarm<MyBehaviour> {
 	// Create a Swarm to manage peers and events
 	let mut swarm = {
@@ -50,10 +52,10 @@ pub fn gossipsub_listen(
 	
 	// Listen on all interfaces and whatever port the OS assigns
 	swarm
-		.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse().unwrap())
+		.listen_on(format!("/ip4/0.0.0.0/udp/{}/quic-v1",udp_port).parse().unwrap())
 		.unwrap();
 	swarm
-		.listen_on("/ip4/0.0.0.0/tcp/0".parse().unwrap())
+		.listen_on(format!("/ip4/0.0.0.0/tcp/{}",udp_port).parse().unwrap())
 		.unwrap();
 	
 	info!("pub/sub messages and they will be sent to connected peers using Gossipsub");

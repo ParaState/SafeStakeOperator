@@ -106,6 +106,7 @@ services:
       - "26003"
       - "26004"
       - "26005"
+      - "27000"
     deploy:
       resources:
         limits:

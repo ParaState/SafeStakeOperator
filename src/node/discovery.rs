@@ -45,7 +45,7 @@ impl Discovery {
         gossipsub.subscribe(&topic).expect(format!("subscribe topic:{} error",TOPIC_NODE_INFO).as_str());
         info!("gossipsub subscribe topic {}", topic);
     
-        let mut swarm = gossipsub_listen(local_peer_id, transport, gossipsub);
+        let mut swarm = gossipsub_listen(local_peer_id, transport, gossipsub,"27000".to_string());
         
         // let mut enr_key = CombinedKey::generate_secp256k1();
         let mut secret_key = secret.secret.0[..].to_vec();

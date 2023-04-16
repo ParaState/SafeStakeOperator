@@ -9,9 +9,10 @@ services:
       - -c
       - |
         node_ip=$$(curl -s ifconfig.me) 
-        dvf_root_node ${OPERATOR_NETWORK} $$node_ip 9005 2>&1
+        dvf_root_node ${OPERATOR_NETWORK} $$node_ip 9005 9006 2>&1
     expose:
       - "9005"
+      - "9006"
     volumes:
       - boot-data:/root/.lighthouse
 volumes:

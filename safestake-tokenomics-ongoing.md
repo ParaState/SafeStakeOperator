@@ -24,7 +24,7 @@ The STATE token is the official ERC-20 token of the SafeStake network. Its main 
 
 This slashing mechanism built into SafeStake aims to guarantee that operators on the network maintain a minimum uptime of 99.5%. The operator node which is failed to achieve consensus amongst the Operator Committee in a specific epoch will be slashed for the STATE rewards pro rata in that epoch in the fee management contract. And these slashed STATE tokens will be burnt. The minimum balance of state tokens operators must maintain will cover slashing penalties.&#x20;
 
-****
+
 
 
 
@@ -32,6 +32,6 @@ This slashing mechanism built into SafeStake aims to guarantee that operators on
 
 _Please Note: All parameters in the above formula will be adjusted by the ParaStateDAO according to practical feedback._
 
-<mark style="color:yellow;"></mark>
+
 
 ### &#x20;<a href="#sow-stage-2" id="sow-stage-2"></a>

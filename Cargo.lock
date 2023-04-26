@@ -1880,16 +1880,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "delay_map"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4355c25cbf99edcb6b4a0e906f6bdc6956eda149e84455bea49696429b2f8e8"
-dependencies = [
- "futures",
- "tokio-util 0.7.7",
-]
-
-[[package]]
 name = "deposit_contract"
 version = "0.2.0"
 dependencies = [
@@ -2087,8 +2077,8 @@ dependencies = [
  "aes 0.7.5",
  "aes-gcm 0.9.4",
  "arrayvec",
- "delay_map 0.1.2",
- "enr 0.6.2",
+ "delay_map",
+ "enr",
  "fnv",
  "futures",
  "hashlink 0.7.0",
@@ -2096,39 +2086,6 @@ dependencies = [
  "hkdf",
  "lazy_static",
  "libp2p-core 0.36.0",
- "lru 0.7.8",
- "more-asserts",
- "parking_lot 0.11.2",
- "rand 0.8.5",
- "rlp",
- "smallvec",
- "socket2",
- "tokio",
- "tokio-stream",
- "tokio-util 0.6.10",
- "tracing",
- "tracing-subscriber",
- "uint",
- "zeroize",
-]
-
-[[package]]
-name = "discv5"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b009a99b85b58900df46435307fc5c4c845af7e182582b1fbf869572fa9fce69"
-dependencies = [
- "aes 0.7.5",
- "aes-gcm 0.9.4",
- "arrayvec",
- "delay_map 0.3.0",
- "enr 0.7.0",
- "fnv",
- "futures",
- "hashlink 0.7.0",
- "hex",
- "hkdf",
- "lazy_static",
  "lru 0.7.8",
  "more-asserts",
  "parking_lot 0.11.2",
@@ -2194,7 +2151,6 @@ dependencies = [
  "deposit_contract",
  "directory",
  "dirs",
- "discv5 0.2.2",
  "downcast-rs",
  "dvf_directory",
  "dvf_version",
@@ -2219,6 +2175,7 @@ dependencies = [
  "libp2p-quic",
  "libsecp256k1",
  "lighthouse_metrics",
+ "lighthouse_network",
  "lighthouse_version",
  "lockfile",
  "log",
@@ -2373,26 +2330,6 @@ name = "enr"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "26fa0a0be8915790626d5759eb51fe47435a8eac92c2f212bd2da9aa7f30ea56"
-dependencies = [
- "base64 0.13.1",
- "bs58",
- "bytes",
- "ed25519-dalek",
- "hex",
- "k256",
- "log",
- "rand 0.8.5",
- "rlp",
- "serde",
- "sha3 0.10.6",
- "zeroize",
-]
-
-[[package]]
-name = "enr"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "492a7e5fc2504d5fdce8e124d3e263b244a68b283cac67a69eda0cd43e0aebad"
 dependencies = [
  "base64 0.13.1",
  "bs58",
@@ -2633,7 +2570,7 @@ dependencies = [
 name = "eth2_network_config"
 version = "0.2.0"
 dependencies = [
- "enr 0.6.2",
+ "enr",
  "eth2_config",
  "eth2_ssz",
  "serde_yaml",
@@ -2776,7 +2713,7 @@ dependencies = [
  "async-stream",
  "blst",
  "bs58",
- "enr 0.6.2",
+ "enr",
  "hex",
  "integer-sqrt",
  "multiaddr 0.14.0",
@@ -5296,10 +5233,10 @@ dependencies = [
 name = "lighthouse_network"
 version = "0.2.0"
 dependencies = [
- "delay_map 0.1.2",
+ "delay_map",
  "directory",
  "dirs",
- "discv5 0.1.0",
+ "discv5",
  "error-chain",
  "eth2_ssz",
  "eth2_ssz_derive",
@@ -5964,7 +5901,7 @@ name = "network"
 version = "0.2.0"
 dependencies = [
  "beacon_chain",
- "delay_map 0.1.2",
+ "delay_map",
  "derivative",
  "error-chain",
  "eth2_ssz",
@@ -8952,7 +8889,6 @@ dependencies = [
  "futures-io",
  "futures-sink",
  "pin-project-lite 0.2.9",
- "slab",
  "tokio",
  "tracing",
 ]

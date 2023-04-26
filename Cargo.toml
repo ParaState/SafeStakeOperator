@@ -86,6 +86,7 @@ libsecp256k1 = "0.7.0"
 ring = "0.16.19"
 rand = { version = "0.8.5", features = ["small_rng"] }
 lighthouse_metrics = { path = "lighthouse/common/lighthouse_metrics" }
+lighthouse_network = { path = "lighthouse/beacon_node/lighthouse_network"}
 lazy_static = "1.4.0"
 itertools = "0.10.0"
 monitoring_api = { path = "lighthouse/common/monitoring_api" }
@@ -103,7 +104,7 @@ boot_node = { path = "lighthouse/boot_node" }
 beacon_node = { path = "lighthouse/beacon_node" }
 database_manager = { path = "lighthouse/database_manager" }
 account_manager = { "path" = "lighthouse/account_manager" }
-discv5 = "0.2.1"
+# discv5 = "0.1.0"
 base64 = "0.13.0"
 web3 = "0.18.0"
 

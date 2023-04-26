@@ -3,8 +3,9 @@ use crate::node::config::TOPIC_NODE_INFO;
 use crate::node::gossipsub_event::{gossipsub_listen, init_gossipsub, MyBehaviourEvent, MyMessage};
 use crate::utils::ip_util::get_public_ip;
 use chrono::{Local, Utc};
-use discv5::enr::EnrPublicKey;
-use discv5::{
+use lighthouse_network::discv5::enr::EnrPublicKey;
+use lighthouse_network::discv5::{
+    self,
     enr::{CombinedKey, Enr},
     Discv5, Discv5ConfigBuilder, Discv5Event,
 };

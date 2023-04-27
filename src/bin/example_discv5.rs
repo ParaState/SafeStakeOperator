@@ -232,6 +232,7 @@ fn main() {
                 load_lighthouse_network_config().boot_enr.unwrap()
             }
         };
+        info!("Boot enrs: {:?}", boot_enrs);
         // let boot_enr = std::env::args().nth(2).expect("ERRPR: there is no valid argument");
         // let boot_enrs = ;
         let n = 100;

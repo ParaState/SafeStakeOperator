@@ -60,7 +60,6 @@ fn with_wildcard_ip(mut addr: SocketAddr) -> SocketAddr {
 pub struct Node<T: EthSpec> {
     pub config: NodeConfig,
     pub secret: Secret,
-    //pub rx_dvfinfo: Receiver<DvfInfo>,
     pub tx_handler_map: Arc<RwLock<HashMap<u64, TxReceiverHandler>>>,
     pub mempool_handler_map: Arc<RwLock<HashMap<u64, MempoolReceiverHandler>>>,
     pub consensus_handler_map: Arc<RwLock<HashMap<u64, ConsensusReceiverHandler>>>,
@@ -133,7 +132,6 @@ impl<T: EthSpec> Node<T> {
         let node = Self {
             config,
             secret: secret.clone(),
-            //rx_dvfinfo,
             tx_handler_map: Arc::clone(&tx_handler_map),
             mempool_handler_map: Arc::clone(&mempool_handler_map),
             consensus_handler_map: Arc::clone(&consensus_handler_map),

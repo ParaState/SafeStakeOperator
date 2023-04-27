@@ -143,12 +143,12 @@ impl Drop for DvfSigner {
 impl DvfSigner {
     pub async fn spawn<T: EthSpec>(
         node_para: Arc<RwLock<Node<T>>>,
-        validator_id: u64,
         keypair: Keypair,
         committee_def: OperatorCommitteeDefinition,
     ) -> Result<Self, DvfError> {
         let node_tmp = Arc::clone(&node_para);
         let node = node_tmp.read().await;
+        let validator_id = committee_def.validator_id;
         // find operator id from operatorCommitteeDefinition
         let operator_index: Vec<usize> = committee_def.node_public_keys.iter().enumerate().filter(|&(_i, x)| {
             node.secret.name == *x

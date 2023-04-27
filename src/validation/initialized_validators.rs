@@ -366,7 +366,6 @@ impl InitializedValidator {
                 let validator_public_key = committee_def.validator_public_key.clone();
                 let signer = DvfSigner::spawn(
                     node.unwrap(),
-                    committee_def.validator_id,
                     voting_keypair,
                     committee_def)
                     .await

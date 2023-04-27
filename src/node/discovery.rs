@@ -5,10 +5,8 @@ use lighthouse_network::discv5::{
     enr::{CombinedKey, Enr},
     Discv5, Discv5ConfigBuilder, Discv5Event,
 };
-use futures::{prelude::*};
 use hsconfig::Secret;
 use std::collections::HashMap;
-use std::error::Error;
 use std::sync::Arc;
 use std::{
     net::{IpAddr, SocketAddr},

@@ -1,9 +1,5 @@
-use std::io::{stdout, Write};
 use std::net::{IpAddr, UdpSocket};
 use std::process::Command;
-
-use tracing::log::{error, log};
-use tracing::{info, log, warn};
 
 pub fn get_public_ip() -> String {
     let output = Command::new("curl")

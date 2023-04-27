@@ -1,18 +1,16 @@
 use std::collections::hash_map::DefaultHasher;
-use std::fmt::format;
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
 
 use crate::utils::ip_util::get_public_ip;
-use chrono::{DateTime, Utc};
-use futures::{future::Either, prelude::*, select};
+use futures::{future::Either};
 use libp2p::core::transport::Boxed;
-use libp2p::gossipsub::{Behaviour, Event, Gossipsub, GossipsubEvent};
+use libp2p::gossipsub::{Behaviour};
 use libp2p::{
     core::{muxing::StreamMuxerBox, transport::OrTransport, upgrade},
     gossipsub, identity, mdns, noise,
     swarm::NetworkBehaviour,
-    swarm::{SwarmBuilder, SwarmEvent},
+    swarm::{SwarmBuilder},
     tcp, yamux, PeerId, Swarm, Transport,
 };
 use libp2p_quic as quic;
@@ -60,7 +58,7 @@ pub fn gossipsub_listen(
             .unwrap(),
     ) {
         error!("quic-v1,curr_pub_ip:{curr_pub_ip:?}, udp_port:{udp_port:?},err:{e:?}");
-        swarm.listen_on(
+        let _ = swarm.listen_on(
             format!("/ip4/0.0.0.0/udp/{}/quic-v1", udp_port)
                 .parse()
                 .unwrap(),
@@ -73,7 +71,7 @@ pub fn gossipsub_listen(
             .unwrap(),
     ) {
         error!("curr_pub_ip:{curr_pub_ip:?}, udp_port:{udp_port:?},err:{e:?}");
-        swarm.listen_on(format!("/ip4/0.0.0.0/tcp/{}", udp_port).parse().unwrap());
+        let _ = swarm.listen_on(format!("/ip4/0.0.0.0/tcp/{}", udp_port).parse().unwrap());
     }
 
     info!("pub/sub messages and they will be sent to connected peers using Gossipsub");
@@ -119,7 +117,7 @@ pub fn init_gossipsub() -> (PeerId, Boxed<(PeerId, StreamMuxerBox)>, Behaviour) 
         .expect("Valid config");
 
     // build a gossipsub network behaviour
-    let mut gossipsub = gossipsub::Behaviour::new(
+    let gossipsub = gossipsub::Behaviour::new(
         gossipsub::MessageAuthenticity::Signed(id_keys),
         gossipsub_config,
     )

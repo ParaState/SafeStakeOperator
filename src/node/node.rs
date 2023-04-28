@@ -689,6 +689,7 @@ pub async fn start_initializer<T: EthSpec>(
         )
             .await,
     );
+    info!("debug info io committee finished");
     let dkg = DKGSemiHonest::new(self_op_id as u64, io, THRESHOLD as usize);
     let (keypair, va_pk, shared_pks) = dkg
         .run()

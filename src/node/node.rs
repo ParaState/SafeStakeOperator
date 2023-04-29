@@ -681,6 +681,7 @@ pub async fn stop_validator<T: EthSpec>(
         node_.validator_store.clone()
     };
 
+    cleanup_handler(node.clone(), validator_id).await;
     match validator_store {
         Some(validator_store) => {
             validator_store.stop_validator_keystore(&validator_pk).await;

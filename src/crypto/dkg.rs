@@ -19,7 +19,7 @@ use crate::math::polynomial::{Commitable, CommittedPoly, Polynomial};
 use serde_derive::{Serialize, Deserialize};
 use serde::{Serialize as SerializeTrait, Deserialize as DeserializeTrait, Serializer, Deserializer};
 use async_trait::async_trait;
-
+use log::info;
 pub struct PlainVssShare {
     pub share: blst_scalar,
     pub committed_poly: CommittedPoly,
@@ -275,7 +275,7 @@ where
                     (s, pk_bytes)
                 }
             };
-
+            info!("debug info");
             let s = BigInt::from_bytes_be(Sign::Plus, s_ji.as_ref());
             let pk = bytes_to_blst_p1_affine(pk_j);
 
@@ -285,7 +285,7 @@ where
             .await
             .into_iter()
             .collect::<Vec<(u64, BigInt, blst_p1_affine)>>();
-        
+        info!("debug info");
         // 1. Construct self's individual group key pair
         let mut gsk = 0.to_bigint().unwrap();
         for (_id, s, _) in results.iter() {
@@ -298,7 +298,7 @@ where
         }  
         let gsk = WrapSecretKey::deserialize(&gsk_bytes[..]).unwrap();
         let kp = WrapKeypair::from_components(gsk.public_key(), gsk);
-
+        
         // 2. Construct master public key
         
         let mut mpk_bytes: [u8; PUBLIC_KEY_BYTES_LEN] = [0; PUBLIC_KEY_BYTES_LEN];
@@ -309,7 +309,7 @@ where
             blst::blst_p1_compress(mpk_bytes.as_mut_ptr(), &mpk);
         };
         let mpk = WrapPublicKey::deserialize(&mpk_bytes).unwrap();
-
+        info!("debug info");
         // 3. Exchange individual group public key
         let kp_ref = &kp;
         let futs = ids.iter().map(|id| async move {
@@ -336,7 +336,7 @@ where
             .await
             .into_iter()
             .collect::<HashMap<u64, WrapPublicKey>>();
-
+        info!("debug info");
         Ok((kp, mpk, pks))
     }
 }

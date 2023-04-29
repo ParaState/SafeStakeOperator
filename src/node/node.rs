@@ -779,12 +779,13 @@ pub async fn start_initializer<T: EthSpec>(
         )
             .await,
     );
+    info!("debug info io committee finished");
     let dkg = DKGSemiHonest::new(self_op_id as u64, io, THRESHOLD as usize);
     let (keypair, va_pk, shared_pks) = dkg
         .run()
         .await
         .map_err(|e| format!("run dkg failed {:?}", e))?;
-
+    info!("debug info");
     let pk_str: String = va_pk.as_hex_string()[2..].to_string();
     // push va pk to web server
     let request_body = ValidatorPkRequest {

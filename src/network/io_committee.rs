@@ -299,8 +299,8 @@ impl NetIOCommittee {
     /// Construct a network IO committee for `party` who is listening on `port`.
     /// The committee is identified by the id set `ids` and the address set `addresses`.
     pub async fn new(party: u64, port: u16, ids: &[u64], addresses: &[SocketAddr]) -> NetIOCommittee {
-        debug!("{:?}", ids);
-        debug!("{:?}", addresses);
+        info!("{:?}", ids);
+        info!("{:?}", addresses);
         let mut connection_manager = ConnectionManager::new(SocketAddr::new("0.0.0.0".parse().unwrap(), port));
         let mut channels: HashMap<u64, NetIOChannel> = Default::default();
         let n = ids.len();
@@ -318,6 +318,7 @@ impl NetIOCommittee {
             };
             channels.insert(ids[i], channel);
         }
+        info!("channel connect");
         Self {
             party,
             ids: ids.to_vec(),

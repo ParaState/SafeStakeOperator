@@ -394,7 +394,7 @@ impl Contract {
                             match check_account(&config, owner).await {
                                 Ok(t) => {
                                     if t {
-                                        // stop validators releated to the block
+                                        // stop validators related to the block
                                         match db.query_validator_by_address(owner).await {
                                             Ok(validators) => { 
                                                 for va in validators {
@@ -407,7 +407,7 @@ impl Contract {
                                                 }
                                             },
                                             Err(e) => {
-                                                error!("query validator releated to the address failed {:?}", e);
+                                                error!("query validator related to the address failed {:?}", e);
                                             }
                                         }
                                     } else {
@@ -423,7 +423,7 @@ impl Contract {
                                                 }
                                             },
                                             Err(e) => {
-                                                error!("query validator releated to the address failed {:?}", e);
+                                                error!("query validator related to the address failed {:?}", e);
                                             }
                                         }
                                     }
@@ -1019,7 +1019,7 @@ pub async fn process_minipool_created(
                     .query_initiator_releated_op_pks(id)
                     .await
                     .map_err(|_| {
-                        error!("Can't query initiator releated op pks");
+                        error!("Can't query initiator related op pks");
                         ContractError::DatabaseError
                     })?;
                 let op_pk_bns = op_pks.into_iter()
@@ -1084,7 +1084,7 @@ pub async fn process_minipool_ready(
                     .query_initiator_releated_op_pks(id)
                     .await
                     .map_err(|_| {
-                        error!("Can't query initiator releated op pks");
+                        error!("Can't query initiator related op pks");
                         ContractError::DatabaseError
                     })?;
 
@@ -1145,7 +1145,7 @@ pub async fn query_operator_from_contract(
     })
 }
 
-// check the paid block number of address. If the block is behind the current block number, stop validators releated to the address
+// check the paid block number of address. If the block is behind the current block number, stop validators related to the address
 pub async fn check_account(
     config: &ContractConfig,
     owner: Address,

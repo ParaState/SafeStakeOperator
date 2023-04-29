@@ -48,9 +48,18 @@ pub fn test3() {
   println!("x: {:?}", x);
 }
 
+pub fn test4() {
+  let a = vec![1, 2, 3];
+  let b = vec![1, 2, 3];
+  let x: &[u8] = a.as_slice();
+  let y: &[u8] = b.as_slice();
+  println!("x==y: {}", x==y);
+}
+
 // test read node secret to init discovery process
 fn main() {
   // test1();
   // test2();
   test3();
+  test4();
 }

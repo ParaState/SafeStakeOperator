@@ -21,9 +21,10 @@ use bytes::Bytes;
 use tokio::task::JoinHandle;
 
 pub const DEFAULT_DISCOVERY_IP_STORE: &str = "discovery_ip_store";
-pub const DISCOVER_HEARTBEAT_INTERVAL: u64 = 30;
+pub const DISCOVER_HEARTBEAT_INTERVAL: u64 = 20;
 
 pub struct Discovery {
+    secret: Secret,
     heartbeat: Interval,
     query_sender: mpsc::Sender<(NodeId, oneshot::Sender<()>)>,
     store: Store,
@@ -159,6 +160,7 @@ impl Discovery {
         });
 
         let discovery = Self {
+            secret,
             heartbeat,
             query_sender: tx,
             store: store_clone,
@@ -205,6 +207,11 @@ impl Discovery {
         // 2. initiate a discv5 find node
         // 3. from boot node
         // TODO: do we need to add a discovery for random node ID?
+
+        // No need to query remotely for self IP
+        if self.secret.name.0.as_slice() == pk {
+            return self.query_ip_from_local_store(pk).await;
+        }
 
         let node_id = secp256k1::PublicKey::from_slice(pk).map(NodeId::from);
         if node_id.is_err() {

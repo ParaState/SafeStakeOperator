@@ -62,7 +62,7 @@ pub async fn boot_node() {
                 match discv5.find_node(target_random_node_id).await {
                     Err(e) => error!("Find Node result failed: {:?}", e),
                     Ok(v) => {
-                        // info!("Find Node result succeeded: {:?}", v);
+                        info!("Find Node result succeeded: {} nodes", v.len());
                     }
                 }
             }
@@ -162,7 +162,7 @@ pub async fn normal_node(enr_key: CombinedKey, local_enr: Enr, boot_enrs: Vec<En
                     i += 1;
                     info!("[{:?}] --- {} solved target node id: {:?}", node_id, i, base64::encode(target_node_id.raw()));
                 }
-                else if let Some(enr) = discv5.find_enr(&target_node_id) {
+                else if let Some(_enr) = discv5.find_enr(&target_node_id) {
                     i += 1;
                     info!("[{:?}] --- {} solved target node id: {:?}", node_id, i, base64::encode(target_node_id.raw()));
                 }
@@ -221,7 +221,7 @@ fn main() {
         let handle = runtime.spawn(async move {
             boot_node().await;
         });
-        block_on(handle);
+        let _ = block_on(handle);
     }
     else if mode == "normal" {
         let boot_enrs = {
@@ -244,7 +244,7 @@ fn main() {
         let targets: Vec<CombinedPublicKey> = nodes.iter().map(|(_, enr)| enr.public_key()).collect();
         info!("Targets: {:?}", targets.iter().map(|x| base64::encode(NodeId::from(x.clone()).raw())).collect::<Vec<_>>());
         let mut handles: Vec<_> = Default::default();
-        for i in 0 ..n {
+        for _i in 0 ..n {
             let (enr_key, enr) = nodes.remove(0);
             let targets_clone = targets.clone();
             let boot_enrs_clone = boot_enrs.clone();

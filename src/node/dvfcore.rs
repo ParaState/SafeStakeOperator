@@ -122,7 +122,6 @@ impl MessageHandler for DvfSignatureReceiverHandler {
     }
 }
 
-
 pub struct DvfSigner {
     pub signal: Option<exit_future::Signal>,
     pub operator_id: u64,
@@ -204,15 +203,24 @@ impl DvfSigner {
         let store = Store::new(&store_path.to_str().unwrap())
             .map_err(|e| DvfError::StoreError(format!("Failed to create store: {:?}", e)))?;
 
-        let signal = DvfCore::spawn(
+        let (signal, exit) = exit_future::signal();
+
+        DvfCore::spawn(
             operator_id,
-            node_para,
+            node_para.clone(),
             committee_def.validator_id,
             hotstuff_committee,
             keypair.clone(),
             tx_consensus,
             store.clone(),
+            exit.clone(),
         ).await;
+
+        Node::spawn_committee_ip_monitor(
+            node_para,
+            committee_def,
+            exit,
+        );
 
         Ok(Self {
             signal: Some(signal),
@@ -289,7 +297,8 @@ impl DvfCore {
         keypair: Keypair,
         tx_consensus: MonitoredSender<Hash256>,
         store: Store,
-    ) -> exit_future::Signal {
+        exit: exit_future::Exit,
+    ) {
         let node = node.read().await;
 
         let (tx_commit, rx_commit) = MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "dvf-commit".to_string(), "info");
@@ -301,14 +310,12 @@ impl DvfCore {
         // Run the signature service.
         let signature_service = SignatureService::new(node.secret.secret.clone());
 
-
         node.signature_handler_map
             .write()
             .await
             .insert(validator_id, DvfSignatureReceiverHandler { store: store.clone() });
         info!("Insert signature handler for validator: {}", validator_id);
 
-        let (signal, exit) = exit_future::signal();
         Mempool::spawn(
             node.secret.name,
             committee.mempool,
@@ -351,7 +358,6 @@ impl DvfCore {
                 .run()
                 .await
         });
-        signal
     }
 
     pub async fn run(&mut self) {

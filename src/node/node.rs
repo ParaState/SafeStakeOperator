@@ -38,7 +38,7 @@ use crate::node::contract::{
     SharedPublicKeys, Validator, SELF_OPERATOR_ID, OperatorIds, CONTRACT_DATABASE_FILE
 };
 use crate::node::db::Database;
-use crate::node::utils::{get_operator_ips, request_to_web_server, convert_address_to_withdraw_crendentials, ValidatorPkRequest, DepositRequest};
+use crate::node::utils::{request_to_web_server, convert_address_to_withdraw_crendentials, ValidatorPkRequest, DepositRequest};
 use crate::validation::account_utils::default_keystore_share_password_path;
 use crate::validation::account_utils::default_keystore_share_path;
 use crate::validation::account_utils::default_operator_committee_definition_path;
@@ -48,6 +48,7 @@ use crate::validation::validator_dir::share_builder::{insecure_kdf, ShareBuilder
 use crate::validation::validator_store::ValidatorStore;
 
 const THRESHOLD: u64 = 3;
+pub const COMMITTEE_IP_HEARTBEAT_INTERVAL: u64 = 300;
 
 type InitiatorStore =
     Arc<RwLock<HashMap<u32, (BlsKeypair, BlsPublicKey, HashMap<u64, BlsPublicKey>)>>>;
@@ -65,11 +66,12 @@ pub struct Node<T: EthSpec> {
     pub consensus_handler_map: Arc<RwLock<HashMap<u64, ConsensusReceiverHandler>>>,
     pub signature_handler_map: Arc<RwLock<HashMap<u64, DvfSignatureReceiverHandler>>>,
     pub validator_store: Option<Arc<ValidatorStore<SystemTimeSlotClock, T>>>,
+    pub discovery: Arc<RwLock<Discovery>>,
 }
 
 // impl Send for Node{}
 impl<T: EthSpec> Node<T> {
-    pub fn new(config: NodeConfig) -> Result<Option<Arc<RwLock<Self>>>, ConfigError> {
+    pub async fn new(config: NodeConfig) -> Result<Option<Arc<RwLock<Self>>>, ConfigError> {
         let self_address = config.base_address.ip();
         let secret_dir = config.secrets_dir.clone();
         let secret = Node::<T>::open_or_create_secret(config.node_key_path.clone())?;
@@ -80,12 +82,6 @@ impl<T: EthSpec> Node<T> {
         let mempool_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let consensus_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let signature_handler_map = Arc::new(RwLock::new(HashMap::new()));
-
-        let key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>> =
-            Arc::new(RwLock::new(HashMap::from([(
-                base64::encode(&secret.name),
-                config.base_address.ip().clone(),
-            )])));
 
         let transaction_address = with_wildcard_ip(base_to_transaction_addr(config.base_address));
         NetworkReceiver::spawn(
@@ -127,8 +123,15 @@ impl<T: EthSpec> Node<T> {
             secret.name, signature_address
         );
 
-        info!("Node {} successfully booted", secret.name);
         let base_port = config.base_address.port();
+        let discovery = Discovery::spawn(
+            self_address,
+            base_port + DISCOVERY_PORT_OFFSET,
+            secret.clone(),
+            BOOT_ENR.get().unwrap().clone(),
+            config.base_store_path.clone(),
+        ).await;
+        
         let node = Self {
             config,
             secret: secret.clone(),
@@ -137,14 +140,9 @@ impl<T: EthSpec> Node<T> {
             consensus_handler_map: Arc::clone(&consensus_handler_map),
             signature_handler_map: Arc::clone(&signature_handler_map),
             validator_store: None,
+            discovery: Arc::new(RwLock::new(discovery)),
         };
-        Discovery::spawn(
-            self_address,
-            base_port + DISCOVERY_PORT_OFFSET,
-            Arc::clone(&key_ip_map),
-            node.secret.clone(),
-            BOOT_ENR.get().unwrap().clone(),
-        );
+
         let base_dir = secret_dir.parent().unwrap().to_path_buf();
         let db = Database::new(base_dir.join(CONTRACT_DATABASE_FILE))
             .map_err(|e| {error!("can't create contract database {:?}", e); ConfigError::ReadError { file: CONTRACT_DATABASE_FILE.to_string(), message: "can't create contract database".to_string() }})?;
@@ -157,11 +155,11 @@ impl<T: EthSpec> Node<T> {
         let initializer_store = Arc::new(RwLock::new(HashMap::new()));
         Node::process_contract_command(
             Arc::clone(&node),
-            Arc::clone(&key_ip_map),
             db,
             initializer_store,
         );
 
+        info!("Node {} successfully booted", secret.name);
         Ok(Some(node))
     }
 
@@ -178,7 +176,6 @@ impl<T: EthSpec> Node<T> {
 
     pub fn process_contract_command(
         node: Arc<RwLock<Node<T>>>,
-        operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
         db: Database,
         initializer_store: InitiatorStore,
     ) {
@@ -207,7 +204,6 @@ impl<T: EthSpec> Node<T> {
                                     operator_pks,
                                     shared_pks,
                                     encrypted_sks,
-                                    operator_key_ip_map.clone(),
                                 )
                                     .await
                                 {
@@ -267,7 +263,6 @@ impl<T: EthSpec> Node<T> {
                                     node.clone(),
                                     initiator,
                                     operator_pks,
-                                    operator_key_ip_map.clone(),
                                     initializer_store.clone(),
                                 )
                                     .await
@@ -293,7 +288,6 @@ impl<T: EthSpec> Node<T> {
                                     validator_pk,
                                     op_pks,
                                     op_ids,
-                                    operator_key_ip_map.clone(),
                                     minipool_address,
                                     initializer_store.clone(),
                                     8,
@@ -321,7 +315,6 @@ impl<T: EthSpec> Node<T> {
                                     validator_pk,
                                     op_pks,
                                     op_ids,
-                                    operator_key_ip_map.clone(),
                                     minipool_address,
                                     initializer_store.clone(),
                                     24,
@@ -348,6 +341,73 @@ impl<T: EthSpec> Node<T> {
             }
         });
     }
+
+    pub fn spawn_committee_ip_monitor(
+        node: Arc<RwLock<Node<T>>>, 
+        mut committee_def: OperatorCommitteeDefinition, 
+        exit: exit_future::Exit
+    ) {
+        tokio::spawn(async move {
+            let (base_port, validator_dir) = {
+                let node_ = node.read().await;
+                (node_.config.base_address.port(), node_.config.validator_dir.clone())
+                
+            };
+            let mut query_interval = tokio::time::interval(Duration::from_secs(COMMITTEE_IP_HEARTBEAT_INTERVAL));
+            loop {
+                let exit_clone = exit.clone();
+                let validator_pk = committee_def.validator_public_key.clone();
+                tokio::select! {
+                    _ = query_interval.tick() => {
+                        let node_lock = node.read().await;
+                        let mut discovery = node_lock.discovery.write().await;
+                        // Query IP for each operator in this committee. If any of them changed, should restart the VA.
+                        let mut restart = false;
+                        for i in 0..committee_def.node_public_keys.len() {
+                            if let Some(ip) = discovery.query_ip(&committee_def.node_public_keys[i].0).await {
+                                if let Some(socket) = committee_def.base_socket_addresses[i].as_mut() {
+                                    if socket.ip() != ip {
+                                        socket.set_ip(ip);
+                                        restart = true;
+                                    }
+                                }
+                                else {
+                                    committee_def.base_socket_addresses[i] = Some(SocketAddr::new(ip, base_port));
+                                    restart = true;
+                                }
+                            }
+                        }
+                        drop(discovery);
+                        drop(node_lock);
+                        if restart {
+                            // Save the committee definition to file, as the file will be used to restart the VA.
+                            let committee_def_path =
+                                default_operator_committee_definition_path(&validator_pk, validator_dir.clone());
+                            info!("Committee ip Changed. Saving definition file to path {:?}", &committee_def_path);
+                            if let Err(e) = committee_def.to_file(committee_def_path) {
+                                error!("Unable to save committee definition. Error: {:?}", e);
+                                continue;
+                            }
+
+                            match restart_validator(node.clone(), committee_def.validator_id, committee_def.validator_public_key.clone()).await {
+                                Ok(_) => {
+                                    info!("Successfully restart validator: {}, pk: {}", 
+                                        committee_def.validator_id, committee_def.validator_public_key);
+                                }
+                                Err(e) => {
+                                    error!("Failed to restart validator: {}, pk: {}. Error: {}", 
+                                        committee_def.validator_id, committee_def.validator_public_key, e);
+                                }
+                            };
+                        }
+                    }
+                    () = exit_clone => {
+                        break;
+                    }
+                }
+            }
+        });
+    }
 }
 
 pub async fn add_validator<T: EthSpec>(
@@ -356,7 +416,6 @@ pub async fn add_validator<T: EthSpec>(
     operator_public_keys: OperatorPublicKeys,
     shared_public_keys: SharedPublicKeys,
     encrypted_secret_keys: EncryptedSecretKeys,
-    operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
     // tx_validator_command: MonitoredSender<ContractCommand>,
 ) -> Result<(), String> {
     let node = node.read().await;
@@ -378,16 +437,19 @@ pub async fn add_validator<T: EthSpec>(
         return Err("Validator exists".to_string());
     }
 
-    let operator_base_address: Vec<Option<SocketAddr>> =
-        match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
-            Ok(address) => address,
-            Err(e) => {
-                info!("Will process the validator again");
-                cleanup_validator_dir(&validator_dir, &validator_pk, validator_id)?;
-                cleanup_password_dir(&secret_dir, &validator_pk, validator_id)?;
-                return Err(e);
-            }
-        };
+    let operator_base_address: Vec<Option<SocketAddr>> = {
+        let mut discovery = node.discovery.write().await;
+        discovery.query_addrs(&operator_public_keys, base_port).await
+    };
+        // match get_operator_ips(&operator_public_keys, base_port).await {
+        //     Ok(address) => address,
+        //     Err(e) => {
+        //         info!("Will process the validator again");
+        //         cleanup_validator_dir(&validator_dir, &validator_pk, validator_id)?;
+        //         cleanup_password_dir(&secret_dir, &validator_pk, validator_id)?;
+        //         return Err(e);
+        //     }
+        // };
 
     let operator_ids: Vec<u64> = validator
         .releated_operators
@@ -481,15 +543,8 @@ pub async fn add_validator<T: EthSpec>(
     let committee_def_path =
         default_operator_committee_definition_path(&validator_pk, validator_dir.clone());
     info!("path {:?}, pk {:?}", &committee_def_path, &validator_pk);
-    match def
-        .to_file(committee_def_path.clone())
-        .map_err(|e| format!("Unable to save committee definition: error:{:?}", e))
-    {
-        Ok(_) => {}
-        Err(e) => {
-            return Err(e.to_string());
-        }
-    }
+    def.to_file(committee_def_path.clone())
+        .map_err(|e| format!("Unable to save committee definition: error:{:?}", e))?;
 
     let voting_keystore_share_path =
         default_keystore_share_path(&keystore_share, validator_dir.clone());
@@ -640,7 +695,6 @@ pub async fn start_initializer<T: EthSpec>(
     node: Arc<RwLock<Node<T>>>,
     initiator: Initiator,
     operator_public_keys: OperatorPublicKeys,
-    operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
     initializer_store: Arc<
         RwLock<HashMap<u32, (BlsKeypair, BlsPublicKey, HashMap<u64, BlsPublicKey>)>>,
     >,
@@ -648,26 +702,31 @@ pub async fn start_initializer<T: EthSpec>(
 ) -> Result<(), String> {
     let node = node.read().await;
     let base_port = node.config.base_address.port();
-    let operator_ips: Vec<Option<SocketAddr>> =
-        match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
-            Ok(ips) => ips,
-            Err(e) => {
-                sleep(Duration::from_secs(10)).await;
-                // let _ = tx_contract_command
-                //     .send(ContractCommand::StartInitiator(
-                //         initiator,
-                //         operator_public_keys,
-                //     ))
-                //     .await;
-                // info!("Will process the initiator again");
-                return Err(e);
-            }
-        };
+    let operator_ips: Vec<Option<IpAddr>> = {
+        let mut discovery = node.discovery.write().await;
+        discovery.query_ips(&operator_public_keys).await
+    };
+    // let operator_ips: Vec<Option<SocketAddr>> =
+    //     match get_operator_ips(&operator_public_keys, base_port).await {
+    //         Ok(ips) => ips,
+    //         Err(e) => {
+    //             sleep(Duration::from_secs(10)).await;
+    //             // let _ = tx_contract_command
+    //             //     .send(ContractCommand::StartInitiator(
+    //             //         initiator,
+    //             //         operator_public_keys,
+    //             //     ))
+    //             //     .await;
+    //             // info!("Will process the initiator again");
+    //             return Err(e);
+    //         }
+    //     };
     if operator_ips.iter().any(|x| x.is_none()) {
+        sleep(Duration::from_secs(10)).await;
         return Err("StartInitializer: Insufficient operators discovered for DKG".to_string());
     }
     let operator_ips: Vec<SocketAddr> = operator_ips.iter().map(|x| {
-        SocketAddr::new(x.unwrap().ip(), base_port + DKG_PORT_OFFSET)
+        SocketAddr::new(x.unwrap(), base_port + DKG_PORT_OFFSET)
     }).collect();
 
     let self_op_id = *SELF_OPERATOR_ID
@@ -719,26 +778,31 @@ pub async fn minipool_deposit<T: EthSpec>(
     validator_pk: Vec<u8>,
     operator_public_keys: OperatorPublicKeys,
     operator_ids: OperatorIds,
-    operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
     minipool_address: H160,
     initializer_store: InitiatorStore,
     amount: u64
 ) -> Result<(), String> {
     let node = node.read().await;
     let base_port = node.config.base_address.port();
-    let operator_ips = match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
-        Ok(ips) => ips,
-        Err(e) => {
-            error!("Some operators are not online, it's critical error, minipool exiting");
-            initializer_store.write().await.remove(&initiator_id).ok_or(format!("can't remove initiator store id: {}", initiator_id))?;
-            return Err(e);
-        }
+    let operator_ips: Vec<Option<IpAddr>> = {
+        let mut discovery = node.discovery.write().await;
+        discovery.query_ips(&operator_public_keys).await
     };
+    // let operator_ips = match get_operator_ips(&operator_public_keys, base_port).await {
+    //     Ok(ips) => ips,
+    //     Err(e) => {
+    //         error!("Some operators are not online, it's critical error, minipool exiting");
+    //         initializer_store.write().await.remove(&initiator_id).ok_or(format!("can't remove initiator store id: {}", initiator_id))?;
+    //         return Err(e);
+    //     }
+    // };
     if operator_ips.iter().any(|x| x.is_none()) {
+        error!("Some operators are not online, it's critical error, minipool exiting");
+        initializer_store.write().await.remove(&initiator_id).ok_or(format!("can't remove initiator store id: {}", initiator_id))?;
         return Err("MinipoolDeposit: Insufficient operators discovered for distributed signing".to_string());
     }
     let operator_ips: Vec<SocketAddr> = operator_ips.iter().map(|x| {
-        SocketAddr::new(x.unwrap().ip(), base_port + DKG_PORT_OFFSET)
+        SocketAddr::new(x.unwrap(), base_port + DKG_PORT_OFFSET)
     }).collect();
 
     let op_ids: Vec<u64> = operator_ids.into_iter().map(|x| x as u64).collect();
@@ -768,6 +832,31 @@ pub async fn minipool_deposit<T: EthSpec>(
     };
     let url_str = API_ADDRESS.get().unwrap().to_owned() + url;
     request_to_web_server(request_body, &url_str).await.map_err(|e| format!("can't send request to server {:?}, url: {}", e, url_str))?;
+    Ok(())
+}
+
+pub async fn restart_validator<T: EthSpec>(
+    node: Arc<RwLock<Node<T>>>, 
+    validator_id: u64,
+    validator_pk: PublicKey
+) -> Result<(), String> {
+
+    info!(
+        "[VA {}] restarting validator {}...",
+        validator_id, validator_pk
+    );
+    let validator_store = {
+        let node_ = node.read().await;
+        node_.validator_store.clone()
+    };
+
+    cleanup_handler(node.clone(), validator_id).await;
+    match validator_store {
+        Some(validator_store) => {
+            validator_store.restart_validator_keystore(&validator_pk).await;
+        }
+        _ => {}
+    }
     Ok(())
 }
 

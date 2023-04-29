@@ -1,8 +1,6 @@
-use std::collections::HashMap;
 use std::fs::File;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
-use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -10,14 +8,12 @@ use network::{DvfMessage, ReliableSender, VERSION};
 use reqwest::Client;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use tokio::sync::RwLock;
 use tokio::time::timeout;
 use tracing::{error, info, warn};
 use types::DepositData;
 use url::Url;
 use web3::types::H160;
 
-use crate::node::contract::OperatorPublicKeys;
 
 use super::config::BOOT_SOCKETADDR;
 
@@ -94,41 +90,40 @@ pub async fn request_to_web_server<T: Serialize>(body: T, url_str: &str) -> Resu
     Ok(())
 }
 
-pub async fn get_operator_ips(
-    operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
-    operator_public_keys: &OperatorPublicKeys,
-    base_port: u16,
-) -> Result<Vec<Option<SocketAddr>>, String> {
-    let key_ip_map = operator_key_ip_map.read().await;
-    let mut ip_not_founds: Vec<usize> = vec![];
-    let mut operator_base_address: Vec<Option<IpAddr>> = operator_public_keys
-        .iter()
-        .enumerate()
-        .map(|(i, op_pk)| {
-            let op_pk_str = base64::encode(op_pk);
-            key_ip_map.get(&op_pk_str).map_or_else(
-                || {
-                    warn!("Can't discover operator {} locally, querying from boot node", op_pk_str);
-                    ip_not_founds.push(i);
-                    None
-                },
-                |ip| {
-                    Some(ip.clone())
-                },
-            )
-        })
-        .collect();
-    for index in ip_not_founds {
-        operator_base_address[index] = query_ip_from_boot(&operator_public_keys[index]).await;
-    }
-    // if operator_base_address.iter().any(|x| x.is_none()) {
-    //     warn!("Insufficient operators discovered");
-    // }
-    Ok(operator_base_address
-        .into_iter()
-        .map(|x| x.map(|ip| SocketAddr::new(ip, base_port)))
-        .collect())
-}
+// pub async fn get_operator_ips(
+//     operator_public_keys: &OperatorPublicKeys,
+//     base_port: u16,
+// ) -> Result<Vec<Option<SocketAddr>>, String> {
+//     let key_ip_map = operator_key_ip_map.read().await;
+//     let mut ip_not_founds: Vec<usize> = vec![];
+//     let mut operator_base_address: Vec<Option<IpAddr>> = operator_public_keys
+//         .iter()
+//         .enumerate()
+//         .map(|(i, op_pk)| {
+//             let op_pk_str = base64::encode(op_pk);
+//             key_ip_map.get(&op_pk_str).map_or_else(
+//                 || {
+//                     warn!("Can't discover operator {} locally, querying from boot node", op_pk_str);
+//                     ip_not_founds.push(i);
+//                     None
+//                 },
+//                 |ip| {
+//                     Some(ip.clone())
+//                 },
+//             )
+//         })
+//         .collect();
+//     for index in ip_not_founds {
+//         operator_base_address[index] = query_ip_from_boot(&operator_public_keys[index]).await;
+//     }
+//     // if operator_base_address.iter().any(|x| x.is_none()) {
+//     //     warn!("Insufficient operators discovered");
+//     // }
+//     Ok(operator_base_address
+//         .into_iter()
+//         .map(|x| x.map(|ip| SocketAddr::new(ip, base_port)))
+//         .collect())
+// }
 
 pub fn convert_va_pk_to_u64(pk: &[u8]) -> u64 {
     let mut little_endian: [u8; 8] = [0; 8];

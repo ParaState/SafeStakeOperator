@@ -358,6 +358,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             );
         }
         let node = Node::<T>::new(config.dvf_node_config.clone())
+            .await
             .map_err(|e| format!("Dvf node creation failed: {}", e))?;
 
         let validators = InitializedValidators::from_definitions(

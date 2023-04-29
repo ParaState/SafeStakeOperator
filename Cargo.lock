@@ -896,9 +896,9 @@ dependencies = [
 
 [[package]]
 name = "bitcoin_hashes"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "006cc91e1a1d99819bc5b8214be3555c1f0611b169f527a1fdc54ed1f2b745b0"
+checksum = "90064b8dee6815a6470d60bad07bbbaee885c0e12d04177138fa3291a01b7bc4"
 
 [[package]]
 name = "bitflags"
@@ -1561,7 +1561,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.13.1",
  "ed25519-dalek",
- "secp256k1 0.23.5",
+ "secp256k1 0.24.3",
  "serde",
  "tokio",
 ]
@@ -2154,6 +2154,7 @@ dependencies = [
  "downcast-rs",
  "dvf_directory",
  "dvf_version",
+ "enr",
  "env_logger 0.8.4",
  "environment",
  "eth2",
@@ -2196,7 +2197,7 @@ dependencies = [
  "rpassword",
  "rusqlite",
  "safe_arith",
- "secp256k1 0.23.5",
+ "secp256k1 0.24.3",
  "sensitive_url",
  "serde",
  "serde_derive",
@@ -2340,6 +2341,7 @@ dependencies = [
  "log",
  "rand 0.8.5",
  "rlp",
+ "secp256k1 0.24.3",
  "serde",
  "sha3 0.10.6",
  "zeroize",
@@ -7636,9 +7638,9 @@ dependencies = [
 
 [[package]]
 name = "secp256k1"
-version = "0.23.5"
+version = "0.24.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6ab5e459a2c79d801a1971ec8e1f15d6fced753d269bcd37324d0b8b2fc8f32"
+checksum = "6b1629c9c557ef9b293568b338dddfc8208c98a18c59d722a9d53f859d9c9b62"
 dependencies = [
  "bitcoin_hashes",
  "rand 0.8.5",

@@ -13,7 +13,8 @@ num-bigint = { version = "0.4.0", features = ["rand"] }
 num-traits = "0.2.8"
 array-init = "2.0.0"
 aes-gcm = "0.9.4"
-secp256k1 = { version = "0.23.4", features = ["alloc", "rand", "serde"] }
+enr = { version = "0.6.2", features = ["k256", "ed25519", "rust-secp256k1"] }
+secp256k1 = { version = "0.24.0", features = ["alloc", "rand", "serde"] }
 sha256 = "1.0.3"
 
 rayon = "1.4.1"

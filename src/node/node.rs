@@ -579,51 +579,83 @@ pub async fn add_validator<T: EthSpec>(
     Ok(())
 }
 
+// pub async fn activate_validator<T: EthSpec>(
+//     node: Arc<RwLock<Node<T>>>,
+//     validator: Validator,
+// ) -> Result<(), String> {
+//     let node = node.read().await;
+//     let validator_id = validator.id;
+//     let validator_pk = PublicKey::deserialize(&validator.public_key)
+//         .map_err(|e| format!("Unable to deserialize validator public key: {:?}", e))?;
+//     let validator_dir = node.config.validator_dir.clone();
+//     let secret_dir = node.config.secrets_dir.clone();
+
+//     let committee_def_path =
+//         default_operator_committee_definition_path(&validator_pk, validator_dir.clone());
+
+//     let voting_keystore_share_path = validator_dir
+//         .join(format!("{}", validator_pk))
+//         .join(format!("{}", SELF_OPERATOR_ID.get().unwrap()));
+
+//     let keystore_share =
+//         KeystoreShare::from_json_file(&voting_keystore_share_path).map_err(|e| {
+//             format!("failed to get keystore share from file, error: {:?}", e)
+//         })?;
+//     let voting_keystore_share_password_path =
+//         default_keystore_share_password_path(&keystore_share, secret_dir.clone());
+//     match &node.validator_store {
+//         Some(validator_store) => {
+//             let _ = validator_store
+//                 .add_validator_keystore_share(
+//                     voting_keystore_share_path,
+//                     voting_keystore_share_password_path,
+//                     true,
+//                     None,
+//                     None,
+//                     None,
+//                     None,
+//                     committee_def_path,
+//                     keystore_share.master_id,
+//                     keystore_share.share_id,
+//                 )
+//                 .await;
+//             info!("[VA {}] reactivate validator {}", validator_id, validator_pk);
+//         }
+//         _ => {
+//             error!(
+//                 "[VA {}] failed to add validator {}. Error: no validator store is set.",
+//                 validator_id, validator_pk
+//             );
+//         }
+//     }
+
+//     Ok(())
+// }
+
 pub async fn activate_validator<T: EthSpec>(
     node: Arc<RwLock<Node<T>>>,
     validator: Validator,
 ) -> Result<(), String> {
-    let node = node.read().await;
     let validator_id = validator.id;
     let validator_pk = PublicKey::deserialize(&validator.public_key)
         .map_err(|e| format!("Unable to deserialize validator public key: {:?}", e))?;
-    let validator_dir = node.config.validator_dir.clone();
-    let secret_dir = node.config.secrets_dir.clone();
+    info!(
+        "[VA {}] activating validator {}...",
+        validator_id, validator_pk
+    );
+    let validator_store = {
+        let node_ = node.read().await;
+        node_.validator_store.clone()
+    };
 
-    let committee_def_path =
-        default_operator_committee_definition_path(&validator_pk, validator_dir.clone());
-
-    let voting_keystore_share_path = validator_dir
-        .join(format!("{}", validator_pk))
-        .join(format!("{}", SELF_OPERATOR_ID.get().unwrap()));
-
-    let keystore_share =
-        KeystoreShare::from_json_file(&voting_keystore_share_path).map_err(|e| {
-            format!("failed to get keystore share from file, error: {:?}", e)
-        })?;
-    let voting_keystore_share_password_path =
-        default_keystore_share_password_path(&keystore_share, secret_dir.clone());
-    match &node.validator_store {
+    match validator_store {
         Some(validator_store) => {
-            let _ = validator_store
-                .add_validator_keystore_share(
-                    voting_keystore_share_path,
-                    voting_keystore_share_password_path,
-                    true,
-                    None,
-                    None,
-                    None,
-                    None,
-                    committee_def_path,
-                    keystore_share.master_id,
-                    keystore_share.share_id,
-                )
-                .await;
-            info!("[VA {}] reactivate validator {}", validator_id, validator_pk);
+            validator_store.start_validator_keystore(&validator_pk).await;
+            info!("[VA {}] validator {} activated", validator_id, validator_pk);
         }
         _ => {
             error!(
-                "[VA {}] failed to add validator {}. Error: no validator store is set.",
+                "[VA {}] failed to activate validator {}. Error: no validator store is set.",
                 validator_id, validator_pk
             );
         }

@@ -11,7 +11,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use futures::SinkExt;
 use std::net::{SocketAddr};
-use log::{info, warn, debug};
+use log::{info, warn};
 use tokio::task::JoinHandle;
 use tokio::sync::{Notify};
 use tokio::time::{sleep, Duration};

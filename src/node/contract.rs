@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use store::Store;
 use tokio::sync::OnceCell;
-use tracing::{error, info, warn};
+use log::{error, info, warn};
 use web3::{
     contract::{Contract as EthContract, Options},
     futures::TryStreamExt,
@@ -459,7 +459,7 @@ impl Contract {
                 get_block_number(&mut record).await;
                 update_record_file(&record, &record_path);
             }
-            let mut query_interval = tokio::time::interval(Duration::from_secs(12));
+            let mut query_interval = tokio::time::interval(Duration::from_secs(24));
             loop {
                 query_interval.tick().await;
                 let transport = WebSocket::new(transport_url).await;
@@ -765,7 +765,6 @@ pub async fn process_validator_registration(
         };
     }
     if operator_pks.contains(operator_pk_base64) {
-        set_global_operator_id(&operator_pks, &operator_pk_base64, &op_ids);
         let shared_pks = parse_bytes_token(log.params[3].value.clone())?;
         let encrypted_sks = parse_bytes_token(log.params[4].value.clone())?;
         // TODO paid block should store for tokenomics
@@ -937,7 +936,6 @@ pub async fn process_initiator_registration(
         };
     }
     if operator_pks.contains(operator_pk_base64) {
-        set_global_operator_id(&operator_pks, &operator_pk_base64, &op_ids);
         let initiator = Initiator {
             id,
             owner_address: address,
@@ -1188,13 +1186,4 @@ pub fn parse_bytes_token(tk: token::Token) -> Result<Vec<Vec<u8>>, ContractError
         .map(|token| token.into_bytes().unwrap())
         .collect();
     Ok(res)
-}
-
-// only call once
-pub fn set_global_operator_id(pks: &Vec<String>, self_pk: &str, ids: &Vec<u32>) {
-    if !SELF_OPERATOR_ID.initialized() {
-        let index = pks.iter().position(|x| *x == *self_pk).unwrap();
-        SELF_OPERATOR_ID.set(ids[index]).unwrap();
-        info!("Set self operator id successfully")
-    }
 }

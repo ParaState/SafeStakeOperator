@@ -15,7 +15,7 @@ use eth2_network_config::{Eth2NetworkConfig, DEFAULT_HARDCODED_NETWORK, HARDCODE
 use lighthouse_version::VERSION;
 use malloc_utils::configure_memory_allocator;
 use task_executor::ShutdownReason;
-use tracing::{error, info, warn};
+use log::{error, info, warn};
 use types::{EthSpec, EthSpecId};
 
 use dvf::validation::ProductionValidatorClient;
@@ -35,7 +35,7 @@ fn bls_library_name() -> &'static str {
 }
 
 fn main() {
-    tracing_subscriber::fmt().json().init();
+    // tracing_subscriber::fmt().json().init();
 
     // Enable backtraces unless a RUST_BACKTRACE value has already been explicitly provided.
     if std::env::var("RUST_BACKTRACE").is_err() {

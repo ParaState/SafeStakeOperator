@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use store::Store;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tracing::{error, info, warn};
+use log::{error, info, warn};
 use types::{EthSpec, Keypair};
 
 use crate::DEFAULT_CHANNEL_CAPACITY;

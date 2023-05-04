@@ -18,7 +18,7 @@ use std::{
 };
 use store::Store;
 use tokio::sync::RwLock;
-use tracing::{error, info};
+use log::{error, info};
 
 pub const DEFAULT_SECRET_DIR: &str = "node_key.json";
 pub const DEFAULT_STORE_DIR: &str = "boot_store";

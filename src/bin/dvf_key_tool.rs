@@ -3,14 +3,14 @@ use std::fs;
 use dvf_version::ROOT_VERSION;
 use hsconfig::Export as _;
 use hsconfig::Secret;
-use tracing::{error, info, log};
+use log::{error, info};
 
 pub const DEFAULT_SECRET_DIR: &str = "node_key.json";
 pub const DEFAULT_ROOT_DIR: &str = ".lighthouse";
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt().json().init();
+    // tracing_subscriber::fmt().json().init();
     log::info!("------dvf_key_tool------");
 
     let network = std::env::args().nth(1).expect("ERRPR: there is no valid network argument");

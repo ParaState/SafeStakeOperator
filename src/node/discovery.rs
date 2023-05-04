@@ -11,7 +11,7 @@ use std::{
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{Interval, timeout};
-use tracing::{error, info, warn};
+use log::{error, info, warn};
 use crate::DEFAULT_CHANNEL_CAPACITY;
 use store::Store;
 use std::path::PathBuf;

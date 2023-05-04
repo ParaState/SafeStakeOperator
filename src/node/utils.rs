@@ -9,7 +9,7 @@ use reqwest::Client;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tokio::time::timeout;
-use tracing::{error, info, warn};
+use log::{error, info, warn};
 use types::DepositData;
 use url::Url;
 use web3::types::H160;

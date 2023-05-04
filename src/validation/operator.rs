@@ -7,7 +7,7 @@ use bytes::Bytes;
 use downcast_rs::DowncastSync;
 use network::{DvfMessage, ReliableSender, SimpleSender, VERSION};
 use tokio::time::{Instant, sleep_until, timeout};
-use tracing::{info, warn};
+use log::{info, warn};
 use types::{Hash256, Keypair, PublicKey, Signature};
 use crate::node::config::{is_addr_invalid, base_to_transaction_addr, base_to_mempool_addr, base_to_consensus_addr, base_to_signature_addr};
 use crate::utils::error::DvfError;

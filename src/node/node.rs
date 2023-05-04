@@ -14,7 +14,7 @@ use network::Receiver as NetworkReceiver;
 use slot_clock::SystemTimeSlotClock;
 use tokio::sync::RwLock;
 use tokio::time::{Duration, sleep};
-use tracing::{error, info, warn};
+use log::{error, info, warn};
 use types::EthSpec;
 use types::PublicKey;
 use validator_dir::insecure_keys::INSECURE_PASSWORD;
@@ -779,13 +779,11 @@ pub async fn start_initializer<T: EthSpec>(
         )
             .await,
     );
-    info!("debug info io committee finished");
     let dkg = DKGSemiHonest::new(self_op_id as u64, io, THRESHOLD as usize);
     let (keypair, va_pk, shared_pks) = dkg
         .run()
         .await
         .map_err(|e| format!("run dkg failed {:?}", e))?;
-    info!("debug info");
     let pk_str: String = va_pk.as_hex_string()[2..].to_string();
     // push va pk to web server
     let request_body = ValidatorPkRequest {

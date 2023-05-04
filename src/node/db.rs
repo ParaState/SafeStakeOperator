@@ -3,7 +3,7 @@ use std::path::Path;
 use rusqlite::{Connection, DropBehavior, params, Result};
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::oneshot;
-use tracing::{error};
+use log::{error};
 use crate::node::contract::{Operator, Validator, Initiator};
 use web3::types::Address;
 

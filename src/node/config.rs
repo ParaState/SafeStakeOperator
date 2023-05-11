@@ -7,6 +7,8 @@ use serde_derive::{Deserialize, Serialize};
 use tokio::sync::OnceCell;
 use log::{warn};
 use lazy_static::lazy_static;
+use lighthouse_network::discv5::enr::{CombinedKey, Enr};
+use std::fs::File;
 
 /// The file name for the serialized `OperatorCommitteeDefinition` struct.
 pub const NODE_KEY_FILENAME: &str = "node_key.json";
@@ -28,6 +30,7 @@ pub const VALIDATOR_PK_URL: &str = "validator_pk";
 pub const PRESTAKE_SIGNATURE_URL: &str = "prestake_signature";
 pub const STAKE_SIGNATURE_URL: &str = "stake_signature";
 pub const TOPIC_NODE_INFO: &str = "dvf/topic_node_info";
+const BOOT_ENRS_CONFIG_FILE: &str = "boot_config/boot_enrs.yaml";
 
 lazy_static!{
     // [Issue] SocketAddr::new is not yet a const fn in stable release.
@@ -95,6 +98,7 @@ pub struct NodeConfig {
     pub node_key_path: PathBuf,
     pub validator_dir: PathBuf,
     pub secrets_dir: PathBuf,
+    pub boot_enrs: Vec<Enr<CombinedKey>>,
 }
 
 impl Default for NodeConfig {
@@ -121,6 +125,16 @@ impl NodeConfig {
         let node_key_path = base_dir.join(NODE_KEY_FILENAME);
         let validator_dir = base_dir.join(DEFAULT_VALIDATOR_DIR);
         let secrets_dir = base_dir.join(DEFAULT_SECRET_DIR);
+
+        let file = File::options()
+            .read(true)
+            .write(false)
+            .create(false)
+            .open(BOOT_ENRS_CONFIG_FILE)
+            .expect(format!("Unable to open the boot enrs config file: {:?}", BOOT_ENRS_CONFIG_FILE).as_str());
+        let boot_enrs: Vec<Enr<CombinedKey>> = serde_yaml::from_reader(file)
+            .expect("Unable to parse boot enr");
+
         Self {
             // id,
             base_address: SocketAddr::new(ip.clone(), base_port),
@@ -132,6 +146,7 @@ impl NodeConfig {
             node_key_path,
             validator_dir,
             secrets_dir,
+            boot_enrs,
         }
     }
 

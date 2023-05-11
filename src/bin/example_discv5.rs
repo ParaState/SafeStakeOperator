@@ -8,6 +8,12 @@ use hsconfig::Secret;
 use futures::executor::block_on;
 use futures::future::join_all;
 use eth2_network_config::Eth2NetworkConfig;
+use dvf::node::config::NodeConfig;
+
+pub fn read_boot_enrs() {
+    let config = NodeConfig::default();
+    info!("Enrs: {:?}", config.boot_enrs);
+}
 
 pub fn load_lighthouse_network_config() -> Eth2NetworkConfig {
     Eth2NetworkConfig::constant("prater").unwrap().unwrap()
@@ -254,6 +260,9 @@ fn main() {
             handles.push(handle);
         }
         block_on(join_all(handles));
+    }
+    else {
+        read_boot_enrs();
     }
 
     std::thread::sleep(std::time::Duration::from_millis(10000));

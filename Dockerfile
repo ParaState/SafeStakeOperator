@@ -33,6 +33,7 @@ WORKDIR /app
 COPY --from=builder /app/target/release/dvf_key_tool /usr/local/bin/dvf_key_tool
 COPY --from=builder /app/target/release/dvf_root_node /usr/local/bin/dvf_root_node
 COPY --from=builder /app/contract_config /app/contract_config
+COPY --from=builder /app/boot_config /app/boot_config
 COPY --from=builder /app/target/release/dvf /usr/local/bin/dvf
 COPY ./src ./src
 EXPOSE 9005

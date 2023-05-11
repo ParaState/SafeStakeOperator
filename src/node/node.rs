@@ -128,7 +128,7 @@ impl<T: EthSpec> Node<T> {
             self_address,
             base_port + DISCOVERY_PORT_OFFSET,
             secret.clone(),
-            BOOT_ENR.get().unwrap().clone(),
+            config.boot_enrs.clone(),
             config.base_store_path.clone(),
         ).await;
         

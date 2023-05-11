@@ -1,4 +1,3 @@
-use super::config::BOOT_SOCKETADDR;
 use lighthouse_network::discv5::{
     self,
     enr::{CombinedKey, Enr, EnrPublicKey, NodeId},
@@ -28,6 +27,7 @@ pub struct Discovery {
     heartbeat: Interval,
     query_sender: mpsc::Sender<(NodeId, oneshot::Sender<()>)>,
     store: Store,
+    boot_enrs: Vec<Enr<CombinedKey>>,
     discv5_service_handle: JoinHandle<()>,
 }
 
@@ -43,7 +43,7 @@ impl Discovery {
         ip: IpAddr,
         udp_port: u16,
         secret: Secret,
-        boot_enr: String,
+        boot_enrs: Vec<Enr<CombinedKey>>,
         base_dir: PathBuf,
     ) -> Self {
         let mut secret_key = secret.secret.0[..].to_vec();
@@ -67,31 +67,37 @@ impl Discovery {
         // construct the discv5 server
         let mut discv5: Discv5 = Discv5::new(local_enr.clone(), enr_key, config).unwrap();
 
-        match boot_enr.parse::<Enr<CombinedKey>>() {
-            Ok(enr) => {
-                info!(
-                    "Boot ENR Read. ip: {:?}, undp_port {:?}, tcp_port: {:?}, public_key: {}",
-                    enr.ip4(),
-                    enr.udp4(),
-                    enr.tcp4(),
-                    base64::encode(&enr.public_key().encode()[..])
-                );
-
-                BOOT_SOCKETADDR
-                    .set(SocketAddr::new(
-                        IpAddr::V4(enr.ip4().expect("boot enr ip should not be empty")),
-                        enr.udp4().expect("boot enr port should not be empty"),
-                    ))
-                    .unwrap();
-
-                if let Err(e) = discv5.add_enr(enr) {
-                    info!("Boot ENR was not added: {}", e);
-                }
-            }
-            Err(e) => {
-                error!("Decoding ENR failed: {}", e);
+        for boot_enr in &boot_enrs {
+            if let Err(e) = discv5.add_enr(boot_enr.clone()) {
+                panic!("Boot ENR was not added: {}", e);
             }
         }
+
+        // match boot_enr.parse::<Enr<CombinedKey>>() {
+        //     Ok(enr) => {
+        //         info!(
+        //             "Boot ENR Read. ip: {:?}, undp_port {:?}, tcp_port: {:?}, public_key: {}",
+        //             enr.ip4(),
+        //             enr.udp4(),
+        //             enr.tcp4(),
+        //             base64::encode(&enr.public_key().encode()[..])
+        //         );
+
+        //         BOOT_SOCKETADDR
+        //             .set(SocketAddr::new(
+        //                 IpAddr::V4(enr.ip4().expect("boot enr ip should not be empty")),
+        //                 enr.udp4().expect("boot enr port should not be empty"),
+        //             ))
+        //             .unwrap();
+
+        //         if let Err(e) = discv5.add_enr(enr) {
+        //             info!("Boot ENR was not added: {}", e);
+        //         }
+        //     }
+        //     Err(e) => {
+        //         error!("Decoding ENR failed: {}", e);
+        //     }
+        // }
 
         let store_path = base_dir.join(DEFAULT_DISCOVERY_IP_STORE);
         let store = Store::new(&store_path.to_str().unwrap()).unwrap();
@@ -164,6 +170,7 @@ impl Discovery {
             heartbeat,
             query_sender: tx,
             store: store_clone,
+            boot_enrs,
             discv5_service_handle,
         };
 
@@ -226,7 +233,9 @@ impl Discovery {
             self.heartbeat.tick().await;
         }
         self.discover(node_id).await;
-        self.query_ip_from_boot(pk).await;
+        // Randomly pick a boot node
+        let boot_idx = rand::random::<usize>() % self.boot_enrs.len();
+        self.query_ip_from_boot(boot_idx, pk).await;
         
         self.query_ip_from_local_store(pk).await
     }
@@ -254,7 +263,11 @@ impl Discovery {
         }
     }
 
-    pub async fn query_ip_from_boot(&self, pk: &[u8]) -> Option<IpAddr> {
+    pub async fn query_ip_from_boot(&self, boot_idx: usize, pk: &[u8]) -> Option<IpAddr> {
+        if boot_idx >= self.boot_enrs.len() {
+            error!("Invalid boot index");
+            return None;
+        }
         let dvf_message = DvfMessage {
             version: VERSION,
             validator_id: 0,
@@ -263,7 +276,10 @@ impl Discovery {
         let timeout_mill: u64 = 3000;
         let serialized_msg = bincode::serialize(&dvf_message).unwrap();
         let network_sender = ReliableSender::new();
-        let socketaddr = BOOT_SOCKETADDR.get().unwrap().clone();
+        let socketaddr = SocketAddr::new(
+            IpAddr::V4(self.boot_enrs[boot_idx].ip4().expect("boot enr ip should not be empty")),
+            self.boot_enrs[boot_idx].udp4().expect("boot enr port should not be empty"),
+        );
         let receiver = network_sender.send(socketaddr, Bytes::from(serialized_msg)).await;
         let result = timeout(Duration::from_millis(timeout_mill), receiver).await;
     

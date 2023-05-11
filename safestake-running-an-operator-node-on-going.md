@@ -166,7 +166,6 @@ Now that we have open the `.env` file, we will update the values based on our ow
 
 **Leave these variables unchanged**:
 ```bash
-ENR=enr:-IS4QKIF_55zNM3o29E91Rj2gwjTQJHvnGVW8e--2nvsixCXCKbS0vhuBILafB1qv3AyR2GhKt611zf_x5V6zwGEmEwBgmlkgnY0gmlwhBKIH16Jc2VjcDI1NmsxoQNsOWU-IpJ0fRj4WlVELfC5HLLhzhHZr9HMsN401NGJdYN1ZHCCIy0
 GETH_NETWORK=goerli
 LIGHTHOUSE_NETWORK=prater
 OPERATOR_NETWORK=prater

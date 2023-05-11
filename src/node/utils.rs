@@ -1,15 +1,10 @@
 use std::fs::File;
-use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
-use std::time::Duration;
 
-use bytes::Bytes;
-use network::{DvfMessage, ReliableSender, VERSION};
 use reqwest::Client;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use tokio::time::timeout;
-use log::{error, info, warn};
+use log::{error, info};
 use types::DepositData;
 use url::Url;
 use web3::types::H160;

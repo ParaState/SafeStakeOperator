@@ -27,7 +27,7 @@ use crate::deposit::get_distributed_deposit;
 use crate::network::io_committee::{NetIOChannel, NetIOCommittee};
 use crate::node::config::{
     base_to_transaction_addr, base_to_mempool_addr, base_to_consensus_addr, base_to_signature_addr,
-    API_ADDRESS, BOOT_ENR, DB_FILENAME, DISCOVERY_PORT_OFFSET, DKG_PORT_OFFSET, NodeConfig,
+    API_ADDRESS, DB_FILENAME, DISCOVERY_PORT_OFFSET, DKG_PORT_OFFSET, NodeConfig,
     PRESTAKE_SIGNATURE_URL, STAKE_SIGNATURE_URL, VALIDATOR_PK_URL,
 };
 use crate::node::discovery::Discovery;

@@ -16,7 +16,7 @@ use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use types::{Address, GRAFFITI_BYTES_LEN};
-use crate::node::config::{NodeConfig,API_ADDRESS, BOOT_ENR};
+use crate::node::config::{NodeConfig,API_ADDRESS};
 use crate::node::contract::{DEFAULT_TRANSPORT_URL, SELF_OPERATOR_ID, NETWORK_CONTRACT, REGISTRY_CONTRACT};
 use dvf_directory::{get_default_base_dir};
 
@@ -144,15 +144,6 @@ impl Config {
         // if cli_args.value_of("secrets-dir").is_some() {
         //     secrets_dir = Some(parse_required(cli_args, "secrets-dir")?);
         // }
-
-        if cli_args.value_of("boot-enr").is_some() {
-            let boot_enr: String= parse_required(cli_args, "boot-enr")?;
-            info!(log, "read boot enr"; "boot-enr" => &boot_enr);
-            BOOT_ENR.set(boot_enr).unwrap();
-        } else {
-            error!(log, "can't read boot enr, existing;" );
-            return Err("can't read boot enr".to_string());
-        }
 
         if cli_args.values_of("registry-contract").is_some() {
             let registry_contract: String= parse_required(cli_args, "registry-contract")?;

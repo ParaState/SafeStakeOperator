@@ -12,6 +12,7 @@ COPY ./lighthouse ./lighthouse
 COPY ./hotstuff ./hotstuff
 COPY ./common ./common
 COPY ./contract_config ./contract_config
+COPY ./boot_config ./boot_config
 RUN cargo build --release
 RUN rm src/*.rs
 

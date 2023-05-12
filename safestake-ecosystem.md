@@ -35,7 +35,7 @@ It is worth noting that in other staking infrastructure provider where similar i
 
 To `run` an operator node on the SafeStake network, refer to the instructions [here](safestake-running-an-operator-node-on-going.md).
 
-### SafeStake Service Provider / ParaState DAO
+### SafeStake Service Provider / SafeStake DAO
 
 The SafeStake infrastructure and protocol also relies on its supporters to help build and maintain it. Without SafeStake Services Providers and the ParaState DAO, we could not provide decentralized staking services. At its core, SafeStake provides a robust web service where:
 

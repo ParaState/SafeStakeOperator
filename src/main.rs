@@ -8,7 +8,7 @@ use clap::{App, Arg, ArgMatches};
 use clap_utils::{flags::DISABLE_MALLOC_TUNING_FLAG, get_eth2_network_config};
 use directory::{parse_path_or_default, DEFAULT_BEACON_NODE_DIR, DEFAULT_VALIDATOR_DIR};
 use dvf_directory::get_default_base_dir;
-use env_logger::{Builder, Env};
+use env_logger::{Env};
 use environment::{EnvironmentBuilder, LoggerConfig};
 use eth2_hashing::have_sha_extensions;
 use eth2_network_config::{Eth2NetworkConfig, DEFAULT_HARDCODED_NETWORK, HARDCODED_NET_NAMES};
@@ -17,7 +17,8 @@ use malloc_utils::configure_memory_allocator;
 use task_executor::ShutdownReason;
 use log::{error, info, warn};
 use types::{EthSpec, EthSpecId};
-
+use std::io::Write;
+use chrono::Local;
 use dvf::validation::ProductionValidatorClient;
 
 mod metrics;
@@ -300,9 +301,9 @@ fn main() {
     }
 
     // Debugging output for libp2p and external crates.
-    if matches.is_present("env_log") {
-        Builder::from_env(Env::default()).init();
-    }
+    // if matches.is_present("env_log") {
+    //     Builder::from_env(Env::default()).init();
+    // }
 
     info!("------dvf main------");
 
@@ -371,6 +372,23 @@ fn run<E: EthSpec>(
             std::mem::size_of::<usize>() * 8
         ));
     }
+
+    let debug_level = matches
+        .value_of("debug-level")
+        .ok_or("Expected --debug-level flag")?;
+
+    let _logger = env_logger::Builder::from_env(Env::default().default_filter_or(debug_level)).format(|buf, record| {
+        let level = { buf.default_styled_level(record.level()) };
+        writeln!(
+            buf,
+            "{} {} [{}:{}] {}",
+            Local::now().format("%Y-%m-%d %H:%M:%S%.3f"),
+            format_args!("{:>5}", level),
+            record.module_path().unwrap_or("<unnamed>"),
+            record.line().unwrap_or(0),
+            &record.args()
+        )
+    }).init();   
 
     let debug_level = matches
         .value_of("debug-level")

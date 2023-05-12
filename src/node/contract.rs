@@ -459,7 +459,7 @@ impl Contract {
                 get_block_number(&mut record).await;
                 update_record_file(&record, &record_path);
             }
-            let mut query_interval = tokio::time::interval(Duration::from_secs(24));
+            let mut query_interval = tokio::time::interval(Duration::from_secs(60));
             loop {
                 query_interval.tick().await;
                 let transport = WebSocket::new(transport_url).await;

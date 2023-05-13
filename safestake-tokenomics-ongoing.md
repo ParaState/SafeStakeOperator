@@ -4,7 +4,7 @@
 
 ### DVT Token  <a href="#main-use-cases-of-state-token" id="main-use-cases-of-state-token"></a>
 
-State token is rebranded to DVT. Please refer to [the Governance vote](https://vote.parastate.io/#/proposal/0xe92565a32a08c7c3aafdf6c7ca6f9589a2ddc443eb46a914de63991e76359f75).
+State token is rebranded to DVT. Please refer to the [Rebranding Governance Proposal](https://vote.safestake.xyz/#/proposal/0xc8ab763f7491bfe47ae8b41747dffa19907ace150798c8a2824685e386cdc1a5), and the [Token Symbol Vote](https://vote.safestake.xyz/#/proposal/0xe92565a32a08c7c3aafdf6c7ca6f9589a2ddc443eb46a914de63991e76359f75).&#x20;
 
 The DVT token is the official ERC-20 token of the SafeStake network. Its main uses include:
 
@@ -17,6 +17,8 @@ The DVT token is the official ERC-20 token of the SafeStake network. Its main us
 
 Initial total supply: 100,000,000 DVT
 
+Eco Treasury Vault: 26,560,000 DVT
+
 1. Validators on the SafeStake network are required to pay 30 DVT/month to each operator as a service fee. The four operators in the committee managing the validator will receive a total payment of 120 DVT token per month from the staker. In  the future, operators will be enabled to set their own fees within a reasonable threshold. This initial cost setting of around $21/month is based on the leading staking service provider[ in the advanced VPS category](https://www.allnodes.com/pricing).&#x20;
 2. Operators on the SafeStake network are encouraged to maintain a minimum balance of DVT tokens if they want to be selected in priority to organize as an Op committee during Validator registration.&#x20;
 3. In addition, initiator operators who stake 8 ETH to create mini-pool contracts for new validators will also be required to pay in full 120 DVT/month, since the extra 24 ETH is provided by the liquidity staking pool. However, since the initiator operator is one of the four managing operators, they will receive 30 DVT/month back in the subject validator service fees.
@@ -24,7 +26,7 @@ Initial total supply: 100,000,000 DVT
 5. The above fees are calculated per block.
 6. The SafeStake DAO collects 10% of total operator’s service fees and 10% of total validator's yield as the 'protocol fee.' These fees are collected automatically via smart contract on a block basis. The funds collected for the protocol fee will be stored in the network security treasury and controlled by the SafeStake DAO.&#x20;
 
-### According to the latest [$DVT Token Economics Governance Proposal](https://vote.parastate.io/#/proposal/0x68e5f259359a50829999665ab70259116c01a0cbe8cb6d85e65e9b283bef0799), the Eco treasury vault will release tokens based on the below logic.&#x20;
+### According to the latest [$DVT Token Economics Governance Proposal](https://vote.safestake.xyz/#/proposal/0x68e5f259359a50829999665ab70259116c01a0cbe8cb6d85e65e9b283bef0799), the Eco treasury vault will release tokens based on the below logic.&#x20;
 
 There are three different players in the SafeStake and DVT token ecosystem - operators, validators, and speculators.&#x20;
 

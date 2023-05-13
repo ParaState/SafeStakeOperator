@@ -307,7 +307,6 @@ where
             blst::blst_p1_compress(mpk_bytes.as_mut_ptr(), &mpk);
         };
         let mpk = WrapPublicKey::deserialize(&mpk_bytes).unwrap();
-        info!("debug info");
         // 3. Exchange individual group public key
         let kp_ref = &kp;
         let futs = ids.iter().map(|id| async move {
@@ -334,7 +333,6 @@ where
             .await
             .into_iter()
             .collect::<HashMap<u64, WrapPublicKey>>();
-        info!("debug info");
         Ok((kp, mpk, pks))
     }
 }

@@ -17,6 +17,8 @@ The DVT token is the official ERC-20 token of the SafeStake network. Its main us
 
 Initial total supply: 100,000,000 DVT
 
+DVT token contract address on Ethereum: 0x29FA1fee0F4F0Ab0e36eF7Ab8d7a35439eC6be75
+
 Eco Treasury Vault: 26,560,000 DVT
 
 1. Validators on the SafeStake network are required to pay 30 DVT/month to each operator as a service fee. The four operators in the committee managing the validator will receive a total payment of 120 DVT token per month from the staker. In  the future, operators will be enabled to set their own fees within a reasonable threshold. This initial cost setting of around $21/month is based on the leading staking service provider[ in the advanced VPS category](https://www.allnodes.com/pricing).&#x20;

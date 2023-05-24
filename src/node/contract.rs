@@ -20,6 +20,7 @@ use web3::{
     transports::WebSocket,
     types::{Address, BlockNumber, FilterBuilder, H256, Log, U256, U64},
     Web3,
+    Error as Web3Error,
 };
 use web3::ethabi::{Event, EventParam, ParamType, RawLog, token};
 
@@ -42,7 +43,8 @@ pub static NETWORK_CONTRACT: OnceCell<String> = OnceCell::const_new();
 #[derive(Debug)]
 pub enum ContractError {
     StoreError,
-    BlockNumberError,
+    Web3Error(Web3Error),
+    BlockNumberError(Web3Error),
     LogError,
     RecordFileError,
     LogParseError,
@@ -55,21 +57,22 @@ pub enum ContractError {
 }
 
 impl ContractError {
-    fn as_str(&self) -> &'static str {
+    fn to_string(&self) -> String {
         match self {
-            ContractError::StoreError => "[ERROR!]: Can't interact with store.",
-            ContractError::BlockNumberError => "[ERROR]: Can't get blocknumber from infura.",
-            ContractError::LogError => "[ERROR]: Can't get logs from infura.",
-            ContractError::RecordFileError => "[ERROR]: Error happens with record file.",
-            ContractError::LogParseError => "[ERROR]: Can't parse eth log.",
+            ContractError::StoreError => format!("[ERROR!]: Can't interact with store."),
+            ContractError::Web3Error(e) => format!("[ERROR]: Web3 error ({:?}).", e),
+            ContractError::BlockNumberError(e) => format!("[ERROR]: Can't get blocknumber from infura ({:?}).", e),
+            ContractError::LogError => format!("[ERROR]: Can't get logs from infura."),
+            ContractError::RecordFileError => format!("[ERROR]: Error happens with record file."),
+            ContractError::LogParseError => format!("[ERROR]: Can't parse eth log."),
             ContractError::NoEnoughOperatorError => {
-                "[ERROR]: There are not enough operators in local database"
+                format!("[ERROR]: There are not enough operators in local database")
             }
-            ContractError::DatabaseError => "[ERROR]: Can't get result from local databse",
-            ContractError::InvalidArgumentError => "[ERROR]: Invalid Argument from contract",
-            ContractError::FileError => "[ERROR]: Error happens when processing file",
-            ContractError::ContractParseError => "[ERROR]: Can't parse contract from abi json",
-            ContractError::QueryError => "[ERROR]: Can't query from contract",
+            ContractError::DatabaseError => format!("[ERROR]: Can't get result from local databse"),
+            ContractError::InvalidArgumentError => format!("[ERROR]: Invalid Argument from contract"),
+            ContractError::FileError => format!("[ERROR]: Error happens when processing file"),
+            ContractError::ContractParseError => format!("[ERROR]: Can't parse contract from abi json"),
+            ContractError::QueryError => format!("[ERROR]: Can't query from contract"),
         }
     }
 }
@@ -429,7 +432,7 @@ impl Contract {
                                     }
                                 },
                                 Err(e) => {
-                                    error!("check account failed {}", e.as_str());
+                                    error!("check account failed {}", e.to_string());
                                 }
                             }
                         }
@@ -462,15 +465,13 @@ impl Contract {
             let mut query_interval = tokio::time::interval(Duration::from_secs(60));
             loop {
                 query_interval.tick().await;
-                let transport = WebSocket::new(transport_url).await;
-                match &transport {
-                    Ok(_) => {},
-                    Err(e) => {
-                        warn!("can't connect to websocket {}", e);
-                        continue;
-                    }
+                let web3 = connect_web3(transport_url).await;
+                if let Err(e) = web3 {
+                    error!("{}", e.to_string());
+                    continue;
                 }
-                let web3 = Web3::new(transport.unwrap());
+                let web3 = web3.unwrap();
+
                 let va_filter = va_filter_builder
                     .clone()
                     .from_block(BlockNumber::Number(U64::from(record.block_num)))
@@ -488,7 +489,7 @@ impl Contract {
                         all_logs.append(&mut logs);
                     },
                     Err(e) => {
-                        error!("{}, {}", ContractError::LogError.as_str(), e);
+                        error!("{}, {}", ContractError::LogError.to_string(), e);
                     }
                 }
                 match web3.eth().logs(initiator_filter).await {
@@ -497,7 +498,7 @@ impl Contract {
                         all_logs.append(&mut logs);
                     },
                     Err(e) => {
-                        error!("{}, {}", ContractError::LogError.as_str(), e);
+                        error!("{}, {}", ContractError::LogError.to_string(), e);
                     }
                 }
                 if all_logs.len() == 0 {
@@ -523,7 +524,7 @@ impl Contract {
                                 {
                                     Ok(_) => {}
                                     Err(e) => {
-                                        error!("error hapens, reason: {}", e.as_str());
+                                        error!("error hapens, reason: {}", e.to_string());
                                     }
                                 }
                             }
@@ -552,16 +553,14 @@ impl Contract {
         let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
         tokio::spawn(async move {
             loop {
-                let transport = WebSocket::new(transport_url).await;
-                match &transport {
-                    Ok(_) => {}
-                    Err(e) => {
-                        warn!("can't connect to websocket {}", e);
-                        tokio::time::sleep(Duration::from_secs(60 * 3)).await;
-                        continue;
-                    }
+                let web3 = connect_web3(transport_url).await;
+                if let Err(e) = web3 {
+                    error!("{}", e.to_string());
+                    tokio::time::sleep(Duration::from_secs(60 * 3)).await;
+                    continue;
                 }
-                let web3 = Web3::new(transport.unwrap());
+                let web3 = web3.unwrap();
+
                 let mut va_sub = web3
                     .eth_subscribe()
                     .subscribe_logs(va_filter.clone())
@@ -617,7 +616,7 @@ impl Contract {
                                     // };
                                 }
                                 Err(e) => {
-                                    error!("error hapens, reason: {}", e.as_str());
+                                    error!("error hapens, reason: {}", e.to_string());
                                 }
                             }
                         }
@@ -631,33 +630,42 @@ impl Contract {
     }
 }
 
+async fn connect_web3(url: &String) -> Result<Web3<WebSocket>, ContractError> {
+    let transport = WebSocket::new(url).await
+        .map_err(ContractError::Web3Error)?;
+    Ok(Web3::new(transport))
+}
+
 pub async fn get_block_number(record: &mut ContractRecord) {
-    let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
-    let web3 = Web3::new(WebSocket::new(transport_url).await.unwrap());
-    // if can't get block number, reset to zero.
-    record.block_num = web3.eth().block_number().await.map_or_else(
-        |_| {
-            error!("{}", ContractError::BlockNumberError.as_str());
-            0
-        },
-        |number| number.as_u64(),
-    );
+    match get_current_block().await {
+        Ok(v) => {
+            record.block_num = v.as_u64();
+        }
+        Err(ContractError::BlockNumberError(e)) => {
+            // if can't get block number, reset to zero.
+            error!("{}", ContractError::BlockNumberError(e).to_string());
+            record.block_num = 0;
+        }
+        Err(e) => {
+            // [zico] For other errors, leave record number as it is?
+            error!("{}", e.to_string());
+        }
+    }
 }
 
 pub async fn get_current_block() -> Result<U64, ContractError> {
     let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
-    let web3 = Web3::new(WebSocket::new(transport_url).await.unwrap());
-    web3.eth().block_number().await.or_else(|e| {
-        error!("{:?} {}", e, ContractError::BlockNumberError.as_str());
-        Err(ContractError::BlockNumberError)
-    })
+    let web3 = connect_web3(transport_url).await?;
+    web3.eth().block_number()
+        .await
+        .map_err(ContractError::BlockNumberError)
 }
 
 pub fn update_record_file<P: AsRef<Path>>(record: &ContractRecord, path: P) {
     record
         .to_file(path)
         .map_err(|e| {
-            error!("{} error: {}", ContractError::RecordFileError.as_str(), e);
+            error!("{} error: {}", ContractError::RecordFileError.to_string(), e);
         })
         .unwrap();
 }
@@ -666,7 +674,7 @@ pub async fn log_listened(store: &Store, log_hash: &H256) -> bool {
     match store.read(log_hash.as_fixed_bytes().to_vec()).await {
         Ok(res) => res.map_or_else(|| false, |_| true),
         Err(_) => {
-            error!("{}", ContractError::StoreError.as_str());
+            error!("{}", ContractError::StoreError.to_string());
             false
         }
     }
@@ -1110,7 +1118,7 @@ pub async fn query_operator_from_contract(
     id: u32,
 ) -> Result<Operator, ContractError> {
     let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
-    let web3 = Web3::new(WebSocket::new(transport_url).await.unwrap());
+    let web3 = connect_web3(transport_url).await?;
     let raw_abi = std::fs::read_to_string(&config.safestake_registry_abi_path).or_else(|e| {
         error!(
             "Can't read from {} {}",
@@ -1149,7 +1157,7 @@ pub async fn check_account(
     owner: Address,
 ) -> Result<bool, ContractError> {
     let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
-    let web3 = Web3::new(WebSocket::new(transport_url).await.unwrap());
+    let web3 = connect_web3(transport_url).await?;
     let raw_abi = std::fs::read_to_string(&config.safestake_network_abi_path).or_else(|e| {
         error!(
             "Can't read from {} {}",

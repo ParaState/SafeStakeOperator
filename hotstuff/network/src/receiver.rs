@@ -96,8 +96,8 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                     // sender to frequently retry the connection and resend the message when the VA is not ready, making the program to
                                     // print a lot of error logs.
 
-                                    // return;  // Kill the connection
-                                    continue;  // Keep the connection
+                                    return;  // Kill the connection
+                                    // continue;  // Keep the connection
                                 }
                                 
                                 // Always acquire the handler from the handler_map. Don't keep the handler alive
@@ -124,7 +124,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                         // sender to frequently retry the connection and resend the message when the VA is not ready, making the program to
                                         // print a lot of error logs.
 
-                                        // return;  // Kill the connection
+                                        return;  // Kill the connection
                                     }
                                 }
                             },

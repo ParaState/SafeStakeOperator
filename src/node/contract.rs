@@ -641,13 +641,8 @@ pub async fn get_block_number(record: &mut ContractRecord) {
         Ok(v) => {
             record.block_num = v.as_u64();
         }
-        Err(ContractError::BlockNumberError(e)) => {
-            // if can't get block number, reset to zero.
-            error!("{}", ContractError::BlockNumberError(e).to_string());
-            record.block_num = 0;
-        }
         Err(e) => {
-            // [zico] For other errors, leave record number as it is?
+            // [zico] For errors, leave record number as it is
             error!("{}", e.to_string());
         }
     }

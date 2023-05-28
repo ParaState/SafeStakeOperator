@@ -182,7 +182,7 @@ impl Synchronizer {
                     Ok(None) => {
                         // The sync request for this batch has been canceled.
                     },
-                    Err(e) => error!("{}", e)
+                    Err(e) => error!("{:?}", e)
                 },
 
                 // Triggers on timer's expiration.
@@ -231,10 +231,10 @@ impl Synchronizer {
                     timer.as_mut().reset(Instant::now() + Duration::from_millis(TIMER_RESOLUTION));
                 },
                 () = exit => {
-                    info!("Shutting down Synchronizer");
                     break;
                 }
             }
         }
+        info!("[VA {}] Shutting down mempool synchronizer", self.validator_id);
     }
 }

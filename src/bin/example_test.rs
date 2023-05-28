@@ -2,9 +2,10 @@
 use hsconfig::Export as _;
 use hsconfig::{ConfigError, Secret};
 use std::path::PathBuf;
-use discv5::{enr::CombinedKey};
+use lighthouse_network::discv5::{enr::CombinedKey};
 
 use dvf_version::{VERSION};
+use std::net::SocketAddr;
 
 pub const DEFAULT_DVF_ROOT_DIR: &str = ".dvf";
 pub const NODE_KEY_FILENAME: &str = "node_key.json";
@@ -37,8 +38,28 @@ pub fn test2() {
   println!("version: {}", VERSION);
 }
 
+pub fn test3() {
+  let mut x: Option<SocketAddr> = Some("127.0.0.1:9000".parse().unwrap());
+  if let Some(socket) = x.as_mut() {
+    socket.set_ip("192.168.0.1".parse().unwrap());
+  }
+  println!("x: {:?}", x);
+  x.as_mut().unwrap().set_ip("192.168.0.2".parse().unwrap());
+  println!("x: {:?}", x);
+}
+
+pub fn test4() {
+  let a = vec![1, 2, 3];
+  let b = vec![1, 2, 3];
+  let x: &[u8] = a.as_slice();
+  let y: &[u8] = b.as_slice();
+  println!("x==y: {}", x==y);
+}
+
 // test read node secret to init discovery process
 fn main() {
   // test1();
-  test2();
+  // test2();
+  test3();
+  test4();
 }

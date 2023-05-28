@@ -141,6 +141,7 @@ impl Synchronizer {
                     }
                 }
             }
+            info!("[VA {}] Shut down consensus synchronizer", validator_id);
         });
         Self {
             store,

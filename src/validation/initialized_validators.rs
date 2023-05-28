@@ -105,6 +105,8 @@ pub enum Error {
     UnableToBuildCommittee,
     /// Unable to apply an action to a validator because it is using a remote signer.
     InvalidActionOnRemoteValidator,
+    /// Error propogated from Dvf
+    DvfError(String),
 }
 
 impl From<LockfileError> for Error {
@@ -364,10 +366,10 @@ impl InitializedValidator {
                 let validator_public_key = committee_def.validator_public_key.clone();
                 let signer = DvfSigner::spawn(
                     node.unwrap(),
-                    committee_def.validator_id,
                     voting_keypair,
-                    committee_def,
-                ).await;
+                    committee_def)
+                    .await
+                    .map_err(|e| Error::DvfError(format!("{:?}", e)))?;
 
                 SigningMethod::DistributedKeystore {
                     voting_keystore_share_path, 
@@ -628,8 +630,17 @@ impl<T: EthSpec> InitializedValidators<T> {
         Ok(DeleteKeystoreStatus::Deleted)
     }
 
+    // enable a keystore
+    pub async fn enable_keystore(
+        &mut self,
+        pubkey: &PublicKey
+    ) ->  Result<(), Error> {
+        self.set_validator_definition_fields(pubkey, Some(true), None, None).await?;
+        Ok(())
+    }
+
     // remove keystore but preserve definition 
-    pub async fn delete_keystore(
+    pub async fn disable_keystore(
         &mut self,
         pubkey: &PublicKey
     ) ->  Result<DeleteKeystoreStatus, Error> {
@@ -660,7 +671,6 @@ impl<T: EthSpec> InitializedValidators<T> {
         //    Delete the keystore files.
         if let Some(initialized_validator) = self.validators.remove(&pubkey.compress()) {
             if let SigningMethod::LocalKeystore {
-                ref voting_keystore_path,
                 ref voting_keystore_lockfile,
                 ..
             } = *initialized_validator.signing_method
@@ -672,7 +682,6 @@ impl<T: EthSpec> InitializedValidators<T> {
 
             // [Zico]TODO: to be revised
             if let SigningMethod::DistributedKeystore {
-                ref voting_keystore_share_path,
                 ref voting_keystore_share_lockfile,
                 ..
             } = *initialized_validator.signing_method

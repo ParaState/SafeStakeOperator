@@ -7,7 +7,7 @@ use network::CancelHandler;
 use tokio::sync::mpsc::{Receiver};
 use utils::monitored_channel::MonitoredSender;
 use tokio::time::{Duration, timeout};
-use log::{warn};
+use log::{info, warn};
 
 #[cfg(test)]
 #[path = "tests/quorum_waiter_tests.rs"]
@@ -130,5 +130,6 @@ impl QuorumWaiter {
                 }
             }
         }
+        info!("Shutting down mempool quorum waiter");
     }
 }

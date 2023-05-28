@@ -1,26 +1,27 @@
 #![recursion_limit = "256"]
 
-mod metrics;
+use std::path::PathBuf;
+use std::process::exit;
 
 use beacon_node::ProductionBeaconNode;
 use clap::{App, Arg, ArgMatches};
 use clap_utils::{flags::DISABLE_MALLOC_TUNING_FLAG, get_eth2_network_config};
 use directory::{parse_path_or_default, DEFAULT_BEACON_NODE_DIR, DEFAULT_VALIDATOR_DIR};
-use env_logger::{Builder, Env};
+use dvf_directory::get_default_base_dir;
+use env_logger::{Env};
 use environment::{EnvironmentBuilder, LoggerConfig};
 use eth2_hashing::have_sha_extensions;
 use eth2_network_config::{Eth2NetworkConfig, DEFAULT_HARDCODED_NETWORK, HARDCODED_NET_NAMES};
 use lighthouse_version::VERSION;
 use malloc_utils::configure_memory_allocator;
-use slog::{crit, info, warn};
-use std::path::PathBuf;
-use std::process::exit;
 use task_executor::ShutdownReason;
+use log::{error, info, warn};
 use types::{EthSpec, EthSpecId};
-use dvf::validation::ProductionValidatorClient;
 use std::io::Write;
 use chrono::Local;
-use dvf_directory::{get_default_base_dir};
+use dvf::validation::ProductionValidatorClient;
+
+mod metrics;
 
 fn bls_library_name() -> &'static str {
     if cfg!(feature = "portable") {
@@ -35,6 +36,8 @@ fn bls_library_name() -> &'static str {
 }
 
 fn main() {
+    // tracing_subscriber::fmt().json().init();
+
     // Enable backtraces unless a RUST_BACKTRACE value has already been explicitly provided.
     if std::env::var("RUST_BACKTRACE").is_err() {
         std::env::set_var("RUST_BACKTRACE", "1");
@@ -55,11 +58,11 @@ fn main() {
                  BLS library: {}\n\
                  SHA256 hardware acceleration: {}\n\
                  Specs: mainnet (true), minimal ({}), gnosis ({})",
-                 VERSION.replace("Lighthouse/", ""),
-                 bls_library_name(),
-                 have_sha_extensions(),
-                 cfg!(feature = "spec-minimal"),
-                 cfg!(feature = "gnosis"),
+                VERSION.replace("Lighthouse/", ""),
+                bls_library_name(),
+                have_sha_extensions(),
+                cfg!(feature = "spec-minimal"),
+                cfg!(feature = "gnosis"),
             ).as_str()
         )
         .arg(
@@ -185,7 +188,6 @@ fn main() {
                 .conflicts_with("testnet-dir")
                 .takes_value(true)
                 .global(true)
-
         )
         .arg(
             Arg::with_name("dump-config")
@@ -289,7 +291,7 @@ fn main() {
     let is_beacon_node = matches.subcommand_name() == Some("beacon_node");
     if is_beacon_node && !matches.is_present(DISABLE_MALLOC_TUNING_FLAG) {
         if let Err(e) = configure_memory_allocator() {
-            eprintln!(
+            error!(
                 "Unable to configure the memory allocator: {} \n\
                 Try providing the --{} flag",
                 e, DISABLE_MALLOC_TUNING_FLAG
@@ -299,9 +301,11 @@ fn main() {
     }
 
     // Debugging output for libp2p and external crates.
-    if matches.is_present("env_log") {
-        Builder::from_env(Env::default()).init();
-    }
+    // if matches.is_present("env_log") {
+    //     Builder::from_env(Env::default()).init();
+    // }
+
+    info!("------dvf main------");
 
     let result = get_eth2_network_config(&matches).and_then(|eth2_network_config| {
         let eth_spec_id = eth2_network_config.eth_spec_id()?;
@@ -333,11 +337,11 @@ fn main() {
             EthSpecId::Minimal => run(EnvironmentBuilder::minimal(), &matches, eth2_network_config),
             #[cfg(not(all(feature = "spec-minimal", feature = "gnosis")))]
             other => {
-                eprintln!(
+                error!(
                     "Eth spec `{}` is not supported by this build of Lighthouse",
                     other
                 );
-                eprintln!("You must compile with a feature flag to enable this spec variant");
+                error!("You must compile with a feature flag to enable this spec variant");
                 exit(1);
             }
         }
@@ -384,8 +388,12 @@ fn run<E: EthSpec>(
             record.line().unwrap_or(0),
             &record.args()
         )
-    }).init();    
-    
+    }).init();   
+
+    let debug_level = matches
+        .value_of("debug-level")
+        .ok_or("Expected --debug-level flag")?;
+
     let log_format = matches.value_of("log-format");
     let log_color = matches.is_present("log-color");
     let disable_log_timestamp = matches.is_present("disable-log-timestamp");
@@ -421,9 +429,8 @@ fn run<E: EthSpec>(
                     .join("beacon")
                     .with_extension("log"),
             ),
-            ("validator_client", Some(vc_matches)) => {
-                let base_path = get_default_base_dir(matches)
-                    .join(DEFAULT_VALIDATOR_DIR);
+            ("validator_client", Some(_)) => {
+                let base_path = get_default_base_dir(matches).join(DEFAULT_VALIDATOR_DIR);
 
                 Some(
                     base_path
@@ -457,19 +464,14 @@ fn run<E: EthSpec>(
         .optional_eth2_network_config(Some(eth2_network_config))?
         .build()?;
 
-    let log = environment.core_context().log().clone();
-
     // Allow Prometheus to export the time at which the process was started.
-    metrics::expose_process_start_time(&log);
+    metrics::expose_process_start_time();
 
     // Allow Prometheus access to the version and commit of the Lighthouse build.
     metrics::expose_lighthouse_version();
 
     if matches.is_present("spec") {
-        warn!(
-            log,
-            "The --spec flag is deprecated and will be removed in a future release"
-        );
+        warn!("The --spec flag is deprecated and will be removed in a future release");
     }
 
     #[cfg(all(feature = "modern", target_arch = "x86_64"))]
@@ -501,7 +503,7 @@ fn run<E: EthSpec>(
     };
 
     if let Some(sub_matches) = matches.subcommand_matches("account_manager") {
-        eprintln!("Running account manager for {} network", network_name);
+        info!("Running account manager for {} network", network_name);
         // Pass the entire `environment` to the account manager so it can run blocking operations.
         account_manager::run(sub_matches, environment)?;
 
@@ -510,7 +512,7 @@ fn run<E: EthSpec>(
     }
 
     if let Some(sub_matches) = matches.subcommand_matches(database_manager::CMD) {
-        info!(log, "Running database manager for {} network", network_name);
+        info!("Running database manager for {} network", network_name);
         // Pass the entire `environment` to the database manager so it can run blocking operations.
         database_manager::run(sub_matches, environment)?;
 
@@ -518,17 +520,12 @@ fn run<E: EthSpec>(
         return Ok(());
     }
 
-    info!(log, "Lighthouse started"; "version" => VERSION);
-    info!(
-        log,
-        "Configured for network";
-        "name" => &network_name
-    );
+    info!("Lighthouse started,version {}", VERSION);
+    info!("Configured for network,name {}", &network_name);
 
     match matches.subcommand() {
         ("beacon_node", Some(matches)) => {
             let context = environment.core_context();
-            let log = context.log().clone();
             let executor = context.executor.clone();
             let config = beacon_node::get_config::<E>(matches, &context)?;
             let shutdown_flag = matches.is_present("immediate-shutdown");
@@ -537,7 +534,7 @@ fn run<E: EthSpec>(
             executor.clone().spawn(
                 async move {
                     if let Err(e) = ProductionBeaconNode::new(context.clone(), config).await {
-                        crit!(log, "Failed to start beacon node"; "reason" => e);
+                        error!("Failed to start beacon node,reason:{}", e);
                         // Ignore the error since it always occurs during normal operation when
                         // shutting down.
                         let _ = executor
@@ -554,7 +551,6 @@ fn run<E: EthSpec>(
         }
         ("validator_client", Some(matches)) => {
             let context = environment.core_context();
-            let log = context.log().clone();
             let executor = context.executor.clone();
             let config = dvf::validation::Config::from_cli(matches, context.log())
                 .map_err(|e| format!("Unable to initialize validator config: {}", e))?;
@@ -568,7 +564,7 @@ fn run<E: EthSpec>(
                             .await
                             .and_then(|mut vc| vc.start_service())
                         {
-                            crit!(log, "Failed to start validator client"; "reason" => e);
+                            error!("Failed to start validator client,reason:{}", e);
                             // Ignore the error since it always occurs during normal operation when
                             // shutting down.
                             let _ = executor.shutdown_sender().try_send(ShutdownReason::Failure(
@@ -585,14 +581,14 @@ fn run<E: EthSpec>(
             }
         }
         _ => {
-            crit!(log, "No subcommand supplied. See --help .");
+            error!("No subcommand supplied. See --help .");
             return Err("No subcommand supplied.".into());
         }
     };
 
     // Block this thread until we get a ctrl-c or a task sends a shutdown signal.
     let shutdown_reason = environment.block_until_shutdown_requested()?;
-    info!(log, "Shutting down.."; "reason" => ?shutdown_reason);
+    info!("Shutting down..,reason:{:?}", shutdown_reason);
 
     environment.fire_signal();
 

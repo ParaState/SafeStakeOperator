@@ -27,7 +27,6 @@ pub enum ForkName {
     Altair,
     Bellatrix,
     Capella,
-    Eip4844,
 }
 
 #[derive(Debug, PartialEq, Serialize)]

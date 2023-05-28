@@ -1,7 +1,7 @@
 use crate::config::Committee;
 use bytes::Bytes;
 use crypto::{Digest, PublicKey};
-use log::{error, warn, debug};
+use log::{info, error, warn, debug};
 use network::{SimpleSender, DvfMessage, VERSION};
 use store::Store;
 use tokio::sync::mpsc::Receiver;
@@ -72,7 +72,7 @@ impl Helper {
                                 self.network.feed(address, Bytes::from(serialized_msg)).await
                             },
                             Ok(None) => (),
-                            Err(e) => error!("{}", e),
+                            Err(e) => error!("{:?}", e),
                         }
                     }
                     self.network.flush(address).await;
@@ -83,5 +83,6 @@ impl Helper {
             }
             
         }
+        info!("[VA {}] Shut down mempool helper", self.validator_id);
     }
 }

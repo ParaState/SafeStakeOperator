@@ -6,7 +6,7 @@
 
 <figure><img src=".gitbook/assets/image (2).png" alt=""><figcaption><p>SafeStake Network Architecture</p></figcaption></figure>
 
-### SafeStake makes earning staking rewards safe and easy for all ETH holders.&#x20;
+### SafeStake makes earning staking rewards safe and easy for all ETH holders.
 
 * `Stage 1 - Deposit 32 ETH` and choose a group of four operators to manage your validator.
 * `Stage 2 - Deposit 8 ETH` as an initializer to participate in running a 'Pooled Validator' and choose three additional operators to manage your validator.
@@ -36,13 +36,13 @@ Read the SafeStake [white paper](https://docsend.com/view/22tth6krr9mnfhre?lt\_u
 
 ## Additional Information
 
-Check out [our website](https://www.parastate.io/safestake/) for more about SafeStake.
+Check out [our website](https://www.safestake.xyz/) for more about SafeStake.
 
 [Help test](https://testnet.safestake.xyz/) the SafeStake network!
 
-Twitter: [https://twitter.com/parastateio](https://twitter.com/parastateio)&#x20;
+Twitter: [https://twitter.com/safestakeDVT](https://twitter.com/safestakeDVT)
 
-Join our [Discord](http://discord.gg/zFS3Mnfpwj) chat channel!&#x20;
+Join our [Discord](http://discord.gg/zFS3Mnfpwj) chat channel!
 
 ## Beta Advisory
 

@@ -1,7 +1,6 @@
 # SafeStake: Running an Operator Node (on going)
 
-***Updates happen frequently! Our** [**Github**](https://github.com/ParaState/SafeStakeOperator) **always has the latest operator node resources and setup instructions.***
-
+_**Updates happen frequently! Our**_ [_**Github**_](https://github.com/ParaState/SafeStakeOperator) _**always has the latest operator node resources and setup instructions.**_
 
 ## Deploy the Operator node
 
@@ -30,6 +29,7 @@
 `Standalone Mode`
 
 Standalone mode contains the following list of programs/soft on a single host:
+
 * Geth Service
 * Lighthouse Service
 * OperatorNode Service
@@ -37,11 +37,10 @@ Standalone mode contains the following list of programs/soft on a single host:
 `Light Mode`
 
 Light mode contains only the OperatorNode service, the following list of programs/soft on a host:
+
 * OperatorNode Service
 
-
-> Geth service and Lighthouse service can run on other hosts. Users should configure the `beacon node endpoint` (discussed later) in order to connect to Lighthouse's beacon node instance.
-The purpose of this is to make the architecture clearer and easier to scale operator nodes. And the cost efficiency ratio of infrastructure will be higher.
+> Geth service and Lighthouse service can run on other hosts. Users should configure the `beacon node endpoint` (discussed later) in order to connect to Lighthouse's beacon node instance. The purpose of this is to make the architecture clearer and easier to scale operator nodes. And the cost efficiency ratio of infrastructure will be higher.
 
 ### Preparation: Get your Infura WS\_URL
 
@@ -49,7 +48,7 @@ The purpose of this is to make the architecture clearer and easier to scale oper
 * Create Infura account [here](https://app.infura.io/register) and login the account
 * Create new key
 
-<figure><img src="imgs/infura-step1.png" height="70%" width="70%"></figure>
+<figure><img src="imgs/infura-step1.png" alt=""><figcaption></figcaption></figure>
 
 * Select 'WEBSOCKETS'
 
@@ -63,42 +62,38 @@ The purpose of this is to make the architecture clearer and easier to scale oper
 
 <figure><img src="imgs/infura-step4.png" alt=""><figcaption></figcaption></figure>
 
-
-
 ### Deployment
 
 #### 1. Set firewall rule
 
 Log in to your host cloud service provider, open the following firewall inbound rules:
 
-| Type             | IpProtocol  | FromPort   | ToPort  | IpRanges |
-| ---------------- | ----------- | ---------- | ------- | -------- |
-| Inbound/Ingress  | tcp         | 80         | 80      | 0.0.0.0/0 |
-| Inbound/Ingress  | udp         | 8585       | 8585    | 0.0.0.0/0 |
-| Inbound/Ingress  | tcp         | 25000      | 25003   | 0.0.0.0/0 |
-| Inbound/Ingress  | udp         | 5052       | 5052    | 0.0.0.0/0 |
-| Inbound/Ingress  | udp         | 1234       | 1234    | 0.0.0.0/0 |
-| Inbound/Ingress  | tcp         | 5052       | 5052    | 0.0.0.0/0 |
-| Inbound/Ingress  | udp         | 9000       | 9000    | 0.0.0.0/0 |
-| Inbound/Ingress  | tcp         | 30303      | 30303   | 0.0.0.0/0 |
-| Inbound/Ingress  | tcp         | 8551       | 8551    | 0.0.0.0/0 |
-| Inbound/Ingress  | tcp         | 443        | 443     | 0.0.0.0/0 |
-| Inbound/Ingress  | udp         | 30303      | 30303   | 0.0.0.0/0 |
-| Inbound/Ingress  | tcp         | 9000       | 9000    | 0.0.0.0/0 |
-| Inbound/Ingress  | tcp         | 8545       | 8547    | 0.0.0.0/0 |
-| Inbound/Ingress  | udp         | 9005       | 9005    | 0.0.0.0/0 |
-| Inbound/Ingress  | tcp         | 8585       | 8585    | 0.0.0.0/0 |
-| Inbound/Ingress  | tcp         | 22         | 22      | 0.0.0.0/0 |
-| Inbound/Ingress  | tcp         | 26000      | 26005   | 0.0.0.0/0 |
-| Inbound/Ingress  | udp         | 25004      | 25004   | 0.0.0.0/0 |
-| Inbound/Ingress  | tcp         | 26000      | 26003   | 0.0.0.0/0 |
-| Inbound/Ingress  | tcp         | 25005      | 25005   | 0.0.0.0/0 |
-| Inbound/Ingress  | udp         | 26004      | 26004   | 0.0.0.0/0 |
-| Inbound/Ingress  | tcp         | 3456       | 3456    | 0.0.0.0/0 |
-| Inbound/Ingress  | tcp         | 3000       | 3001    | 0.0.0.0/0 |
-| Inbound/Ingress  | tcp         | 1234       | 1234    | 0.0.0.0/0 |
-
-
+| Type            | IpProtocol | FromPort | ToPort | IpRanges  |
+| --------------- | ---------- | -------- | ------ | --------- |
+| Inbound/Ingress | tcp        | 80       | 80     | 0.0.0.0/0 |
+| Inbound/Ingress | udp        | 8585     | 8585   | 0.0.0.0/0 |
+| Inbound/Ingress | tcp        | 25000    | 25003  | 0.0.0.0/0 |
+| Inbound/Ingress | udp        | 5052     | 5052   | 0.0.0.0/0 |
+| Inbound/Ingress | udp        | 1234     | 1234   | 0.0.0.0/0 |
+| Inbound/Ingress | tcp        | 5052     | 5052   | 0.0.0.0/0 |
+| Inbound/Ingress | udp        | 9000     | 9000   | 0.0.0.0/0 |
+| Inbound/Ingress | tcp        | 30303    | 30303  | 0.0.0.0/0 |
+| Inbound/Ingress | tcp        | 8551     | 8551   | 0.0.0.0/0 |
+| Inbound/Ingress | tcp        | 443      | 443    | 0.0.0.0/0 |
+| Inbound/Ingress | udp        | 30303    | 30303  | 0.0.0.0/0 |
+| Inbound/Ingress | tcp        | 9000     | 9000   | 0.0.0.0/0 |
+| Inbound/Ingress | tcp        | 8545     | 8547   | 0.0.0.0/0 |
+| Inbound/Ingress | udp        | 9005     | 9005   | 0.0.0.0/0 |
+| Inbound/Ingress | tcp        | 8585     | 8585   | 0.0.0.0/0 |
+| Inbound/Ingress | tcp        | 22       | 22     | 0.0.0.0/0 |
+| Inbound/Ingress | tcp        | 26000    | 26005  | 0.0.0.0/0 |
+| Inbound/Ingress | udp        | 25004    | 25004  | 0.0.0.0/0 |
+| Inbound/Ingress | tcp        | 26000    | 26003  | 0.0.0.0/0 |
+| Inbound/Ingress | tcp        | 25005    | 25005  | 0.0.0.0/0 |
+| Inbound/Ingress | udp        | 26004    | 26004  | 0.0.0.0/0 |
+| Inbound/Ingress | tcp        | 3456     | 3456   | 0.0.0.0/0 |
+| Inbound/Ingress | tcp        | 3000     | 3001   | 0.0.0.0/0 |
+| Inbound/Ingress | tcp        | 1234     | 1234   | 0.0.0.0/0 |
 
 #### 2. SSH Login to your server ([jumpserver](https://www.jumpserver.org/) recommand)
 
@@ -135,36 +130,44 @@ git clone --recurse-submodules https://github.com/ParaState/SafeStakeOperator.gi
 ```
 
 #### 8. Generate a registration public and private key
+
 ```bash
 cd dvf
 sudo docker compose -f docker-compose-operator.yml up dvf_key_tool
 ```
+
 Output:
+
 ```
 ...
 dvf-dvf_key_tool-1  | INFO: node public key AtzozvDHiWUpO+oJph2ikv+EyBN5pdBXsfgZqLi0+Yqd
 dvf-dvf_key_tool-1 exited with code 0
 ```
+
 Save the public key, which will be used later. Go to [SafeStake website](https://testnet.safestake.xyz/) and `Join As Operator`.
 
 After we register an Operator on the Safestake website, we will be shown our `OPERATOR ID`, which is the unique identifier we need to start with. We will need to update the OPERATOR ID to the `.env` file before running the operator service.
 
 #### 9. Obtain your beacon node endpoint
+
 You should acquire a beacon node endpoint for the operator to connect with. You can either run such a service by yourself, or potentially obtain it from some third-party service (we might open such a paid service later if necessary).
 
 We will show later how to run such a service with `Lighthouse` by yourself. For now, let's continue with other steps.
 
 #### 10. Edit local environment variables
+
 ```
 cd dvf
 cp .env.example .env
 vim .env
 ```
+
 Now that we have open the `.env` file, we will update the values based on our own configuration.
 
 `Goerli Testnet`
 
 **Leave these variables unchanged**:
+
 ```bash
 ENR=enr:-IS4QKIF_55zNM3o29E91Rj2gwjTQJHvnGVW8e--2nvsixCXCKbS0vhuBILafB1qv3AyR2GhKt611zf_x5V6zwGEmEwBgmlkgnY0gmlwhBKIH16Jc2VjcDI1NmsxoQNsOWU-IpJ0fRj4WlVELfC5HLLhzhHZr9HMsN401NGJdYN1ZHCCIy0
 GETH_NETWORK=goerli
@@ -187,30 +190,28 @@ BEACON_NODE_ENDPOINT=<FILLED_WITH_YOUR_CHOICE>
 ```
 
 **Update these variables with yours**
+
 ```bash
 WS_URL= #YOUR WSS URL
 OPERATOR_ID= #The Operator ID is the ID you receive after registering the operator on SafeStake website
 BEACON_NODE_ENDPOINT= # Depending on whether you are running single-node mode or multi-node mode, fill in the correct Lighthouse beacon node service url
 ```
-`WS_URL` and `OPERATOR_ID` should have been obtained by following previous steps. As for `BEACON_NODE_ENDPOINT`, if you can't find an available third-party beacon node service, you can follow [this section](#running-lighthouse--geth-service) to setup one by yourself.
 
+`WS_URL` and `OPERATOR_ID` should have been obtained by following previous steps. As for `BEACON_NODE_ENDPOINT`, if you can't find an available third-party beacon node service, you can follow [this section](safestake-running-an-operator-node-on-going.md#running-lighthouse--geth-service) to setup one by yourself.
 
 #### 11. Start operator service
-
 
 ```bash
 sudo docker compose -f  docker-compose-operator.yml up --force-recreate -d operator
 ```
 
-*Congratulations, now the Operator program has been installed and deployed.*
+_Congratulations, now the Operator program has been installed and deployed._
 
 You can continue to the next section if you need to run Lighthouse & Geth service by yourself, otherwise, the operator tutorial ends here.
 
-
----
+***
 
 ### Running Lighthouse & Geth Service
-
 
 ```bash
 sudo docker compose -f docker-compose-operator.yml up geth -d
@@ -231,9 +232,7 @@ Otherwise, suppose the host where you run the Lighthouse & Geth service has an I
 BEACON_NODE_ENDPOINT=http://12.102.103.1:5052
 ```
 
-
----
- 
+***
 
 ### Some final notes about Operator's private/public keys
 
@@ -246,7 +245,6 @@ sudo docker compose -f docker-compose-operator.yml logs -f operator | grep "node
 output
 
 > dvf-operator-1 | \[2022-08-13T16:01:33.814Z INFO dvf::node::node] node public key Al0wMNz3JpkYDH7HVp93dZfLMt1GJHypLfhwOWS0NwC/
-
 
 It is a good practice to back up your operator private key file
 

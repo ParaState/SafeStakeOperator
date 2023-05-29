@@ -6,7 +6,7 @@ use crypto::Hash as _;
 use futures::future::try_join_all;
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
-use log::{error};
+use log::{info, error};
 use mempool::ConsensusMempoolMessage;
 use std::collections::HashMap;
 use store::Store;
@@ -175,5 +175,6 @@ impl PayloadWaiter {
                 }
             }
         }
+        info!("Shut down consensus payload waiter");
     }
 }

@@ -1,19 +1,44 @@
-use crate::crypto::dkg::{DKG, SimpleDistributedSigner};
+use std::collections::HashMap;
+use std::fs::{remove_dir_all, remove_file};
+use std::net::{IpAddr, SocketAddr};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use bls::{Keypair as BlsKeypair, PublicKey as BlsPublicKey, SecretKey as BlsSecretKey};
+use consensus::ConsensusReceiverHandler;
+use eth2_keystore::KeystoreBuilder;
+use hsconfig::{ConfigError, Secret};
+use hsconfig::Export as _;
+use mempool::{MempoolReceiverHandler, TxReceiverHandler};
+use network::Receiver as NetworkReceiver;
+use slot_clock::SystemTimeSlotClock;
+use tokio::sync::RwLock;
+use tokio::time::{Duration, sleep};
+use log::{error, info, warn};
+use types::EthSpec;
+use types::PublicKey;
+use validator_dir::insecure_keys::INSECURE_PASSWORD;
+use web3::types::H160;
+
+use crate::crypto::dkg::{DKGSemiHonest, SimpleDistributedSigner, DKGTrait};
+
 use crate::crypto::elgamal::{Ciphertext, Elgamal};
 use crate::deposit::get_distributed_deposit;
-use crate::network::io_committee::{NetIOCommittee, NetIOChannel};
+use crate::network::io_committee::{NetIOChannel, NetIOCommittee};
 use crate::node::config::{
-    NodeConfig, API_ADDRESS, BOOT_ENR, DB_FILENAME, DISCOVERY_PORT_OFFSET, DKG_PORT_OFFSET,
+    base_to_transaction_addr, base_to_mempool_addr, base_to_consensus_addr, base_to_signature_addr,
+    API_ADDRESS, DB_FILENAME, DISCOVERY_PORT_OFFSET, DKG_PORT_OFFSET, NodeConfig,
     PRESTAKE_SIGNATURE_URL, STAKE_SIGNATURE_URL, VALIDATOR_PK_URL,
 };
 use crate::node::discovery::Discovery;
 /// The default channel capacity for this module.
 use crate::node::dvfcore::DvfSignatureReceiverHandler;
 use crate::node::contract::{
-    Contract, ContractCommand, EncryptedSecretKeys, Initializer, OperatorPublicKeys,
-    SharedPublicKeys, Validator, SELF_OPERATOR_ID, OperatorIds
+    Contract, ContractCommand, EncryptedSecretKeys, Initiator, OperatorPublicKeys,
+    SharedPublicKeys, Validator, SELF_OPERATOR_ID, OperatorIds, CONTRACT_DATABASE_FILE
 };
-use crate::node::utils::{get_operator_ips, request_to_web_server, convert_address_to_withdraw_crendentials, ValidatorPkRequest, DepositRequest};
+use crate::node::db::Database;
+use crate::node::utils::{request_to_web_server, convert_address_to_withdraw_crendentials, ValidatorPkRequest, DepositRequest};
 use crate::validation::account_utils::default_keystore_share_password_path;
 use crate::validation::account_utils::default_keystore_share_path;
 use crate::validation::account_utils::default_operator_committee_definition_path;
@@ -21,32 +46,11 @@ use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
 use crate::validation::operator_committee_definitions::OperatorCommitteeDefinition;
 use crate::validation::validator_dir::share_builder::{insecure_kdf, ShareBuilder};
 use crate::validation::validator_store::ValidatorStore;
-use crate::DEFAULT_CHANNEL_CAPACITY;
-use bls::{Keypair as BlsKeypair, PublicKey as BlsPublicKey, SecretKey as BlsSecretKey};
-use consensus::ConsensusReceiverHandler;
-use eth2_keystore::KeystoreBuilder;
-use hsconfig::Export as _;
-use hsconfig::{ConfigError, Secret};
-use hsutils::monitored_channel::{MonitoredChannel, MonitoredSender};
-use log::{error, info, warn};
-use mempool::{MempoolReceiverHandler, TxReceiverHandler};
-use network::{Receiver as NetworkReceiver};
-use slot_clock::SystemTimeSlotClock;
-use std::collections::HashMap;
-use std::fs::{remove_dir_all, remove_file};
-use std::net::{IpAddr, SocketAddr};
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use tokio::sync::mpsc::Receiver;
-use tokio::sync::RwLock;
-use tokio::time::{sleep, Duration};
-use types::EthSpec;
-use types::PublicKey;
-use validator_dir::insecure_keys::INSECURE_PASSWORD;
-use web3::types::H160;
-const THRESHOLD: u64 = 3;
 
-type InitializerStore =
+const THRESHOLD: u64 = 3;
+pub const COMMITTEE_IP_HEARTBEAT_INTERVAL: u64 = 300;
+
+type InitiatorStore =
     Arc<RwLock<HashMap<u32, (BlsKeypair, BlsPublicKey, HashMap<u64, BlsPublicKey>)>>>;
 
 fn with_wildcard_ip(mut addr: SocketAddr) -> SocketAddr {
@@ -57,16 +61,17 @@ fn with_wildcard_ip(mut addr: SocketAddr) -> SocketAddr {
 pub struct Node<T: EthSpec> {
     pub config: NodeConfig,
     pub secret: Secret,
-    //pub rx_dvfinfo: Receiver<DvfInfo>,
     pub tx_handler_map: Arc<RwLock<HashMap<u64, TxReceiverHandler>>>,
     pub mempool_handler_map: Arc<RwLock<HashMap<u64, MempoolReceiverHandler>>>,
     pub consensus_handler_map: Arc<RwLock<HashMap<u64, ConsensusReceiverHandler>>>,
     pub signature_handler_map: Arc<RwLock<HashMap<u64, DvfSignatureReceiverHandler>>>,
     pub validator_store: Option<Arc<ValidatorStore<SystemTimeSlotClock, T>>>,
+    pub discovery: Arc<RwLock<Discovery>>,
 }
+
 // impl Send for Node{}
 impl<T: EthSpec> Node<T> {
-    pub fn new(config: NodeConfig) -> Result<Option<Arc<RwLock<Self>>>, ConfigError> {
+    pub async fn new(config: NodeConfig) -> Result<Option<Arc<RwLock<Self>>>, ConfigError> {
         let self_address = config.base_address.ip();
         let secret_dir = config.secrets_dir.clone();
         let secret = Node::<T>::open_or_create_secret(config.node_key_path.clone())?;
@@ -78,13 +83,7 @@ impl<T: EthSpec> Node<T> {
         let consensus_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let signature_handler_map = Arc::new(RwLock::new(HashMap::new()));
 
-        let key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>> =
-            Arc::new(RwLock::new(HashMap::from([(
-                base64::encode(&secret.name),
-                config.base_address.ip().clone(),
-            )])));
-
-        let transaction_address = with_wildcard_ip(config.transaction_address.clone());
+        let transaction_address = with_wildcard_ip(base_to_transaction_addr(config.base_address));
         NetworkReceiver::spawn(
             transaction_address,
             Arc::clone(&tx_handler_map),
@@ -95,14 +94,14 @@ impl<T: EthSpec> Node<T> {
             secret.name, transaction_address
         );
 
-        let mempool_address = with_wildcard_ip(config.mempool_address.clone());
+        let mempool_address = with_wildcard_ip(base_to_mempool_addr(config.base_address));
         NetworkReceiver::spawn(mempool_address, Arc::clone(&mempool_handler_map), "mempool");
         info!(
             "Node {} listening to mempool messages on {}",
             secret.name, mempool_address
         );
 
-        let consensus_address = with_wildcard_ip(config.consensus_address.clone());
+        let consensus_address = with_wildcard_ip(base_to_consensus_addr(config.base_address));
         NetworkReceiver::spawn(
             consensus_address,
             Arc::clone(&consensus_handler_map),
@@ -113,7 +112,7 @@ impl<T: EthSpec> Node<T> {
             secret.name, consensus_address
         );
 
-        let signature_address = with_wildcard_ip(config.signature_address.clone());
+        let signature_address = with_wildcard_ip(base_to_signature_addr(config.base_address));
         NetworkReceiver::spawn(
             signature_address,
             Arc::clone(&signature_handler_map),
@@ -124,47 +123,43 @@ impl<T: EthSpec> Node<T> {
             secret.name, signature_address
         );
 
-        let (tx_validator_command, rx_validator_command) = MonitoredChannel::new(
-            DEFAULT_CHANNEL_CAPACITY,
-            "contract-command".to_string(),
-            "info",
-        );
-
-        info!("Node {} successfully booted", secret.name);
         let base_port = config.base_address.port();
+        let discovery = Discovery::spawn(
+            self_address,
+            base_port + DISCOVERY_PORT_OFFSET,
+            secret.clone(),
+            config.boot_enrs.clone(),
+            config.base_store_path.clone(),
+        ).await;
+        
         let node = Self {
             config,
             secret: secret.clone(),
-            //rx_dvfinfo,
             tx_handler_map: Arc::clone(&tx_handler_map),
             mempool_handler_map: Arc::clone(&mempool_handler_map),
             consensus_handler_map: Arc::clone(&consensus_handler_map),
             signature_handler_map: Arc::clone(&signature_handler_map),
             validator_store: None,
+            discovery: Arc::new(RwLock::new(discovery)),
         };
-        Discovery::spawn(
-            self_address,
-            base_port + DISCOVERY_PORT_OFFSET,
-            Arc::clone(&key_ip_map),
-            node.secret.clone(),
-            BOOT_ENR.get().unwrap().clone(),
-        );
 
+        let base_dir = secret_dir.parent().unwrap().to_path_buf();
+        let db = Database::new(base_dir.join(CONTRACT_DATABASE_FILE))
+            .map_err(|e| {error!("can't create contract database {:?}", e); ConfigError::ReadError { file: CONTRACT_DATABASE_FILE.to_string(), message: "can't create contract database".to_string() }})?;
         Contract::spawn(
-            secret_dir.parent().unwrap().to_path_buf(),
+            base_dir,
             secret.name,
-            tx_validator_command.clone(),
+            db.clone()
         );
         let node = Arc::new(RwLock::new(node));
         let initializer_store = Arc::new(RwLock::new(HashMap::new()));
         Node::process_contract_command(
             Arc::clone(&node),
-            Arc::clone(&key_ip_map),
-            rx_validator_command,
-            tx_validator_command,
+            db,
             initializer_store,
         );
 
+        info!("Node {} successfully booted", secret.name);
         Ok(Some(node))
     }
 
@@ -181,142 +176,232 @@ impl<T: EthSpec> Node<T> {
 
     pub fn process_contract_command(
         node: Arc<RwLock<Node<T>>>,
-        operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
-        mut rx_contract_command: Receiver<ContractCommand>,
-        tx_contract_command: MonitoredSender<ContractCommand>,
-        initializer_store: InitializerStore,
+        db: Database,
+        initializer_store: InitiatorStore,
     ) {
         tokio::spawn(async move {
             loop {
-                match rx_contract_command.recv().await {
-                    Some(validator_command) => match validator_command {
-                        ContractCommand::StartValidator(
-                            validator,
-                            operator_pks,
-                            shared_pks,
-                            encrypted_sks,
-                        ) => {
-                            info!("StartValidator");
-                            match add_validator(
-                                node.clone(),
+                let mut query_interval = tokio::time::interval(Duration::from_secs(12));
+                query_interval.tick().await;
+                match db.get_contract_command().await {
+                    Ok((command, id)) => {
+                        if id == 0 {
+                            continue;
+                        }
+                        let cmd: ContractCommand = serde_json::from_str(&command).unwrap();
+                        match cmd {
+                            ContractCommand::StartValidator(
                                 validator,
                                 operator_pks,
                                 shared_pks,
                                 encrypted_sks,
-                                operator_key_ip_map.clone(),
-                                tx_contract_command.clone(),
-                            )
-                            .await
-                            {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    error!("Failed to add validator: {}", e);
+                            ) => {
+                                let va_id = validator.id;
+                                info!("StartValidator");
+                                match add_validator(
+                                    node.clone(),
+                                    validator,
+                                    operator_pks,
+                                    shared_pks,
+                                    encrypted_sks,
+                                )
+                                    .await
+                                {
+                                    Ok(_) => {
+                                        db.delete_contract_command(id).await;
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to add validator: {} {}", e, va_id);
+                                        // save va information to database
+                                        db.updatetime_contract_command(id).await;
+                                    }
                                 }
                             }
-                        }
-                        ContractCommand::RemoveValidator(validator) => {
-                            info!("RemoveValidator");
-                            match remove_validator(node.clone(), validator).await {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    error!("Failed to remove validator: {}", e);
+                            ContractCommand::RemoveValidator(validator) => {
+                                info!("RemoveValidator");
+                                let va_id = validator.id;
+                                match remove_validator(node.clone(), validator).await {
+                                    Ok(_) => {
+                                        db.delete_contract_command(id).await;
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to remove validator:  {} {}", e, va_id);
+                                        db.updatetime_contract_command(id).await;
+                                    }
                                 }
                             }
-                        }
-                        ContractCommand::ActivateValidator(validator) => {
-                            info!("ActivateValidator");
-                            match activate_validator(node.clone(), validator).await {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    error!("Failed to remove validator: {}", e);
+                            ContractCommand::ActivateValidator(validator) => {
+                                info!("ActivateValidator");
+                                let va_id = validator.id;
+                                match activate_validator(node.clone(), validator).await {
+                                    Ok(_) => {
+                                        db.delete_contract_command(id).await;
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to active validator:  {} {}", e, va_id);
+                                        db.updatetime_contract_command(id).await;
+                                    }
                                 }
                             }
-                        }
-                        ContractCommand::StopValidator(validator) => {
-                            info!("StopValidator");
-                            match stop_validator(node.clone(), validator).await {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    error!("Failed to stop validator: {}", e);
+                            ContractCommand::StopValidator(validator) => {
+                                info!("StopValidator");
+                                let va_id = validator.id;
+                                match stop_validator(node.clone(), validator).await {
+                                    Ok(_) => {
+                                        db.delete_contract_command(id).await;
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to stop validator: {} {}", e, va_id);
+                                        db.updatetime_contract_command(id).await;
+                                    }
                                 }
                             }
-                        }
-                        ContractCommand::StartInitializer(initializer, operator_pks) => {
-                            info!("StartInitializer");
-                            match start_initializer(
-                                node.clone(),
-                                initializer,
-                                operator_pks,
-                                operator_key_ip_map.clone(),
-                                initializer_store.clone(),
-                                tx_contract_command.clone(),
-                            )
-                            .await
-                            {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    error!("Failed to start initializer: {}", e);
+                            ContractCommand::StartInitiator(initiator, operator_pks) => {
+                                info!("StartInitiator");
+                                let initiator_id = initiator.id;
+                                match start_initializer(
+                                    node.clone(),
+                                    initiator,
+                                    operator_pks,
+                                    initializer_store.clone(),
+                                )
+                                    .await
+                                {
+                                    Ok(_) => { db.delete_contract_command(id).await; }
+                                    Err(e) => {
+                                        error!("Failed to start initiator:  {} {}", e, initiator_id);
+                                        db.updatetime_contract_command(id).await;
+                                    }
                                 }
                             }
-                        }
-                        ContractCommand::MiniPoolCreated(
-                            initializer_id,
-                            validator_pk,
-                            op_pks,
-                            op_ids,
-                            minipool_address,
-                        ) => {
-                            info!("MiniPoolCreated");
-                            match minipool_deposit(
-                                node.clone(),
-                                initializer_id,
+                            ContractCommand::MiniPoolCreated(
+                                initiator_id,
                                 validator_pk,
                                 op_pks,
                                 op_ids,
-                                operator_key_ip_map.clone(),
                                 minipool_address,
-                                initializer_store.clone(),
-                                8
-                            )
-                            .await
-                            {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    error!("Failed to process minpool created: {}", e);
+                            ) => {
+                                info!("MiniPoolCreated");
+                                match minipool_deposit(
+                                    node.clone(),
+                                    initiator_id,
+                                    validator_pk,
+                                    op_pks,
+                                    op_ids,
+                                    minipool_address,
+                                    initializer_store.clone(),
+                                    1e18,
+                                )
+                                    .await
+                                {
+                                    Ok(_) => { db.delete_contract_command(id).await; }
+                                    Err(e) => {
+                                        error!("Failed to process minpool created: {} {}", e, initiator_id);
+                                        db.updatetime_contract_command(id).await;
+                                    }
                                 }
                             }
-                        }
-                        ContractCommand::MiniPoolReady(
-                            initializer_id,
-                            validator_pk,
-                            op_pks,
-                            op_ids,
-                            minipool_address,
-                        ) => {
-                            info!("MiniPoolReady");
-                            match minipool_deposit(
-                                node.clone(),
-                                initializer_id,
+                            ContractCommand::MiniPoolReady(
+                                initiator_id,
                                 validator_pk,
                                 op_pks,
                                 op_ids,
-                                operator_key_ip_map.clone(),
                                 minipool_address,
-                                initializer_store.clone(),
-                                24
-                            )
-                            .await
-                            {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    error!("Failed to process minpool created: {}", e);
+                            ) => {
+                                info!("MiniPoolReady");
+                                match minipool_deposit(
+                                    node.clone(),
+                                    initiator_id,
+                                    validator_pk,
+                                    op_pks,
+                                    op_ids,
+                                    minipool_address,
+                                    initializer_store.clone(),
+                                    31e18,
+                                )
+                                    .await
+                                {
+                                    Ok(_) => { 
+                                        db.delete_contract_command(id).await; 
+                                        let _ = initializer_store.write().await.remove(&initiator_id);
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to process minpool ready: {} {}", e, initiator_id);
+                                        db.updatetime_contract_command(id).await;
+                                    }
                                 }
+                                
                             }
-                            let _ = initializer_store.write().await.remove(&initializer_id);
                         }
                     },
-                    None => {
-                        error!("channel is closed unexpected");
+                    Err(e) => {
+                        error!("error happens when get contract command {}", e);
+                    }
+                }
+            }
+        });
+    }
+
+    pub fn spawn_committee_ip_monitor(
+        node: Arc<RwLock<Node<T>>>, 
+        mut committee_def: OperatorCommitteeDefinition, 
+        exit: exit_future::Exit
+    ) {
+        tokio::spawn(async move {
+            let (base_port, validator_dir) = {
+                let node_ = node.read().await;
+                (node_.config.base_address.port(), node_.config.validator_dir.clone())
+                
+            };
+            let mut query_interval = tokio::time::interval(Duration::from_secs(COMMITTEE_IP_HEARTBEAT_INTERVAL));
+            loop {
+                let exit_clone = exit.clone();
+                let validator_pk = committee_def.validator_public_key.clone();
+                tokio::select! {
+                    _ = query_interval.tick() => {
+                        let node_lock = node.read().await;
+                        let mut discovery = node_lock.discovery.write().await;
+                        // Query IP for each operator in this committee. If any of them changed, should restart the VA.
+                        let mut restart = false;
+                        for i in 0..committee_def.node_public_keys.len() {
+                            if let Some(ip) = discovery.query_ip(&committee_def.node_public_keys[i].0).await {
+                                if let Some(socket) = committee_def.base_socket_addresses[i].as_mut() {
+                                    if socket.ip() != ip {
+                                        socket.set_ip(ip);
+                                        restart = true;
+                                    }
+                                }
+                                else {
+                                    committee_def.base_socket_addresses[i] = Some(SocketAddr::new(ip, base_port));
+                                    restart = true;
+                                }
+                            }
+                        }
+                        drop(discovery);
+                        drop(node_lock);
+                        if restart {
+                            // Save the committee definition to file, as the file will be used to restart the VA.
+                            let committee_def_path =
+                                default_operator_committee_definition_path(&validator_pk, validator_dir.clone());
+                            info!("Committee ip Changed. Saving definition file to path {:?}", &committee_def_path);
+                            if let Err(e) = committee_def.to_file(committee_def_path) {
+                                error!("Unable to save committee definition. Error: {:?}", e);
+                                continue;
+                            }
+
+                            match restart_validator(node.clone(), committee_def.validator_id, committee_def.validator_public_key.clone()).await {
+                                Ok(_) => {
+                                    info!("Successfully restart validator: {}, pk: {}", 
+                                        committee_def.validator_id, committee_def.validator_public_key);
+                                }
+                                Err(e) => {
+                                    error!("Failed to restart validator: {}, pk: {}. Error: {}", 
+                                        committee_def.validator_id, committee_def.validator_public_key, e);
+                                }
+                            };
+                        }
+                    }
+                    () = exit_clone => {
                         break;
                     }
                 }
@@ -331,8 +416,7 @@ pub async fn add_validator<T: EthSpec>(
     operator_public_keys: OperatorPublicKeys,
     shared_public_keys: SharedPublicKeys,
     encrypted_secret_keys: EncryptedSecretKeys,
-    operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
-    tx_validator_command: MonitoredSender<ContractCommand>,
+    // tx_validator_command: MonitoredSender<ContractCommand>,
 ) -> Result<(), String> {
     let node = node.read().await;
     let base_port = node.config.base_address.port();
@@ -353,25 +437,19 @@ pub async fn add_validator<T: EthSpec>(
         return Err("Validator exists".to_string());
     }
 
-    let operator_base_address =
-        match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
-            Ok(address) => address,
-            Err(e) => {
-                sleep(Duration::from_secs(60)).await;
-                let _ = tx_validator_command
-                    .send(ContractCommand::StartValidator(
-                        validator,
-                        operator_public_keys,
-                        shared_public_keys,
-                        encrypted_secret_keys,
-                    ))
-                    .await;
-                info!("Will process the validator again");
-                cleanup_validator_dir(&validator_dir, &validator_pk, validator_id)?;
-                cleanup_password_dir(&secret_dir, &validator_pk, validator_id)?;
-                return Err(e);
-            }
-        };
+    let operator_base_address: Vec<Option<SocketAddr>> = {
+        let mut discovery = node.discovery.write().await;
+        discovery.query_addrs(&operator_public_keys, base_port).await
+    };
+        // match get_operator_ips(&operator_public_keys, base_port).await {
+        //     Ok(address) => address,
+        //     Err(e) => {
+        //         info!("Will process the validator again");
+        //         cleanup_validator_dir(&validator_dir, &validator_pk, validator_id)?;
+        //         cleanup_password_dir(&secret_dir, &validator_pk, validator_id)?;
+        //         return Err(e);
+        //     }
+        // };
 
     let operator_ids: Vec<u64> = validator
         .releated_operators
@@ -465,15 +543,8 @@ pub async fn add_validator<T: EthSpec>(
     let committee_def_path =
         default_operator_committee_definition_path(&validator_pk, validator_dir.clone());
     info!("path {:?}, pk {:?}", &committee_def_path, &validator_pk);
-    match def
-        .to_file(committee_def_path.clone())
-        .map_err(|e| format!("Unable to save committee definition: error:{:?}", e))
-    {
-        Ok(_) => {}
-        Err(e) => {
-            return Err(e.to_string());
-        }
-    }
+    def.to_file(committee_def_path.clone())
+        .map_err(|e| format!("Unable to save committee definition: error:{:?}", e))?;
 
     let voting_keystore_share_path =
         default_keystore_share_path(&keystore_share, validator_dir.clone());
@@ -508,58 +579,90 @@ pub async fn add_validator<T: EthSpec>(
     Ok(())
 }
 
+// pub async fn activate_validator<T: EthSpec>(
+//     node: Arc<RwLock<Node<T>>>,
+//     validator: Validator,
+// ) -> Result<(), String> {
+//     let node = node.read().await;
+//     let validator_id = validator.id;
+//     let validator_pk = PublicKey::deserialize(&validator.public_key)
+//         .map_err(|e| format!("Unable to deserialize validator public key: {:?}", e))?;
+//     let validator_dir = node.config.validator_dir.clone();
+//     let secret_dir = node.config.secrets_dir.clone();
+
+//     let committee_def_path =
+//         default_operator_committee_definition_path(&validator_pk, validator_dir.clone());
+
+//     let voting_keystore_share_path = validator_dir
+//         .join(format!("{}", validator_pk))
+//         .join(format!("{}", SELF_OPERATOR_ID.get().unwrap()));
+
+//     let keystore_share =
+//         KeystoreShare::from_json_file(&voting_keystore_share_path).map_err(|e| {
+//             format!("failed to get keystore share from file, error: {:?}", e)
+//         })?;
+//     let voting_keystore_share_password_path =
+//         default_keystore_share_password_path(&keystore_share, secret_dir.clone());
+//     match &node.validator_store {
+//         Some(validator_store) => {
+//             let _ = validator_store
+//                 .add_validator_keystore_share(
+//                     voting_keystore_share_path,
+//                     voting_keystore_share_password_path,
+//                     true,
+//                     None,
+//                     None,
+//                     None,
+//                     None,
+//                     committee_def_path,
+//                     keystore_share.master_id,
+//                     keystore_share.share_id,
+//                 )
+//                 .await;
+//             info!("[VA {}] reactivate validator {}", validator_id, validator_pk);
+//         }
+//         _ => {
+//             error!(
+//                 "[VA {}] failed to add validator {}. Error: no validator store is set.",
+//                 validator_id, validator_pk
+//             );
+//         }
+//     }
+
+//     Ok(())
+// }
+
 pub async fn activate_validator<T: EthSpec>(
     node: Arc<RwLock<Node<T>>>,
-    validator: Validator
+    validator: Validator,
 ) -> Result<(), String> {
-    let node = node.read().await;
     let validator_id = validator.id;
     let validator_pk = PublicKey::deserialize(&validator.public_key)
         .map_err(|e| format!("Unable to deserialize validator public key: {:?}", e))?;
-    let validator_dir = node.config.validator_dir.clone();
-    let secret_dir = node.config.secrets_dir.clone();
+    info!(
+        "[VA {}] activating validator {}...",
+        validator_id, validator_pk
+    );
+    let validator_store = {
+        let node_ = node.read().await;
+        node_.validator_store.clone()
+    };
 
-    let committee_def_path =
-        default_operator_committee_definition_path(&validator_pk, validator_dir.clone());
-
-    let voting_keystore_share_path = validator_dir
-        .join(format!("{}", validator_pk))
-        .join(format!("{}", SELF_OPERATOR_ID.get().unwrap()));
-
-    let keystore_share =
-        KeystoreShare::from_json_file(&voting_keystore_share_path).map_err(|e| {
-            format!("failed to get keystore share from file, error: {:?}", e)
-        })?;
-    let voting_keystore_share_password_path =
-        default_keystore_share_password_path(&keystore_share, secret_dir.clone());
-    match &node.validator_store {
+    match validator_store {
         Some(validator_store) => {
-            let _ = validator_store
-                .add_validator_keystore_share(
-                    voting_keystore_share_path,
-                    voting_keystore_share_password_path,
-                    true,
-                    None,
-                    None,
-                    None,
-                    None,
-                    committee_def_path,
-                    keystore_share.master_id,
-                    keystore_share.share_id,
-                )
-                .await;
-            info!("[VA {}] reactive validator {}", validator_id, validator_pk);
+            validator_store.start_validator_keystore(&validator_pk).await;
+            info!("[VA {}] validator {} activated", validator_id, validator_pk);
         }
         _ => {
             error!(
-                "[VA {}] failed to add validator {}. Error: no validator store is set.",
+                "[VA {}] failed to activate validator {}. Error: no validator store is set.",
                 validator_id, validator_pk
             );
         }
     }
-    
+
     Ok(())
-} 
+}
 
 pub async fn remove_validator<T: EthSpec>(
     node: Arc<RwLock<Node<T>>>,
@@ -597,7 +700,7 @@ pub async fn remove_validator<T: EthSpec>(
 
 pub async fn stop_validator<T: EthSpec>(
     node: Arc<RwLock<Node<T>>>,
-    validator: Validator
+    validator: Validator,
 ) -> Result<(), String> {
     let validator_id = validator.id;
     let validator_pk = PublicKey::deserialize(&validator.public_key).map_err(|e| format!("[VA {}] Deserialize error ({:?})", validator_id, e))?;
@@ -605,11 +708,12 @@ pub async fn stop_validator<T: EthSpec>(
         "[VA {}] stopping validator {}...",
         validator_id, validator_pk
     );
-    let validator_store =  {
+    let validator_store = {
         let node_ = node.read().await;
         node_.validator_store.clone()
     };
 
+    cleanup_handler(node.clone(), validator_id).await;
     match validator_store {
         Some(validator_store) => {
             validator_store.stop_validator_keystore(&validator_pk).await;
@@ -622,38 +726,46 @@ pub async fn stop_validator<T: EthSpec>(
 
 pub async fn start_initializer<T: EthSpec>(
     node: Arc<RwLock<Node<T>>>,
-    initializer: Initializer,
+    initiator: Initiator,
     operator_public_keys: OperatorPublicKeys,
-    operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
     initializer_store: Arc<
         RwLock<HashMap<u32, (BlsKeypair, BlsPublicKey, HashMap<u64, BlsPublicKey>)>>,
     >,
-    tx_contract_command: MonitoredSender<ContractCommand>,
+    // tx_contract_command: MonitoredSender<ContractCommand>,
 ) -> Result<(), String> {
     let node = node.read().await;
     let base_port = node.config.base_address.port();
-    let mut operator_ips =
-        match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
-            Ok(ips) => ips,
-            Err(e) => {
-                sleep(Duration::from_secs(10)).await;
-                let _ = tx_contract_command
-                    .send(ContractCommand::StartInitializer(
-                        initializer,
-                        operator_public_keys,
-                    ))
-                    .await;
-                info!("Will process the validator again");
-                return Err(e);
-            }
-        };
-    for x in operator_ips.iter_mut() {
-        (*x).set_port(base_port + DKG_PORT_OFFSET);
+    let operator_ips: Vec<Option<IpAddr>> = {
+        let mut discovery = node.discovery.write().await;
+        discovery.query_ips(&operator_public_keys).await
+    };
+    // let operator_ips: Vec<Option<SocketAddr>> =
+    //     match get_operator_ips(&operator_public_keys, base_port).await {
+    //         Ok(ips) => ips,
+    //         Err(e) => {
+    //             sleep(Duration::from_secs(10)).await;
+    //             // let _ = tx_contract_command
+    //             //     .send(ContractCommand::StartInitiator(
+    //             //         initiator,
+    //             //         operator_public_keys,
+    //             //     ))
+    //             //     .await;
+    //             // info!("Will process the initiator again");
+    //             return Err(e);
+    //         }
+    //     };
+    if operator_ips.iter().any(|x| x.is_none()) {
+        sleep(Duration::from_secs(10)).await;
+        return Err("StartInitializer: Insufficient operators discovered for DKG".to_string());
     }
+    let operator_ips: Vec<SocketAddr> = operator_ips.iter().map(|x| {
+        SocketAddr::new(x.unwrap(), base_port + DKG_PORT_OFFSET)
+    }).collect();
+
     let self_op_id = *SELF_OPERATOR_ID
         .get()
         .ok_or("Self operator has not been set".to_string())?;
-    let op_ids: Vec<u64> = initializer
+    let op_ids: Vec<u64> = initiator
         .releated_operators
         .iter()
         .map(|x| *x as u64)
@@ -665,20 +777,19 @@ pub async fn start_initializer<T: EthSpec>(
             op_ids.as_slice(),
             operator_ips.as_slice(),
         )
-        .await,
+            .await,
     );
-    let dkg = DKG::new(self_op_id as u64, io, THRESHOLD as usize);
+    let dkg = DKGSemiHonest::new(self_op_id as u64, io, THRESHOLD as usize);
     let (keypair, va_pk, shared_pks) = dkg
         .run()
         .await
         .map_err(|e| format!("run dkg failed {:?}", e))?;
-
     let pk_str: String = va_pk.as_hex_string()[2..].to_string();
     // push va pk to web server
     let request_body = ValidatorPkRequest {
         validator_pk: pk_str,
-        initializer_id: initializer.id,
-        initializer_address: format!("{0:0x}", initializer.owner_address),
+        initiator_id: initiator.id,
+        initializer_address: format!("{0:0x}", initiator.owner_address),
         operators: op_ids,
     };
     let url_str = API_ADDRESS.get().unwrap().to_owned() + VALIDATOR_PK_URL;
@@ -687,7 +798,7 @@ pub async fn start_initializer<T: EthSpec>(
     initializer_store
         .write()
         .await
-        .insert(initializer.id, (keypair, va_pk, shared_pks));
+        .insert(initiator.id, (keypair, va_pk, shared_pks));
     info!("dkg success!");
     Ok(())
 }
@@ -695,52 +806,91 @@ pub async fn start_initializer<T: EthSpec>(
 // TODO process minipool created event
 pub async fn minipool_deposit<T: EthSpec>(
     node: Arc<RwLock<Node<T>>>,
-    initializer_id: u32,
-    validator_pk: [u8; 48],
+    initiator_id: u32,
+    validator_pk: Vec<u8>,
     operator_public_keys: OperatorPublicKeys,
     operator_ids: OperatorIds,
-    operator_key_ip_map: Arc<RwLock<HashMap<String, IpAddr>>>,
     minipool_address: H160,
-    initializer_store: InitializerStore,
-    amount: u64
+    initializer_store: InitiatorStore,
+    amount: f64
 ) -> Result<(), String> {
     let node = node.read().await;
     let base_port = node.config.base_address.port();
-    let mut operator_ips = match get_operator_ips(operator_key_ip_map, &operator_public_keys, base_port).await {
-        Ok(ips) => ips,
-        Err(e) => {
-            error!("Some operators are not online, it's critical error, minipool exiting");
-            initializer_store.write().await.remove(&initializer_id).ok_or(format!("can't remove initializer store id: {}", initializer_id))?;
-            return Err(e);
-        }
+    let operator_ips: Vec<Option<IpAddr>> = {
+        let mut discovery = node.discovery.write().await;
+        discovery.query_ips(&operator_public_keys).await
     };
-    for x in operator_ips.iter_mut() {
-        (*x).set_port(base_port + DKG_PORT_OFFSET);
+    // let operator_ips = match get_operator_ips(&operator_public_keys, base_port).await {
+    //     Ok(ips) => ips,
+    //     Err(e) => {
+    //         error!("Some operators are not online, it's critical error, minipool exiting");
+    //         initializer_store.write().await.remove(&initiator_id).ok_or(format!("can't remove initiator store id: {}", initiator_id))?;
+    //         return Err(e);
+    //     }
+    // };
+    if operator_ips.iter().any(|x| x.is_none()) {
+        error!("Some operators are not online, it's critical error, minipool exiting");
+        initializer_store.write().await.remove(&initiator_id).ok_or(format!("can't remove initiator store id: {}", initiator_id))?;
+        return Err("MinipoolDeposit: Insufficient operators discovered for distributed signing".to_string());
     }
+    let operator_ips: Vec<SocketAddr> = operator_ips.iter().map(|x| {
+        SocketAddr::new(x.unwrap(), base_port + DKG_PORT_OFFSET)
+    }).collect();
+
     let op_ids: Vec<u64> = operator_ids.into_iter().map(|x| x as u64).collect();
     let self_op_id = *SELF_OPERATOR_ID
         .get()
         .ok_or("Self operator has not been set".to_string())?;
     let store = initializer_store.read().await;
-    let (keypair, va_pk, op_bls_pks) = store.get(&initializer_id).ok_or(format!("can't get initializer store id: {}", initializer_id))?;
+    let (keypair, va_pk, op_bls_pks) = store.get(&initiator_id).ok_or(format!("can't get initiator store id: {}", initiator_id))?;
     let io_committee = Arc::new(NetIOCommittee::new(self_op_id as u64, base_port + DKG_PORT_OFFSET, &op_ids, &operator_ips).await);
     let signer = SimpleDistributedSigner::new(self_op_id as u64, keypair.clone(), va_pk.clone(), op_bls_pks.clone(), io_committee, THRESHOLD as usize);
     let mpk = BlsPublicKey::deserialize(&validator_pk).map_err(|e| format!("Can't deserilize bls pk {:?}", e))?;
     if mpk != *va_pk {
         return Err(format!("validator pks don't match, local stored: {:?}, received {:?}", va_pk, mpk));
-    } 
+    }
     let withdraw_cret = convert_address_to_withdraw_crendentials(minipool_address);
     let deposit_data = get_distributed_deposit::<NetIOCommittee, NetIOChannel, T>(&signer, &withdraw_cret, amount).await.map_err(|e| {
         format!("Can't get distributed deposit data {:?}", e)
     })?;
     let request_body = DepositRequest::convert(deposit_data);
-    let url = match amount {
-        8 => PRESTAKE_SIGNATURE_URL,
-        24 => STAKE_SIGNATURE_URL,
-        _ => { error!("invalid amount"); "error url"}
+    let url = {
+        if (amount / 1e18).round() as u64 == 1u64 {
+            PRESTAKE_SIGNATURE_URL
+        } else if (amount / 1e18).round() as u64 == 31u64 {
+            STAKE_SIGNATURE_URL
+        } else {
+            error!("invalid amount");
+            "error url"
+        }
     };
     let url_str = API_ADDRESS.get().unwrap().to_owned() + url;
     request_to_web_server(request_body, &url_str).await.map_err(|e| format!("can't send request to server {:?}, url: {}", e, url_str))?;
+    Ok(())
+}
+
+pub async fn restart_validator<T: EthSpec>(
+    node: Arc<RwLock<Node<T>>>, 
+    validator_id: u64,
+    validator_pk: PublicKey
+) -> Result<(), String> {
+
+    info!(
+        "[VA {}] restarting validator {}...",
+        validator_id, validator_pk
+    );
+    let validator_store = {
+        let node_ = node.read().await;
+        node_.validator_store.clone()
+    };
+
+    cleanup_handler(node.clone(), validator_id).await;
+    match validator_store {
+        Some(validator_store) => {
+            validator_store.restart_validator_keystore(&validator_pk).await;
+        }
+        _ => {}
+    }
     Ok(())
 }
 
@@ -782,6 +932,7 @@ pub fn cleanup_db(base_dir: &Path, validator_id: u64) -> Result<(), String> {
         remove_dir_all(&db_dir)
             .map_err(|e| format!("[VA {}] Failed to remove DB file ({})", validator_id, e))?;
     }
+    info!("Dvf node db removed: {:?}", db_dir);
     Ok(())
 }
 

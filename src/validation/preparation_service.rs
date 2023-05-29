@@ -2,7 +2,6 @@
 
 use crate::validation::beacon_node_fallback::{BeaconNodeFallback, RequireSynced, OfflineOnFailure};
 use crate::validation::{
-    fee_recipient_file::FeeRecipientFile,
     validator_store::{DoppelgangerStatus, ValidatorStore},
 };
 use environment::RuntimeContext;

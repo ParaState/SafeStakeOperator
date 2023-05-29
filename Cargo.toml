@@ -8,12 +8,13 @@ edition = "2021"
 
 
 [dependencies]
-miracl_core = {version = "2.7.0", features = ["bls12381"]}
-num-bigint = {version = "0.4.0", features = ["rand"]}
+miracl_core = { version = "2.7.0", features = ["bls12381"] }
+num-bigint = { version = "0.4.0", features = ["rand"] }
 num-traits = "0.2.8"
 array-init = "2.0.0"
 aes-gcm = "0.9.4"
-secp256k1 = {version = "0.23.4", features = ["alloc", "rand", "serde"]}
+enr = { version = "0.6.2", features = ["k256", "ed25519", "rust-secp256k1"] }
+secp256k1 = { version = "0.24.0", features = ["alloc", "rand", "serde"] }
 sha256 = "1.0.3"
 
 rayon = "1.4.1"
@@ -27,16 +28,15 @@ dvf_version = { path = "common/dvf_version" }
 dvf_directory = { path = "common/dvf_directory" }
 
 # hotstuff
-hscrypto = { path = "hotstuff/crypto", package="crypto"}
-hsutils = { path = "hotstuff/utils", package="utils"}
+hscrypto = { path = "hotstuff/crypto", package = "crypto" }
+hsutils = { path = "hotstuff/utils", package = "utils" }
 store = { path = "hotstuff/store" }
 consensus = { path = "hotstuff/consensus" }
 mempool = { path = "hotstuff/mempool" }
-network = { path = "hotstuff/network"}
-hsconfig = { path = "hotstuff/config", package="hotstuff_config"}
+network = { path = "hotstuff/network" }
+hsconfig = { path = "hotstuff/config", package = "hotstuff_config" }
 async-trait = "0.1.51"
-env_logger = "0.8.2"
-log = "0.4.0"
+
 tokio-util = { version = "0.7.7", features = ["codec"] }
 bytes = "1.0.1"
 downcast-rs = "1.2.0"
@@ -53,13 +53,20 @@ serde_yaml = "0.8.13"
 bincode = "1.3.1"
 serde_json = "1.0.58"
 slog = { version = "2.5.2", features = ["max_level_trace", "release_max_level_trace"] }
-tokio = { version = "1.25.0", features = ["time", "rt-multi-thread"] }
-futures = "0.3.7"
+tokio = { version = "1.26.0", features = ["time", "rt-multi-thread", "tracing"] }
+
+env_logger = "0.8.2"
+log = "0.4.0"
+
+tracing = { version = "0.1.37" }
+tracing-subscriber = { version = "0.3.16", features = ["json"] }
+tracing-test = "0.2.4"
+
 dirs = "3.0.1"
 directory = { path = "lighthouse/common/directory" }
 lockfile = { path = "lighthouse/common/lockfile" }
 environment = { path = "lighthouse/lighthouse/environment" }
-parking_lot = {version = "0.12.0", features = ["send_guard"]}
+parking_lot = { version = "0.12.0", features = ["send_guard"] }
 exit-future = "0.2.0"
 filesystem = { path = "lighthouse/common/filesystem" }
 hex = "0.4.2"
@@ -67,7 +74,7 @@ deposit_contract = { path = "lighthouse/common/deposit_contract" }
 bls = { path = "lighthouse/crypto/bls" }
 eth2 = { path = "lighthouse/common/eth2" }
 tempfile = "3.1.0"
-validator_dir = { path = "lighthouse/common/validator_dir" , features = ["insecure_keys"]}
+validator_dir = { path = "lighthouse/common/validator_dir", features = ["insecure_keys"] }
 clap_utils = { path = "lighthouse/common/clap_utils" }
 eth2_keystore = { path = "lighthouse/crypto/eth2_keystore" }
 account_utils = { path = "lighthouse/common/account_utils" }
@@ -80,13 +87,14 @@ libsecp256k1 = "0.7.0"
 ring = "0.16.19"
 rand = { version = "0.8.5", features = ["small_rng"] }
 lighthouse_metrics = { path = "lighthouse/common/lighthouse_metrics" }
+lighthouse_network = { path = "lighthouse/beacon_node/lighthouse_network"}
 lazy_static = "1.4.0"
 itertools = "0.10.0"
 monitoring_api = { path = "lighthouse/common/monitoring_api" }
 sensitive_url = { path = "lighthouse/common/sensitive_url" }
 task_executor = { path = "lighthouse/common/task_executor" }
 eth2_wallet = { path = "lighthouse/crypto/eth2_wallet" }
-reqwest = { version = "0.11.0", features = ["json","stream"] }
+reqwest = { version = "0.11.0", features = ["json", "stream"] }
 url = "2.2.2"
 regex = "1.5.5"
 rpassword = "5.0.0"
@@ -97,17 +105,25 @@ boot_node = { path = "lighthouse/boot_node" }
 beacon_node = { path = "lighthouse/beacon_node" }
 database_manager = { path = "lighthouse/database_manager" }
 account_manager = { "path" = "lighthouse/account_manager" }
-discv5 = "0.1.0"
+# discv5 = "0.1.0"
 base64 = "0.13.0"
 web3 = "0.18.0"
-tracing-subscriber = "0.3.14"
+
 #rusqlite = "0.25.4"
 rusqlite = "0.28.0"
 
+futures = "0.3.28"
+async-std = "1.12.0"
+libp2p = { version = "0.51.2", features = ["full"] }
+libp2p-core = "0.39.1"
+multiaddr = { version = "0.17.1" }
+#libp2p-quic = "0.7.0-alpha.3"
+libp2p-quic = { version = "0.7.0-alpha.3", features = ["async-std"] }
+
 [patch]
 [patch.crates-io]
-fixed-hash = { git = "https://github.com/paritytech/parity-common", rev="df638ab0885293d21d656dc300d39236b69ce57d" }
-warp = { git = "https://github.com/macladson/warp", rev="7e75acc368229a46a236a8c991bf251fe7fe50ef" }
+fixed-hash = { git = "https://github.com/paritytech/parity-common", rev = "df638ab0885293d21d656dc300d39236b69ce57d" }
+warp = { git = "https://github.com/macladson/warp", rev = "7e75acc368229a46a236a8c991bf251fe7fe50ef" }
 eth2_ssz = { path = "lighthouse/consensus/ssz" }
 eth2_ssz_derive = { path = "lighthouse/consensus/ssz_derive" }
 eth2_ssz_types = { path = "lighthouse/consensus/ssz_types" }
@@ -115,7 +131,7 @@ eth2_hashing = { path = "lighthouse/crypto/eth2_hashing" }
 tree_hash = { path = "lighthouse/consensus/tree_hash" }
 tree_hash_derive = { path = "lighthouse/consensus/tree_hash_derive" }
 eth2_serde_utils = { path = "lighthouse/consensus/serde_utils" }
-arbitrary = { git = "https://github.com/michaelsproul/arbitrary", rev="a572fd8743012a4f1ada5ee5968b1b3619c427ba" }
+arbitrary = { git = "https://github.com/michaelsproul/arbitrary", rev = "a572fd8743012a4f1ada5ee5968b1b3619c427ba" }
 
 [patch."https://github.com/ralexstokes/mev-rs"]
 mev-rs = { git = "https://github.com/ralexstokes//mev-rs", rev = "7813d4a4a564e0754e9aaab2d95520ba437c3889" }

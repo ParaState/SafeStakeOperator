@@ -696,16 +696,16 @@ impl Core {
                 Some(block) = self.rx_loopback.recv() => {debug!("loopback");self.process_block(&block).await},
                 () = &mut self.timer => {debug!("timer");self.local_timeout_round().await},
                 () = exit => {
-                    info!("Shut down hotstuff core");
                     break; 
                 }
             };
             match result {
                 Ok(()) => (),
-                Err(ConsensusError::StoreError(e)) => error!("{}", e),
+                Err(ConsensusError::StoreError(e)) => error!("{:?}", e),
                 Err(ConsensusError::SerializationError(e)) => error!("Store corrupted. {}", e),
                 Err(e) => warn!("{}", e),
             }
         }
+        info!("[VA {}] Shut down consensus core", self.validator_id);
     }
 }

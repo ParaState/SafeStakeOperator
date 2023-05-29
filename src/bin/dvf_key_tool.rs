@@ -1,11 +1,18 @@
-use hsconfig::{Secret};
 use std::fs;
+
+use dvf_version::ROOT_VERSION;
+use hsconfig::Export as _;
+use hsconfig::Secret;
+use log::{error, info};
+
 pub const DEFAULT_SECRET_DIR: &str = "node_key.json";
 pub const DEFAULT_ROOT_DIR: &str = ".lighthouse";
-use hsconfig::Export as _;
-use dvf_version::{ROOT_VERSION};
+
 #[tokio::main]
 async fn main() {
+    // tracing_subscriber::fmt().json().init();
+    log::info!("------dvf_key_tool------");
+
     let network = std::env::args().nth(1).expect("ERRPR: there is no valid network argument");
     let base_dir = dirs::home_dir()
         .expect("ERROR: home dir is valid")
@@ -16,18 +23,18 @@ async fn main() {
 
     //generate secret key if not exists
     if secret_dir.exists() {
-        println!("INFO: secret file has been generated, path: {}", &secret_dir.to_str().unwrap());
+        info!("INFO: secret file has been generated, path: {}", &secret_dir.to_str().unwrap());
         let secret = Secret::read(secret_dir.to_str().unwrap()).expect("ERROR: can't read secret file, unexpect error happened.");
-        println!("INFO: node public key {}", secret.name.encode_base64());
+        info!("INFO: node public key {}", secret.name.encode_base64());
     } else {
         let secret = Secret::new();
         if !base_dir.exists() {
             fs::create_dir_all(&base_dir).unwrap_or_else(|why| {
-                println!("ERROR: can't create dir {:?}", why.kind());
-                return ;
+                error!("ERROR: can't create dir {:?}", why.kind());
+                return;
             });
         }
         secret.write(secret_dir.to_str().unwrap()).expect("ERROR: Can't write to file");
-        println!("INFO: node public key {}", secret.name.encode_base64());
+        info!("INFO: node public key {}", secret.name.encode_base64());
     }
 }

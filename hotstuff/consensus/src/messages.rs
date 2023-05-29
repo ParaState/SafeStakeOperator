@@ -300,7 +300,7 @@ impl Hash for Timeout {
 
 impl fmt::Debug for Timeout {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "TV({}, {}, {:?})", self.author, self.round, self.high_qc)
+        write!(f, "TC({}, {}, {:?})", self.author, self.round, self.high_qc)
     }
 }
 

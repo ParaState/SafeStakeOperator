@@ -15,7 +15,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use types::{
-    AbstractExecPayload, BlindedPayload, BlockType, Epoch, EthSpec, ExecPayload, FullPayload, PublicKeyBytes, Slot,
+    AbstractExecPayload, BlindedPayload, BlockType, Epoch, EthSpec, FullPayload, PublicKeyBytes, Slot,
 };
 
 #[derive(Debug)]

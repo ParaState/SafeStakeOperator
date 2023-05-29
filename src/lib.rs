@@ -1,3 +1,4 @@
+
 #[macro_use]
 extern crate downcast_rs;
 pub mod crypto;
@@ -11,5 +12,3 @@ pub mod network;
 pub mod deposit;
 
 pub const DEFAULT_CHANNEL_CAPACITY: usize = 1_000;
-
-

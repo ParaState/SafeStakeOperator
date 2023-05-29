@@ -46,11 +46,17 @@ where
 
     pub fn key_gen(&mut self, ids: &[u64]) -> Result<(Keypair, HashMap<u64, Keypair>), DvfError> {
         let kp = Keypair::random();
-        let kps = self.key_split(&kp.sk, ids)?;
+        let (kps, _) = self.key_split_with_poly(&kp.sk, ids)?;
         Ok((kp, kps))
     }
 
-    pub fn key_split(&mut self, sk: &SecretKey, ids: &[u64]) -> Result<HashMap<u64, Keypair>, DvfError> {
+    pub fn key_gen_with_poly(&mut self, ids: &[u64]) -> Result<(Keypair, HashMap<u64, Keypair>, Polynomial<BigInt>), DvfError> {
+        let kp = Keypair::random();
+        let (kps, poly) = self.key_split_with_poly(&kp.sk, ids)?;
+        Ok((kp, kps, poly))
+    }
+
+    pub fn key_split_with_poly(&mut self, sk: &SecretKey, ids: &[u64]) -> Result<(HashMap<u64, Keypair>, Polynomial<BigInt>), DvfError> {
         let mut rng = RandUtilsRng::new();
 
         let mut coeffs: Vec<BigInt> = rng.sample_vec(self.threshold(), &MODULUS);
@@ -70,7 +76,7 @@ where
             let sk_share = SecretKey::deserialize(&sk_share[..]).unwrap();
             kps.insert(ids[i], Keypair::from_components(sk_share.public_key(), sk_share));
         }
-        Ok(kps)
+        Ok((kps, poly))
     }
 
     /// Split the key in a deterministic way.  

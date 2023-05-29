@@ -123,20 +123,11 @@ impl Mempool {
 
     /// Spawn all tasks responsible to handle clients transactions.
     async fn handle_clients_transactions(&self, tx_handler_map: Arc<RwLock<HashMap<u64, TxReceiverHandler>>>) {
-        // let (tx_batch_maker, rx_batch_maker) = channel(CHANNEL_CAPACITY);
-        // let (tx_quorum_waiter, rx_quorum_waiter) = channel(CHANNEL_CAPACITY);
-        // let (tx_processor, rx_processor) = channel(CHANNEL_CAPACITY);
 
         let (tx_batch_maker, rx_batch_maker) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-mempool-tx-batch-maker", self.validator_id), "info");
         let (tx_quorum_waiter, rx_quorum_waiter) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-mempool-tx-quorum-waiter", self.validator_id), "info");
         let (tx_processor, rx_processor) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-mempool-tx-processor", self.validator_id), "info");
 
-        // We first receive clients' transactions from the network.
-        // let mut address = self
-        //     .committee
-        //     .transactions_address(&self.name)
-        //     .expect("Our public key is not in the committee");
-        // address.set_ip("0.0.0.0".parse().unwrap());
         {
             tx_handler_map
                 .write()
@@ -144,12 +135,6 @@ impl Mempool {
                 .insert(self.validator_id.clone(), TxReceiverHandler{tx_batch_maker});
             info!("Insert transaction handler for validator: {}", self.validator_id);
         }
-        
-        
-        // NetworkReceiver::spawn(
-        //     address,
-        //     /* handler */ TxReceiverHandler { tx_batch_maker },
-        // );
 
         // The transactions are sent to the `BatchMaker` that assembles them into batches. It then broadcasts
         // (in a reliable manner) the batches to all other mempools that share the same `id` as us. Finally,
@@ -182,24 +167,14 @@ impl Mempool {
             /* tx_digest */ self.tx_consensus.clone(),
             self.exit.clone()
         );
-
-        // info!("Mempool listening to client transactions on {}", address);
     }
 
     /// Spawn all tasks responsible to handle messages from other mempools.
     async fn handle_mempool_messages(&self, mempool_handler_map: Arc<RwLock<HashMap<u64, MempoolReceiverHandler>>>) {
-        // let (tx_helper, rx_helper) = channel(CHANNEL_CAPACITY);
-        // let (tx_processor, rx_processor) = channel(CHANNEL_CAPACITY);
 
         let (tx_helper, rx_helper) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-mempool-helper", self.validator_id), "info");
         let (tx_processor, rx_processor) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("{}-mempool-processor", self.validator_id), "info");
 
-        // Receive incoming messages from other mempools.
-        // let mut address = self
-        //     .committee
-        //     .mempool_address(&self.name)
-        //     .expect("Our public key is not in the committee");
-        // address.set_ip("0.0.0.0".parse().unwrap());
         {
             mempool_handler_map
                 .write()
@@ -207,16 +182,6 @@ impl Mempool {
                 .insert(self.validator_id.clone(), MempoolReceiverHandler{tx_helper, tx_processor});
             info!("Insert mempool handler for validator: {}", self.validator_id);
         }
-        
-        // NetworkReceiver::spawn(
-        //     address,
-        //     /* handler */
-        //     validator_id,
-        //     MempoolReceiverHandler {
-        //         tx_helper,
-        //         tx_processor,
-        //     },
-        // );
 
         // The `Helper` is dedicated to reply to batch requests from other mempools.
         Helper::spawn(
@@ -235,8 +200,6 @@ impl Mempool {
             /* tx_digest */ self.tx_consensus.clone(),
             self.exit.clone()
         );
-
-        // info!("Mempool listening to mempool messages on {}", address);
     }
 }
 

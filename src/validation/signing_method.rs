@@ -299,7 +299,7 @@ impl SigningMethod {
                     SignableMessage::SignedContributionAndProof(_) => {
                         (Slot::new(0 as u64), "CONTRIB", true)
                     }
-                    SignableMessage::ValidatorRegistration(v) => {
+                    SignableMessage::ValidatorRegistration(_) => {
                         (Slot::new(0 as u64), "VA_REG", true)
                     }
                 };

@@ -22,7 +22,7 @@ use task_executor::TaskExecutor;
 use types::{
     attestation::Error as AttestationError, graffiti::GraffitiString, AbstractExecPayload, Address, AggregateAndProof,
     Attestation, BeaconBlock, BlindedPayload, ChainSpec, ContributionAndProof, Domain, Epoch,
-    EthSpec, ExecPayload, Fork, Graffiti, Hash256, Keypair, PublicKeyBytes, PublicKey, SelectionProof,
+    EthSpec, Fork, Graffiti, Hash256, Keypair, PublicKeyBytes, PublicKey, SelectionProof,
     Signature, SignedAggregateAndProof, SignedBeaconBlock, SignedContributionAndProof, SignedRoot, 
     SignedValidatorRegistrationData, Slot,
     SyncAggregatorSelectionData, SyncCommitteeContribution, SyncCommitteeMessage,
@@ -958,16 +958,46 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         &self,
         pubkey: &PublicKey
     ) {
-        match self.validators.write().await.delete_keystore(pubkey).await {
+        match self.validators.write().await.disable_keystore(pubkey).await {
             Ok(_) => {
                 info!(self.log, "stop validator keystore";
-                "msg" => format!("Success: delete keystore {:?}", pubkey));
+                "msg" => format!("Success: stop keystore {:?}", pubkey));
             }
             Err(_e) => {
                 error!(self.log, "stop validator keystore";
-                "msg" => format!("Failure: delete keystore {:?}", pubkey));
+                "msg" => format!("Failure: stop keystore {:?}", pubkey));
             }
         }
+    }
+
+    /// Start a validator
+    pub async fn start_validator_keystore(
+        &self,
+        pubkey: &PublicKey
+    ) {
+        match self.validators.write().await.enable_keystore(pubkey).await {
+            Ok(_) => {
+                info!(self.log, "start validator keystore";
+                "msg" => format!("Success: start keystore {:?}", pubkey));
+            }
+            Err(_e) => {
+                error!(self.log, "start validator keystore";
+                "msg" => format!("Failure: start keystore {:?}", pubkey));
+            }
+        }
+    }
+
+    /// Restart a validator
+    pub async fn restart_validator_keystore(
+        &self,
+        pubkey: &PublicKey
+    ) {
+        info!(self.log, "restarting validator keystore";
+            "pubkey" => format!("{:?}", pubkey));
+        self.stop_validator_keystore(pubkey).await;
+        // Cooling down
+        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+        self.start_validator_keystore(pubkey).await;
     }
 }
 

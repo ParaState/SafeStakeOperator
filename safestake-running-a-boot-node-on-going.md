@@ -1,8 +1,6 @@
 # SafeStake: Running a Boot Node (on going)
 
-{% hint style="danger" %}
 **Updates happen frequently! Our** [**Github**](https://github.com/ParaState/SafeStakeOperator) **always has the latest operator node resources and setup instructions.**
-{% endhint %}
 
 ***NOTE: This tutorial is meant for SafeStake admininistrator. You DON'T need to read this if you are a user who wants to setup an operator node. Instead, you should read the [tutorial for operator node](./safestake-running-an-operator-node-on-going.md).***
 
@@ -73,6 +71,4 @@ output
 
 _**NOTE:**_  SafeStake will maintain the ENR(s) of the boot node(s) on its website so that users registering as operators can utilize them to start operator nodes.
 
-{% hint style="success" %}
 **`<The boot node is now ready to be used./>`**
-{% endhint %}

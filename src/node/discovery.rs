@@ -18,13 +18,15 @@ use network::{DvfMessage, ReliableSender};
 use dvf_version::VERSION;
 use bytes::Bytes;
 use tokio::task::JoinHandle;
+use tokio::sync::RwLock;
+use std::collections::HashMap;
 
 pub const DEFAULT_DISCOVERY_IP_STORE: &str = "discovery_ip_store";
-pub const DISCOVER_HEARTBEAT_INTERVAL: u64 = 20;
+pub const DISCOVER_HEARTBEAT_INTERVAL: u64 = 60;
 
 pub struct Discovery {
     secret: Secret,
-    heartbeat: Interval,
+    heartbeats: RwLock<HashMap<secp256k1::PublicKey, Interval>>,
     query_sender: mpsc::Sender<(NodeId, oneshot::Sender<()>)>,
     store: Store,
     boot_enrs: Vec<Enr<CombinedKey>>,
@@ -103,7 +105,7 @@ impl Discovery {
         let store = Store::new(&store_path.to_str().unwrap()).unwrap();
         let store_clone = store.clone();
         let (tx, mut rx) = mpsc::channel::<(NodeId, oneshot::Sender<()>)>(DEFAULT_CHANNEL_CAPACITY);
-        let heartbeat = tokio::time::interval(Duration::from_secs(DISCOVER_HEARTBEAT_INTERVAL));
+        // let heartbeat = tokio::time::interval(Duration::from_secs(DISCOVER_HEARTBEAT_INTERVAL));
 
         store_clone.write(local_enr.public_key().encode(), local_enr.ip4().unwrap().octets().to_vec()).await;
 
@@ -167,7 +169,7 @@ impl Discovery {
 
         let discovery = Self {
             secret,
-            heartbeat,
+            heartbeats: <_>::default(),
             query_sender: tx,
             store: store_clone,
             boot_enrs,
@@ -189,7 +191,23 @@ impl Discovery {
         let _ = receiver.await;
     }
 
-    pub async fn query_addrs(&mut self, pks: &Vec<Vec<u8>>, base_port: u16) -> Vec<Option<SocketAddr>> {
+    pub async fn update_ip(&self, pk: &[u8]) -> Option<IpAddr> {
+        let curve_pk = secp256k1::PublicKey::from_slice(pk);
+        if curve_pk.is_err() {
+            error!("Failed to construct secp256k1 public key from the slice");
+            return None;
+        };
+        let curve_pk = curve_pk.unwrap();
+        let node_id = NodeId::from(curve_pk);
+        self.discover(node_id).await;
+        // Randomly pick a boot node
+        let boot_idx = rand::random::<usize>() % self.boot_enrs.len();
+        self.query_ip_from_boot(boot_idx, pk).await;
+        
+        self.query_ip_from_local_store(pk).await
+    }
+
+    pub async fn query_addrs(&self, pks: &Vec<Vec<u8>>, base_port: u16) -> Vec<Option<SocketAddr>> {
         self.query_ips(pks)
             .await
             .into_iter()
@@ -197,7 +215,7 @@ impl Discovery {
             .collect()
     }
 
-    pub async fn query_ips(&mut self, pks: &Vec<Vec<u8>>) -> Vec<Option<IpAddr>> {
+    pub async fn query_ips(&self, pks: &Vec<Vec<u8>>) -> Vec<Option<IpAddr>> {
         let mut ips: Vec<Option<IpAddr>> = Default::default();
         for i in 0..pks.len() {
             ips.push(self.query_ip(&pks[i]).await);
@@ -208,36 +226,45 @@ impl Discovery {
     /// This function may update local store with network searching.
     /// Use `query_ip_from_local_store` if you want the result immediately 
     /// from local store without network searching.
-    pub async fn query_ip(&mut self, pk: &[u8]) -> Option<IpAddr> {
+    pub async fn query_ip(&self, pk: &[u8]) -> Option<IpAddr> {
         // Three ways to query the ip:
         // 1. from local store
         // 2. initiate a discv5 find node
         // 3. from boot node
         // TODO: do we need to add a discovery for random node ID?
 
-        // No need to query remotely for self IP
+        // No need to update for self IP
         if self.secret.name.0.as_slice() == pk {
             return self.query_ip_from_local_store(pk).await;
         }
 
-        let node_id = secp256k1::PublicKey::from_slice(pk).map(NodeId::from);
-        if node_id.is_err() {
+        let curve_pk = secp256k1::PublicKey::from_slice(pk);
+        if curve_pk.is_err() {
             error!("Failed to construct secp256k1 public key from the slice");
             return None;
         };
-        let node_id = node_id.unwrap();
-
-        // If we can't find the pk in local store, immediately issue network requests to search for it;
-        // otherwise, should wait for heartbeat signal so that we don't flood the network with frequent requests.
-        if let Some(_) = self.query_ip_from_local_store(pk).await {
-            self.heartbeat.tick().await;
+        let curve_pk = curve_pk.unwrap();
+        let mut heartbeats = self.heartbeats.write().await;
+        if !heartbeats.contains_key(&curve_pk) {
+            heartbeats.insert(
+                curve_pk.clone(), 
+                tokio::time::interval(Duration::from_secs(DISCOVER_HEARTBEAT_INTERVAL)));
         }
-        self.discover(node_id).await;
-        // Randomly pick a boot node
-        let boot_idx = rand::random::<usize>() % self.boot_enrs.len();
-        self.query_ip_from_boot(boot_idx, pk).await;
-        
-        self.query_ip_from_local_store(pk).await
+
+        let heartbeat = heartbeats.get_mut(&curve_pk).unwrap();
+        let ready = std::future::ready(());
+        tokio::select!{
+            biased; // Poll from top to bottom
+            _ = heartbeat.tick() => {
+                // Updating IP takes time, so we can release the hashmap lock here.
+                drop(heartbeats);
+                // only update when heartbeat is ready
+                self.update_ip(pk).await
+            }
+            _ = ready => {
+                self.query_ip_from_local_store(pk).await
+            }
+        }
     }
 
     pub async fn query_ip_from_local_store(&self, pk: &[u8]) -> Option<IpAddr> {

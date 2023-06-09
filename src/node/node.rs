@@ -48,7 +48,7 @@ use crate::validation::validator_dir::share_builder::{insecure_kdf, ShareBuilder
 use crate::validation::validator_store::ValidatorStore;
 
 const THRESHOLD: u64 = 3;
-pub const COMMITTEE_IP_HEARTBEAT_INTERVAL: u64 = 300;
+pub const COMMITTEE_IP_HEARTBEAT_INTERVAL: u64 = 600;
 
 type InitiatorStore =
     Arc<RwLock<HashMap<u32, (BlsKeypair, BlsPublicKey, HashMap<u64, BlsPublicKey>)>>>;
@@ -66,7 +66,7 @@ pub struct Node<T: EthSpec> {
     pub consensus_handler_map: Arc<RwLock<HashMap<u64, ConsensusReceiverHandler>>>,
     pub signature_handler_map: Arc<RwLock<HashMap<u64, DvfSignatureReceiverHandler>>>,
     pub validator_store: Option<Arc<ValidatorStore<SystemTimeSlotClock, T>>>,
-    pub discovery: Arc<RwLock<Discovery>>,
+    pub discovery: Arc<Discovery>,
 }
 
 // impl Send for Node{}
@@ -140,7 +140,7 @@ impl<T: EthSpec> Node<T> {
             consensus_handler_map: Arc::clone(&consensus_handler_map),
             signature_handler_map: Arc::clone(&signature_handler_map),
             validator_store: None,
-            discovery: Arc::new(RwLock::new(discovery)),
+            discovery: Arc::new(discovery),
         };
 
         let base_dir = secret_dir.parent().unwrap().to_path_buf();
@@ -360,11 +360,10 @@ impl<T: EthSpec> Node<T> {
                 tokio::select! {
                     _ = query_interval.tick() => {
                         let node_lock = node.read().await;
-                        let mut discovery = node_lock.discovery.write().await;
                         // Query IP for each operator in this committee. If any of them changed, should restart the VA.
                         let mut restart = false;
                         for i in 0..committee_def.node_public_keys.len() {
-                            if let Some(ip) = discovery.query_ip(&committee_def.node_public_keys[i].0).await {
+                            if let Some(ip) = node_lock.discovery.query_ip(&committee_def.node_public_keys[i].0).await {
                                 if let Some(socket) = committee_def.base_socket_addresses[i].as_mut() {
                                     if socket.ip() != ip {
                                         socket.set_ip(ip);
@@ -377,7 +376,6 @@ impl<T: EthSpec> Node<T> {
                                 }
                             }
                         }
-                        drop(discovery);
                         drop(node_lock);
                         if restart {
                             // Save the committee definition to file, as the file will be used to restart the VA.
@@ -416,7 +414,6 @@ pub async fn add_validator<T: EthSpec>(
     operator_public_keys: OperatorPublicKeys,
     shared_public_keys: SharedPublicKeys,
     encrypted_secret_keys: EncryptedSecretKeys,
-    // tx_validator_command: MonitoredSender<ContractCommand>,
 ) -> Result<(), String> {
     let node = node.read().await;
     let base_port = node.config.base_address.port();
@@ -438,18 +435,8 @@ pub async fn add_validator<T: EthSpec>(
     }
 
     let operator_base_address: Vec<Option<SocketAddr>> = {
-        let mut discovery = node.discovery.write().await;
-        discovery.query_addrs(&operator_public_keys, base_port).await
+        node.discovery.query_addrs(&operator_public_keys, base_port).await
     };
-        // match get_operator_ips(&operator_public_keys, base_port).await {
-        //     Ok(address) => address,
-        //     Err(e) => {
-        //         info!("Will process the validator again");
-        //         cleanup_validator_dir(&validator_dir, &validator_pk, validator_id)?;
-        //         cleanup_password_dir(&secret_dir, &validator_pk, validator_id)?;
-        //         return Err(e);
-        //     }
-        // };
 
     let operator_ids: Vec<u64> = validator
         .releated_operators
@@ -731,29 +718,13 @@ pub async fn start_initializer<T: EthSpec>(
     initializer_store: Arc<
         RwLock<HashMap<u32, (BlsKeypair, BlsPublicKey, HashMap<u64, BlsPublicKey>)>>,
     >,
-    // tx_contract_command: MonitoredSender<ContractCommand>,
 ) -> Result<(), String> {
     let node = node.read().await;
     let base_port = node.config.base_address.port();
     let operator_ips: Vec<Option<IpAddr>> = {
-        let mut discovery = node.discovery.write().await;
-        discovery.query_ips(&operator_public_keys).await
+        node.discovery.query_ips(&operator_public_keys).await
     };
-    // let operator_ips: Vec<Option<SocketAddr>> =
-    //     match get_operator_ips(&operator_public_keys, base_port).await {
-    //         Ok(ips) => ips,
-    //         Err(e) => {
-    //             sleep(Duration::from_secs(10)).await;
-    //             // let _ = tx_contract_command
-    //             //     .send(ContractCommand::StartInitiator(
-    //             //         initiator,
-    //             //         operator_public_keys,
-    //             //     ))
-    //             //     .await;
-    //             // info!("Will process the initiator again");
-    //             return Err(e);
-    //         }
-    //     };
+
     if operator_ips.iter().any(|x| x.is_none()) {
         sleep(Duration::from_secs(10)).await;
         return Err("StartInitializer: Insufficient operators discovered for DKG".to_string());
@@ -817,17 +788,9 @@ pub async fn minipool_deposit<T: EthSpec>(
     let node = node.read().await;
     let base_port = node.config.base_address.port();
     let operator_ips: Vec<Option<IpAddr>> = {
-        let mut discovery = node.discovery.write().await;
-        discovery.query_ips(&operator_public_keys).await
+        node.discovery.query_ips(&operator_public_keys).await
     };
-    // let operator_ips = match get_operator_ips(&operator_public_keys, base_port).await {
-    //     Ok(ips) => ips,
-    //     Err(e) => {
-    //         error!("Some operators are not online, it's critical error, minipool exiting");
-    //         initializer_store.write().await.remove(&initiator_id).ok_or(format!("can't remove initiator store id: {}", initiator_id))?;
-    //         return Err(e);
-    //     }
-    // };
+
     if operator_ips.iter().any(|x| x.is_none()) {
         error!("Some operators are not online, it's critical error, minipool exiting");
         initializer_store.write().await.remove(&initiator_id).ok_or(format!("can't remove initiator store id: {}", initiator_id))?;

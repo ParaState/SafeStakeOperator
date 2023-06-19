@@ -1,20 +1,15 @@
 use bls::Keypair;
 use eth2_keystore::{
-    default_kdf,
-    json_keystore::{Kdf, Pbkdf2, Prf, Scrypt},
-    Error, Keystore, KeystoreBuilder, DKLEN,
+    Error, Keystore, KeystoreBuilder,
 };
-use std::fs::File;
-use tempfile::tempdir;
 use scrypt::{
-  errors::{InvalidOutputLen, InvalidParams},
   scrypt, Params as ScryptParams,
 };
 use std::time::Instant;
 use rand::Rng;
 use hmac::Hmac;
 use pbkdf2::pbkdf2;
-use sha2::{Digest, Sha256};
+use sha2::{Sha256};
 
 const GOOD_PASSWORD: &[u8] = &[42, 42, 42];
 const BAD_PASSWORD: &[u8] = &[43, 43, 43];
@@ -108,6 +103,6 @@ pub fn test3() -> Result<(), Error> {
 
 fn main() {
   test1();
-  test2();
-  test3();
+  let _ = test2();
+  let _ = test3();
 }

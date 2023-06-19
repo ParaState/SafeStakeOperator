@@ -169,6 +169,7 @@ Now that we have open the `.env` file, we will update the values based on our ow
 **Leave these variables unchanged**:
 ```bash
 GETH_NETWORK=goerli
+NETHERMIND_NETWORK=goerli
 LIGHTHOUSE_NETWORK=prater
 OPERATOR_NETWORK=prater
 IMAGE_TAG=staging
@@ -210,11 +211,13 @@ You can continue to the next section if you need to run Lighthouse & Geth servic
 
 ---
 
-### Running Lighthouse & Geth Service
+### Running Lighthouse & Execution Client (e.g., Geth) Service
 
 
 ```bash
 sudo docker compose -f docker-compose-operator.yml up geth -d
+# OR, if you use Nethermind:
+# sudo docker compose -f docker-compose-operator.yml up nethermind -d
 sudo docker compose -f docker-compose-operator.yml up lighthouse -d
 ```
 

@@ -382,7 +382,7 @@ impl<T: EthSpec> Node<T> {
                             let committee_def_path =
                                 default_operator_committee_definition_path(&validator_pk, validator_dir.clone());
                             info!("Committee ip Changed. Saving definition file to path {:?}", &committee_def_path);
-                            if let Err(e) = committee_def.to_file(committee_def_path) {
+                            if let Err(e) = committee_def.save(committee_def_path.parent().unwrap()) {
                                 error!("Unable to save committee definition. Error: {:?}", e);
                                 continue;
                             }

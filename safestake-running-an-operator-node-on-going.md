@@ -115,8 +115,10 @@ Log in to your host cloud service provider, open the following firewall inbound 
 
 #### 5. Create local volume directory
 
-```
+```shell
  sudo mkdir -p /data/geth
+ # OR, if you use Nethermind:
+ # sudo mkdir -p /data/nethermind
  sudo mkdir -p /data/lighthouse
  sudo mkdir -p /data/jwt
  sudo mkdir -p /data/operator

@@ -48,6 +48,27 @@ impl Discovery {
         boot_enrs: Vec<Enr<CombinedKey>>,
         base_dir: PathBuf,
     ) -> Self {
+        let store_path = base_dir.join(DEFAULT_DISCOVERY_IP_STORE);
+        let store = Store::new(&store_path.to_str().unwrap()).unwrap();
+        let store_clone = store.clone();
+
+        let seq: u64 = {
+            match store.read("seq".as_bytes().to_vec()).await {
+                Ok(Some(value)) => {
+                    if value.len() != 8 {
+                        panic!("Discovery database corrupted: unable to read ENR seq number.");
+                    }
+                    let new_seq = u64::from_le_bytes(value.try_into().unwrap()) + 1;
+                    store.write("seq".as_bytes().to_vec(), new_seq.to_le_bytes().into()).await;
+                    info!("Node ENR seq updated to: {}", new_seq);
+                    new_seq
+                }
+                _ => {
+                    1
+                }
+            }
+        };
+
         let mut secret_key = secret.secret.0[..].to_vec();
         let enr_key = CombinedKey::secp256k1_from_bytes(&mut secret_key[..]).unwrap();
 
@@ -55,6 +76,7 @@ impl Discovery {
             let mut builder = discv5::enr::EnrBuilder::new("v4");
             builder.ip(ip);
             builder.udp4(udp_port);
+            builder.seq(seq);
             builder.build(&enr_key).unwrap()
         };
 
@@ -73,41 +95,12 @@ impl Discovery {
             if let Err(e) = discv5.add_enr(boot_enr.clone()) {
                 panic!("Boot ENR was not added: {}", e);
             }
+            info!("Added boot enr: {:?}", boot_enr.to_base64());
         }
 
-        // match boot_enr.parse::<Enr<CombinedKey>>() {
-        //     Ok(enr) => {
-        //         info!(
-        //             "Boot ENR Read. ip: {:?}, undp_port {:?}, tcp_port: {:?}, public_key: {}",
-        //             enr.ip4(),
-        //             enr.udp4(),
-        //             enr.tcp4(),
-        //             base64::encode(&enr.public_key().encode()[..])
-        //         );
-
-        //         BOOT_SOCKETADDR
-        //             .set(SocketAddr::new(
-        //                 IpAddr::V4(enr.ip4().expect("boot enr ip should not be empty")),
-        //                 enr.udp4().expect("boot enr port should not be empty"),
-        //             ))
-        //             .unwrap();
-
-        //         if let Err(e) = discv5.add_enr(enr) {
-        //             info!("Boot ENR was not added: {}", e);
-        //         }
-        //     }
-        //     Err(e) => {
-        //         error!("Decoding ENR failed: {}", e);
-        //     }
-        // }
-
-        let store_path = base_dir.join(DEFAULT_DISCOVERY_IP_STORE);
-        let store = Store::new(&store_path.to_str().unwrap()).unwrap();
-        let store_clone = store.clone();
         let (tx, mut rx) = mpsc::channel::<(NodeId, oneshot::Sender<()>)>(DEFAULT_CHANNEL_CAPACITY);
-        // let heartbeat = tokio::time::interval(Duration::from_secs(DISCOVER_HEARTBEAT_INTERVAL));
 
-        store_clone.write(local_enr.public_key().encode(), local_enr.ip4().unwrap().octets().to_vec()).await;
+        store.write(local_enr.public_key().encode(), local_enr.ip4().unwrap().octets().to_vec()).await;
 
         let discv5_service_handle = tokio::spawn(async move {
             // start the discv5 service
@@ -246,9 +239,9 @@ impl Discovery {
         let curve_pk = curve_pk.unwrap();
         let mut heartbeats = self.heartbeats.write().await;
         if !heartbeats.contains_key(&curve_pk) {
-            heartbeats.insert(
-                curve_pk.clone(), 
-                tokio::time::interval(Duration::from_secs(DISCOVER_HEARTBEAT_INTERVAL)));
+            let mut ht = tokio::time::interval(Duration::from_secs(DISCOVER_HEARTBEAT_INTERVAL));
+            ht.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            heartbeats.insert(curve_pk.clone(), ht);
         }
 
         let heartbeat = heartbeats.get_mut(&curve_pk).unwrap();
@@ -279,7 +272,7 @@ impl Discovery {
                     }
                 }
                 else {
-                    error!("Discovery database is corrupted: empty IP for the pk");
+                    error!("Discovery database cannot find pk: empty IP for the pk");
                     None
                 }
             }

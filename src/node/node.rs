@@ -354,6 +354,7 @@ impl<T: EthSpec> Node<T> {
                 
             };
             let mut query_interval = tokio::time::interval(Duration::from_secs(COMMITTEE_IP_HEARTBEAT_INTERVAL));
+            query_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             loop {
                 let exit_clone = exit.clone();
                 let validator_pk = committee_def.validator_public_key.clone();

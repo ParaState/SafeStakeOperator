@@ -59,8 +59,6 @@ impl Discovery {
                         panic!("Discovery database corrupted: unable to read ENR seq number.");
                     }
                     let new_seq = u64::from_le_bytes(value.try_into().unwrap()) + 1;
-                    store.write("seq".as_bytes().to_vec(), new_seq.to_le_bytes().into()).await;
-                    info!("Node ENR seq updated to: {}", new_seq);
                     new_seq
                 }
                 _ => {
@@ -68,6 +66,8 @@ impl Discovery {
                 }
             }
         };
+        store.write("seq".as_bytes().to_vec(), seq.to_le_bytes().into()).await;
+        info!("Node ENR seq updated to: {}", seq);
 
         let mut secret_key = secret.secret.0[..].to_vec();
         let enr_key = CombinedKey::secp256k1_from_bytes(&mut secret_key[..]).unwrap();

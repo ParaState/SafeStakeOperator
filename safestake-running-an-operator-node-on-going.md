@@ -50,15 +50,14 @@ Light mode contains only the OperatorNode service, the following list of program
 
 <figure><img src="imgs/infura-step1.png" alt=""><figcaption></figcaption></figure>
 
-* Select 'WEBSOCKETS'
-
+* Select "WEBSOCKETS"
 <figure><img src="imgs/infura-step2.png" alt=""><figcaption></figcaption></figure>
 
-* Select 'Goerli' network under 'Ethereum'
+* Select "Görli" network under "Ethereum"
 
 <figure><img src="imgs/infura-step3.png" alt=""><figcaption></figcaption></figure>
 
-* Copy your WS\_URL
+* Copy your "WS\_URL"
 
 <figure><img src="imgs/infura-step4.png" alt=""><figcaption></figcaption></figure>
 
@@ -68,32 +67,18 @@ Light mode contains only the OperatorNode service, the following list of program
 
 Log in to your host cloud service provider, open the following firewall inbound rules:
 
-| Type            | IpProtocol | FromPort | ToPort | IpRanges  |
-| --------------- | ---------- | -------- | ------ | --------- |
-| Inbound/Ingress | tcp        | 80       | 80     | 0.0.0.0/0 |
-| Inbound/Ingress | udp        | 8585     | 8585   | 0.0.0.0/0 |
-| Inbound/Ingress | tcp        | 25000    | 25003  | 0.0.0.0/0 |
-| Inbound/Ingress | udp        | 5052     | 5052   | 0.0.0.0/0 |
-| Inbound/Ingress | udp        | 1234     | 1234   | 0.0.0.0/0 |
-| Inbound/Ingress | tcp        | 5052     | 5052   | 0.0.0.0/0 |
-| Inbound/Ingress | udp        | 9000     | 9000   | 0.0.0.0/0 |
-| Inbound/Ingress | tcp        | 30303    | 30303  | 0.0.0.0/0 |
-| Inbound/Ingress | tcp        | 8551     | 8551   | 0.0.0.0/0 |
-| Inbound/Ingress | tcp        | 443      | 443    | 0.0.0.0/0 |
-| Inbound/Ingress | udp        | 30303    | 30303  | 0.0.0.0/0 |
-| Inbound/Ingress | tcp        | 9000     | 9000   | 0.0.0.0/0 |
-| Inbound/Ingress | tcp        | 8545     | 8547   | 0.0.0.0/0 |
-| Inbound/Ingress | udp        | 9005     | 9005   | 0.0.0.0/0 |
-| Inbound/Ingress | tcp        | 8585     | 8585   | 0.0.0.0/0 |
-| Inbound/Ingress | tcp        | 22       | 22     | 0.0.0.0/0 |
-| Inbound/Ingress | tcp        | 26000    | 26005  | 0.0.0.0/0 |
-| Inbound/Ingress | udp        | 25004    | 25004  | 0.0.0.0/0 |
-| Inbound/Ingress | tcp        | 26000    | 26003  | 0.0.0.0/0 |
-| Inbound/Ingress | tcp        | 25005    | 25005  | 0.0.0.0/0 |
-| Inbound/Ingress | udp        | 26004    | 26004  | 0.0.0.0/0 |
-| Inbound/Ingress | tcp        | 3456     | 3456   | 0.0.0.0/0 |
-| Inbound/Ingress | tcp        | 3000     | 3001   | 0.0.0.0/0 |
-| Inbound/Ingress | tcp        | 1234     | 1234   | 0.0.0.0/0 |
+
+| Type             | IpProtocol  | FromPort   | ToPort  | IpRanges |
+| ---------------- | ----------- | ---------- | ------- | -------- |
+| Inbound/Ingress  | tcp         | 5052       | 5052    | Internal (operator - lighthouse) |
+| Inbound/Ingress  | udp         | 9000       | 9000    | 0.0.0.0/0 |
+| Inbound/Ingress  | tcp         | 30303      | 30303   | 0.0.0.0/0 |
+| Inbound/Ingress  | tcp         | 8551       | 8551    | Internal (lighthouse - geth) |
+| Inbound/Ingress  | udp         | 30303      | 30303   | 0.0.0.0/0 |
+| Inbound/Ingress  | tcp         | 9000       | 9000    | 0.0.0.0/0 |
+| Inbound/Ingress  | tcp         | 26000      | 26005   | 0.0.0.0/0 |
+| Inbound/Ingress  | udp         | 26004      | 26004   | 0.0.0.0/0 |
+
 
 #### 2. SSH Login to your server ([jumpserver](https://www.jumpserver.org/) recommand)
 
@@ -129,45 +114,38 @@ openssl rand -hex 32 | tr -d "\n" | sudo tee /data/jwt/jwtsecret
 git clone --recurse-submodules https://github.com/ParaState/SafeStakeOperator.git dvf
 ```
 
-#### 8. Generate a registration public and private key
+#### 8. Running Geth & Lighthouse Service
+NOTE: This step is to provide a quick way to setup and run the execution client and consensus client of goerli testnet. If you already have a node running execution client and consensus client, you can skip this step.
 
 ```bash
 cd dvf
-sudo docker compose -f docker-compose-operator.yml up dvf_key_tool
+sudo docker compose -f docker-compose-operator.yml up geth -d
+sudo docker compose -f docker-compose-operator.yml up lighthouse -d
 ```
 
-Output:
+NOTE: Remember to open the `5052` firewall port for this host
+
+Syncing data may take several hours. You can use the command to see the latest logs of lighthouse to check if the data is synced:
+```bash
+sudo docker compose -f docker-compose-operator.yml logs -f --tail 10 lighthouse
 
 ```
-...
-dvf-dvf_key_tool-1  | INFO: node public key AtzozvDHiWUpO+oJph2ikv+EyBN5pdBXsfgZqLi0+Yqd
-dvf-dvf_key_tool-1 exited with code 0
+Once the data is synced, you will see output like below:
+```bash
+INFO Synced, slot: 3690668, block: 0x1244…cb92, epoch: 115333, finalized_epoch: 115331, finalized_root: 0x0764…2a3d, exec_hash: 0x929c…1ff6 (verified), peers: 78
 ```
 
-Save the public key, which will be used later. Go to [SafeStake website](https://testnet.safestake.xyz/) and `Join As Operator`.
-
-After we register an Operator on the Safestake website, we will be shown our `OPERATOR ID`, which is the unique identifier we need to start with. We will need to update the OPERATOR ID to the `.env` file before running the operator service.
-
-#### 9. Obtain your beacon node endpoint
-
-You should acquire a beacon node endpoint for the operator to connect with. You can either run such a service by yourself, or potentially obtain it from some third-party service (we might open such a paid service later if necessary).
-
-We will show later how to run such a service with `Lighthouse` by yourself. For now, let's continue with other steps.
-
-#### 10. Edit local environment variables
-
-```
-cd dvf
+#### 9. Edit local environment variables
+```bash
 cp .env.example .env
 vim .env
 ```
 
 Now that we have open the `.env` file, we will update the values based on our own configuration.
 
-`Goerli Testnet`
 
-**Leave these variables unchanged**:
 
+**Leave these variables unchanged now**:
 ```bash
 GETH_NETWORK=goerli
 LIGHTHOUSE_NETWORK=prater
@@ -182,56 +160,81 @@ TTD=10790000
 MEV_BOOST_RELAYS=https://0xafa4c6985aa049fb79dd37010438cfebeb0f2bd42b115b89dd678dab0670c1de38da0c4e9138c9290a398ecd9a0b3110@boost-relay-goerli.flashbots.net
 #gas limit. [default: 30,000,000]
 GAS_LIMIT_INTEGER=30000000
-WS_URL=<infura_ws_url>
 OPERATOR_ID=<YOUR_OPERATOR_ID>
-# The beacon node endpoint, e.g., http://127.0.0.1:5052 for a local node
-BEACON_NODE_ENDPOINT=<FILLED_WITH_YOUR_CHOICE>
 ```
 
 **Update these variables with yours**
 
 ```bash
-WS_URL= #YOUR WSS URL
-OPERATOR_ID= #The Operator ID is the ID you receive after registering the operator on SafeStake website
-BEACON_NODE_ENDPOINT= # Depending on whether you are running single-node mode or multi-node mode, fill in the correct Lighthouse beacon node service url
+WS_URL= #YOUR Infura WSS URL
+BEACON_NODE_ENDPOINT= # The beacon node endpoint. Depending on whether you are running single-node mode or multi-node mode, fill in the correct Lighthouse beacon node service url, e.g. http://127.0.0.1:5052 for a local node
 ```
 
-`WS_URL` and `OPERATOR_ID` should have been obtained by following previous steps. As for `BEACON_NODE_ENDPOINT`, if you can't find an available third-party beacon node service, you can follow [this section](safestake-running-an-operator-node-on-going.md#running-lighthouse--geth-service) to setup one by yourself.
 
-#### 11. Start operator service
-
-```bash
-sudo docker compose -f  docker-compose-operator.yml up --force-recreate -d operator
-```
-
-_Congratulations, now the Operator program has been installed and deployed._
-
-You can continue to the next section if you need to run Lighthouse & Geth service by yourself, otherwise, the operator tutorial ends here.
-
-***
-
-### Running Lighthouse & Geth Service
-
-```bash
-sudo docker compose -f docker-compose-operator.yml up geth -d
-sudo docker compose -f docker-compose-operator.yml up lighthouse -d
-```
-
-NOTE: Remember to open the `5052` firewall port for this host
-
-Now that the service is running, you have your own `BEACON_NODE_ENDPOINT` to fill into the `.env` file. For example, if the service is running on the same machine where the operator software is running, then you can use a local IP:
-
+For `BEACON_NODE_ENDPOINT`, if you follow the previous step to run geth and lighthouse and you want operator runs on the same machine, then you can use a local IP:
 ```bash
 BEACON_NODE_ENDPOINT=http://127.0.0.1:5052
 ```
 
 Otherwise, suppose the host where you run the Lighthouse & Geth service has an IP `12.102.103.1`, then you can set:
-
 ```bash
 BEACON_NODE_ENDPOINT=http://12.102.103.1:5052
 ```
 
-***
+#### 10. Generate a registration public and private key
+```bash
+sudo docker compose -f docker-compose-operator.yml up dvf_key_tool
+```
+Output:
+```
+...
+dvf-dvf_key_tool-1  | INFO: node public key AtzozvDHiWUpO+oJph2ikv+EyBN5pdBXsfgZqLi0+Yqd
+dvf-dvf_key_tool-1 exited with code 0
+```
+Save the public key, which will be used later. 
+
+#### 11. Go to [SafeStake website](https://testnet.safestake.xyz/):
+* Click "Join As Operator".
+
+<figure><img src="imgs/operatpr-setup1.png" alt=""><figcaption></figcaption></figure>
+
+* Select a wallet where you have enough goerli testnet token to pay minimum fee to sign a transaction.
+<figure><img src="imgs/operatpr-setup2.png" alt=""><figcaption></figcaption></figure>
+
+
+* After you connect your wallet, click "Register Operator"
+<figure><img src="imgs/operatpr-setup3.png" alt=""><figcaption></figcaption></figure>
+
+* Your wallet address is auto filled. You need to enter the "Display Name" for your node and the "Operator Public Key" got from the previous step. Then click "Next".
+<figure><img src="imgs/operatpr-setup4.png" alt=""><figcaption></figcaption></figure>
+
+* Click "Register Operator"
+<figure><img src="imgs/operatpr-setup5.png" alt=""><figcaption></figcaption></figure>
+
+* Wallet extension page will pop out. You need to click "Confirm" to sign the transaction.
+<figure><img src="imgs/operatpr-setup6.png" alt=""><figcaption></figcaption></figure>
+
+After we register an Operator on the Safestake website, we will be shown our `OPERATOR ID`, which is the unique identifier we need to start with. We will need to update the OPERATOR ID to the `.env` file before running the operator service.
+
+#### 12. Edit local environment variables for OPERATOR_ID
+```bash
+vim .env
+```
+```bash
+OPERATOR_ID= #The Operator ID is the ID you receive after registering the operator on SafeStake website
+```
+
+#### 13. Start operator service
+
+```bash
+sudo docker compose -f  docker-compose-operator.yml up --force-recreate -d operator
+```
+
+
+*Congratulations, now the Operator program has been installed and deployed.*
+
+---
+
 
 ### Some final notes about Operator's private/public keys
 

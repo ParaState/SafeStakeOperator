@@ -272,7 +272,7 @@ impl Discovery {
                     }
                 }
                 else {
-                    error!("Discovery database is corrupted: empty IP for the pk");
+                    error!("Discovery database cannot find pk: empty IP for the pk");
                     None
                 }
             }

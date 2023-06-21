@@ -62,7 +62,7 @@ impl Discovery {
                     new_seq
                 }
                 _ => {
-                    1
+                    2
                 }
             }
         };

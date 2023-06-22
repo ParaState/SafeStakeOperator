@@ -19,6 +19,7 @@ use types::EthSpec;
 use types::PublicKey;
 use validator_dir::insecure_keys::INSECURE_PASSWORD;
 use web3::types::H160;
+use crate::utils::error::DvfError;
 
 use crate::crypto::dkg::{DKGSemiHonest, SimpleDistributedSigner, DKGTrait};
 
@@ -354,6 +355,7 @@ impl<T: EthSpec> Node<T> {
                 
             };
             let mut query_interval = tokio::time::interval(Duration::from_secs(COMMITTEE_IP_HEARTBEAT_INTERVAL));
+            query_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             loop {
                 let exit_clone = exit.clone();
                 let validator_pk = committee_def.validator_public_key.clone();
@@ -382,21 +384,32 @@ impl<T: EthSpec> Node<T> {
                             let committee_def_path =
                                 default_operator_committee_definition_path(&validator_pk, validator_dir.clone());
                             info!("Committee ip Changed. Saving definition file to path {:?}", &committee_def_path);
-                            if let Err(e) = committee_def.to_file(committee_def_path) {
+                            if let Err(e) = committee_def.save(committee_def_path.parent().unwrap()) {
                                 error!("Unable to save committee definition. Error: {:?}", e);
                                 continue;
                             }
 
-                            match restart_validator(node.clone(), committee_def.validator_id, committee_def.validator_public_key.clone()).await {
-                                Ok(_) => {
-                                    info!("Successfully restart validator: {}, pk: {}", 
-                                        committee_def.validator_id, committee_def.validator_public_key);
-                                }
-                                Err(e) => {
-                                    error!("Failed to restart validator: {}, pk: {}. Error: {}", 
-                                        committee_def.validator_id, committee_def.validator_public_key, e);
-                                }
-                            };
+                            loop {
+                                match restart_validator(node.clone(), committee_def.validator_id, committee_def.validator_public_key.clone()).await {
+                                    Ok(_) => {
+                                        info!("Successfully restart validator: {}, pk: {}", 
+                                            committee_def.validator_id, committee_def.validator_public_key);
+                                        break;
+                                    }
+                                    Err(DvfError::ValidatorStoreNotReady) => {
+                                        error!("Failed to restart validator: {}, pk: {}. Error:
+                                            validator store is not ready yet, will try again in 1 minute.", 
+                                            committee_def.validator_id, committee_def.validator_public_key);
+                                        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                                        continue;
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to restart validator: {}, pk: {}. Error: {:?}", 
+                                            committee_def.validator_id, committee_def.validator_public_key, e);
+                                        break;
+                                    }  
+                                };
+                            }
                         }
                     }
                     () = exit_clone => {
@@ -836,7 +849,7 @@ pub async fn restart_validator<T: EthSpec>(
     node: Arc<RwLock<Node<T>>>, 
     validator_id: u64,
     validator_pk: PublicKey
-) -> Result<(), String> {
+) -> Result<(), DvfError> {
 
     info!(
         "[VA {}] restarting validator {}...",
@@ -851,10 +864,12 @@ pub async fn restart_validator<T: EthSpec>(
     match validator_store {
         Some(validator_store) => {
             validator_store.restart_validator_keystore(&validator_pk).await;
+            Ok(())
         }
-        _ => {}
+        _ => {
+            Err(DvfError::ValidatorStoreNotReady)
+        }
     }
-    Ok(())
 }
 
 pub async fn cleanup_handler<T: EthSpec>(node: Arc<RwLock<Node<T>>>, validator_id: u64) {

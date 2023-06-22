@@ -45,6 +45,8 @@ pub enum DvfError {
     InsufficientValidPks,
     /// Socket address is not available
     SocketAddrUnknown,
+    /// Validator store is not construted yet
+    ValidatorStoreNotReady,
     /// Unknown error
     Unknown
 }

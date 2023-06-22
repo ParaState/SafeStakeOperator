@@ -4,7 +4,6 @@
 //! attempt) to load into the `crate::intialized_validators::InitializedValidators` struct.
 
 use crate::validation::account_utils::{write_file_via_temporary};
-use directory::ensure_dir_exists;
 use serde_derive::{Deserialize, Serialize};
 use std::fs::{File};
 use std::io;
@@ -15,14 +14,11 @@ use std::net::{SocketAddr};
 /// The file name for the serialized `OperatorCommitteeDefinition` struct.
 pub const OPERATOR_COMMITTEE_DEFINITION_FILENAME: &str = "operator_committee_definition.yml";
 
-/// The file name for the serialized `ValidatorDefinitions` struct.
-pub const CONFIG_FILENAME: &str = "operator_committee_definitions.yml";
-
-/// The temporary file name for the serialized `ValidatorDefinitions` struct.
+/// The temporary file name for the serialized `OperatorCommitteeDefinition` struct.
 ///
 /// This is used to achieve an atomic update of the contents on disk, without truncation.
 /// See: https://github.com/sigp/lighthouse/issues/2159
-pub const CONFIG_TEMP_FILENAME: &str = ".operator_committee_definitions.yml.tmp";
+pub const OPERATOR_COMMITTEE_DEFINITION_TEMP_FILENAME: &str = ".operator_committee_definition.yml.tmp";
 
 
 #[derive(Debug)]
@@ -80,73 +76,13 @@ impl OperatorCommitteeDefinition {
             .map_err(Error::UnableToOpenFile)?;
         serde_yaml::to_writer(file, self).map_err(Error::UnableToEncodeFile)
     }
-}
 
-/// A list of `OperatorCommitteeDefinition` that serves as a serde-able configuration file which defines a
-/// list of operator committees.
-#[derive(Default, Serialize, Deserialize)]
-pub struct OperatorCommitteeDefinitions(Vec<OperatorCommitteeDefinition>);
-
-impl From<Vec<OperatorCommitteeDefinition>> for OperatorCommitteeDefinitions {
-    fn from(vec: Vec<OperatorCommitteeDefinition>) -> Self {
-        Self(vec)
-    }
-}
-
-impl OperatorCommitteeDefinitions {
-    /// Open an existing file or create a new, empty one if it does not exist.
-    pub fn open_or_create<P: AsRef<Path>>(committees_dir: P) -> Result<Self, Error> {
-        ensure_dir_exists(committees_dir.as_ref()).map_err(|_| {
-            Error::UnableToCreateCommitteeDir(PathBuf::from(committees_dir.as_ref()))
-        })?;
-        let config_path = committees_dir.as_ref().join(CONFIG_FILENAME);
-        if !config_path.exists() {
-            let this = Self::default();
-            this.save(&committees_dir)?;
-        }
-        Self::open(committees_dir)
-    }
-
-    /// Open an existing file, returning an error if the file does not exist.
-    pub fn open<P: AsRef<Path>>(committees_dir: P) -> Result<Self, Error> {
-        let config_path = committees_dir.as_ref().join(CONFIG_FILENAME);
-        let file = File::options()
-            .write(true)
-            .read(true)
-            .create_new(false)
-            .open(&config_path)
-            .map_err(Error::UnableToOpenFile)?;
-        let defs: Self = serde_yaml::from_reader(file).map_err(Error::UnableToParseFile)?;
-        // Validate simple constraints
-        for i in 0..defs.0.len() {
-            if defs.0[i].operator_ids.len() != (defs.0[i].total as usize) {
-                return Err(Error::InvalidFile);
-            }
-            if defs.0[i].operator_public_keys.len() != (defs.0[i].total as usize) {
-                return Err(Error::InvalidFile);
-            }
-            if defs.0[i].node_public_keys.len() != (defs.0[i].total as usize) {
-                return Err(Error::InvalidFile);
-            }
-            if defs.0[i].base_socket_addresses.len() != (defs.0[i].total as usize) {
-                return Err(Error::InvalidFile);
-            }
-        }
-        Ok(defs)
-    }
-
-    /// Returns a slice of all `OperatorCommitteeDefinition` in `self`.
-    pub fn as_slice(&self) -> &[OperatorCommitteeDefinition] {
-        self.0.as_slice()
-    }
-
-    /// Encodes `self` as a YAML string and atomically writes it to the `CONFIG_FILENAME` file in
-    /// the `committees_dir` directory.
+    /// Encodes `self` as a YAML string and atomically writes it out to disk.
     ///
     /// Will create a new file if it does not exist or overwrite any existing file.
-    pub fn save<P: AsRef<Path>>(&self, committees_dir: P) -> Result<(), Error> {
-        let config_path = committees_dir.as_ref().join(CONFIG_FILENAME);
-        let temp_path = committees_dir.as_ref().join(CONFIG_TEMP_FILENAME);
+    pub fn save<P: AsRef<Path>>(&self, committee_def_dir: P) -> Result<(), Error> {
+        let config_path = committee_def_dir.as_ref().join(OPERATOR_COMMITTEE_DEFINITION_FILENAME);
+        let temp_path = committee_def_dir.as_ref().join(OPERATOR_COMMITTEE_DEFINITION_TEMP_FILENAME);
         let bytes = serde_yaml::to_vec(self).map_err(Error::UnableToEncodeFile)?;
 
         write_file_via_temporary(&config_path, &temp_path, &bytes)
@@ -154,12 +90,86 @@ impl OperatorCommitteeDefinitions {
 
         Ok(())
     }
-
-    /// Adds a new `OperatorCommitteeDefinition` to `self`.
-    pub fn push(&mut self, def: OperatorCommitteeDefinition) {
-        self.0.push(def)
-    }
 }
+
+// /// A list of `OperatorCommitteeDefinition` that serves as a serde-able configuration file which defines a
+// /// list of operator committees.
+// #[derive(Default, Serialize, Deserialize)]
+// pub struct OperatorCommitteeDefinitions(Vec<OperatorCommitteeDefinition>);
+
+// impl From<Vec<OperatorCommitteeDefinition>> for OperatorCommitteeDefinitions {
+//     fn from(vec: Vec<OperatorCommitteeDefinition>) -> Self {
+//         Self(vec)
+//     }
+// }
+
+// impl OperatorCommitteeDefinitions {
+//     /// Open an existing file or create a new, empty one if it does not exist.
+//     pub fn open_or_create<P: AsRef<Path>>(committees_dir: P) -> Result<Self, Error> {
+//         ensure_dir_exists(committees_dir.as_ref()).map_err(|_| {
+//             Error::UnableToCreateCommitteeDir(PathBuf::from(committees_dir.as_ref()))
+//         })?;
+//         let config_path = committees_dir.as_ref().join(CONFIG_FILENAME);
+//         if !config_path.exists() {
+//             let this = Self::default();
+//             this.save(&committees_dir)?;
+//         }
+//         Self::open(committees_dir)
+//     }
+
+//     /// Open an existing file, returning an error if the file does not exist.
+//     pub fn open<P: AsRef<Path>>(committees_dir: P) -> Result<Self, Error> {
+//         let config_path = committees_dir.as_ref().join(CONFIG_FILENAME);
+//         let file = File::options()
+//             .write(true)
+//             .read(true)
+//             .create_new(false)
+//             .open(&config_path)
+//             .map_err(Error::UnableToOpenFile)?;
+//         let defs: Self = serde_yaml::from_reader(file).map_err(Error::UnableToParseFile)?;
+//         // Validate simple constraints
+//         for i in 0..defs.0.len() {
+//             if defs.0[i].operator_ids.len() != (defs.0[i].total as usize) {
+//                 return Err(Error::InvalidFile);
+//             }
+//             if defs.0[i].operator_public_keys.len() != (defs.0[i].total as usize) {
+//                 return Err(Error::InvalidFile);
+//             }
+//             if defs.0[i].node_public_keys.len() != (defs.0[i].total as usize) {
+//                 return Err(Error::InvalidFile);
+//             }
+//             if defs.0[i].base_socket_addresses.len() != (defs.0[i].total as usize) {
+//                 return Err(Error::InvalidFile);
+//             }
+//         }
+//         Ok(defs)
+//     }
+
+//     /// Returns a slice of all `OperatorCommitteeDefinition` in `self`.
+//     pub fn as_slice(&self) -> &[OperatorCommitteeDefinition] {
+//         self.0.as_slice()
+//     }
+
+//     /// Encodes `self` as a YAML string and atomically writes it to the `CONFIG_FILENAME` file in
+//     /// the `committees_dir` directory.
+//     ///
+//     /// Will create a new file if it does not exist or overwrite any existing file.
+//     pub fn save<P: AsRef<Path>>(&self, committees_dir: P) -> Result<(), Error> {
+//         let config_path = committees_dir.as_ref().join(CONFIG_FILENAME);
+//         let temp_path = committees_dir.as_ref().join(CONFIG_TEMP_FILENAME);
+//         let bytes = serde_yaml::to_vec(self).map_err(Error::UnableToEncodeFile)?;
+
+//         write_file_via_temporary(&config_path, &temp_path, &bytes)
+//             .map_err(Error::UnableToWriteFile)?;
+
+//         Ok(())
+//     }
+
+//     /// Adds a new `OperatorCommitteeDefinition` to `self`.
+//     pub fn push(&mut self, def: OperatorCommitteeDefinition) {
+//         self.0.push(def)
+//     }
+// }
 
 #[cfg(test)]
 mod tests {

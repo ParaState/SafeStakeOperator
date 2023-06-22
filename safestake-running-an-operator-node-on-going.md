@@ -150,7 +150,7 @@ Now that we have open the `.env` file, we will update the values based on our ow
 GETH_NETWORK=goerli
 LIGHTHOUSE_NETWORK=prater
 OPERATOR_NETWORK=prater
-IMAGE_TAG=v1.1-testnet
+IMAGE_TAG=v1.2-testnet
 REGISTRY_CONTRACT_ADDRESS=f31605c163b54C00371b10af21E8eDa32B969F21
 NETWORK_CONTRACT_ADDRESS=C1b4AA96afA5D3566A86920e69Fc6C274d54F3B4
 API_SERVER=https://api-testnet.safestake.xyz/v1/

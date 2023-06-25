@@ -55,7 +55,7 @@ services:
         "lighthouse",
         #lighthouse bn --builder https://mainnet-builder.test
         "bn",
-        #"--builder=http://127.0.0.1:18550",
+        "--builder=http://${MEV_IP}:18550",
         "--network=${LIGHTHOUSE_NETWORK}",
         "--datadir=/data/lighthouse",
         # "--jwt-secrets=/data/jwt/jwtsecret",
@@ -98,7 +98,7 @@ services:
       - -c
       - |
         node_ip=$$(curl -s ifconfig.me)
-        dvf validator_client --private-tx-proposals --debug-level=info --network=${OPERATOR_NETWORK} --beacon-nodes=${BEACON_NODE_ENDPOINT} --api=${API_SERVER} --ws-url=${WS_URL}  --ip=$$node_ip --id=${OPERATOR_ID} --registry-contract=${REGISTRY_CONTRACT_ADDRESS} --network-contract=${NETWORK_CONTRACT_ADDRESS} --base-port=26000 2>&1
+        dvf validator_client --builder-proposals --debug-level=info --network=${OPERATOR_NETWORK} --beacon-nodes=${BEACON_NODE_ENDPOINT} --api=${API_SERVER} --ws-url=${WS_URL}  --ip=$$node_ip --id=${OPERATOR_ID} --registry-contract=${REGISTRY_CONTRACT_ADDRESS} --network-contract=${NETWORK_CONTRACT_ADDRESS} --suggested-fee-recipient=${FEE_RECEIPIENT} --base-port=26000 2>&1
     expose:
       - "26000"
       - "26001"

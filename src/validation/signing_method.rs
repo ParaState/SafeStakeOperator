@@ -300,7 +300,7 @@ impl SigningMethod {
                         (Slot::new(0 as u64), "CONTRIB", true)
                     }
                     SignableMessage::ValidatorRegistration(_) => {  
-                        let op_pos = dvf_signer.operator_committee.get_op_pos(dvf_signer.operator_id);
+                        let op_pos = dvf_signer.operator_committee.get_op_pos(dvf_signer.operator_id).await;
                         signing_epoch = Epoch::new(op_pos as u64);
                         (Slot::new(0 as u64), "VA_REG", true)
                     }

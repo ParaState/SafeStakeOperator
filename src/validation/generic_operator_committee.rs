@@ -61,8 +61,8 @@ where
         self.cmt.get_validator_pk()
     }
 
-    pub fn get_op_pos(&self, op_id: u64) -> usize {
-        self.cmt.get_op_pos(op_id)
+    pub async fn get_op_pos(&self, op_id: u64) -> usize {
+        self.cmt.get_op_pos(op_id).await
     }
 }
 

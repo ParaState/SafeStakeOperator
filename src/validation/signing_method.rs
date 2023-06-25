@@ -167,7 +167,7 @@ impl SigningMethod {
         signing_root: Hash256,
         executor: &TaskExecutor,
         fork_info: Option<ForkInfo>,
-        mut signing_epoch: Epoch,
+        signing_epoch: Epoch,
         spec: &ChainSpec,
     ) -> Result<Signature, Error> {
 
@@ -299,9 +299,7 @@ impl SigningMethod {
                     SignableMessage::SignedContributionAndProof(_) => {
                         (Slot::new(0 as u64), "CONTRIB", true)
                     }
-                    SignableMessage::ValidatorRegistration(_) => {  
-                        let op_pos = dvf_signer.operator_committee.get_op_pos(dvf_signer.operator_id).await;
-                        signing_epoch = Epoch::new(op_pos as u64);
+                    SignableMessage::ValidatorRegistration(_) => {
                         (Slot::new(0 as u64), "VA_REG", true)
                     }
                 };

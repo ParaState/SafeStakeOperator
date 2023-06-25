@@ -100,6 +100,13 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
         ids[select_order as usize]
     }
 
+    async fn get_op_pos(&self, op_id: u64) -> usize {
+        let operators = self.operators.read().await;
+        let mut ids : Vec<u64> = operators.keys().map(|k| *k).collect();
+        ids.sort();
+        ids.iter().position(|&id| id == op_id).unwrap()
+    }
+
     async fn consensus(&self, msg: Hash256) -> Result<(), DvfError> {
         let notify = {
             let mut notes = self.consensus_notifications.write().await; 

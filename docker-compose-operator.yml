@@ -33,6 +33,7 @@ services:
       - "8547"
       - "8551"
       - "30303"
+
   mev-boost:
     image: flashbots/mev-boost:1.5.0-portable
     network_mode: "host"
@@ -47,7 +48,6 @@ services:
     pull_policy: always
     restart: unless-stopped
     volumes:
-      - geth-data:/data/geth
       - jwt-data:/data/jwt
       - lighthouse-data:/data/lighthouse
     command:
@@ -81,9 +81,6 @@ services:
       - "5052"
       - "9000"
       - "5054"
-    depends_on:
-      geth:
-        condition: service_started
 
   operator:
     network_mode: "host"
@@ -111,9 +108,6 @@ services:
       resources:
         limits:
           memory: 5G
-    # depends_on:
-    #   lighthouse:
-    #     condition: service_started
 
   dvf_key_tool:
     network_mode: "host"
@@ -130,6 +124,26 @@ services:
       resources:
         limits:
           memory: 5G
+
+  nethermind:
+    image: nethermind/nethermind
+    pull_policy: always
+    restart: unless-stopped
+    network_mode: "host"
+    volumes:
+      - jwt-data:/data/jwt
+      - nethermind-data:/data/nethermind
+    command: [
+      "--config=${NETHERMIND_NETWORK}",
+      "--JsonRpc.Enabled=true",
+      "--JsonRpc.EngineHost=0.0.0.0",
+      "--JsonRpc.EnginePort=8551",
+      "--JsonRpc.JwtSecretFile=/data/jwt/jwtsecret",
+      "--datadir=/data/nethermind",
+    ]
+    expose:
+      - "8551"
+      - "30303"
 
 volumes:
   geth-data:
@@ -156,3 +170,9 @@ volumes:
       o: bind
       type: none
       device: /data/operator
+  nethermind-data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /data/nethermind

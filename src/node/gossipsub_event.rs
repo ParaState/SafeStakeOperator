@@ -136,12 +136,12 @@ mod tests {
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
 
-    #[traced_test]
-    #[test]
-    fn test() {
-        let mut now = Utc::now();
-        println!("{},{}", now, now.timestamp_nanos());
-        let local_now = Local::now();
-        println!("{},{}", now, now.timestamp_nanos());
-    }
+    // #[traced_test]
+    // #[test]
+    // fn test() {
+    //     let mut now = Utc::now();
+    //     println!("{},{}", now, now.timestamp_nanos());
+    //     let local_now = Local::now();
+    //     println!("{},{}", now, now.timestamp_nanos());
+    // }
 }

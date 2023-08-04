@@ -11,6 +11,9 @@ pub const DEFAULT_ROOT_DIR: &str = ".lighthouse";
 #[tokio::main]
 async fn main() {
     // tracing_subscriber::fmt().json().init();
+    let mut logger = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
+    logger.format_timestamp_millis();
+    logger.init();
     log::info!("------dvf_key_tool------");
 
     let network = std::env::args().nth(1).expect("ERRPR: there is no valid network argument");

@@ -38,7 +38,7 @@ jobs:
         run: git submodule update --init --recursive
 
       - name: Unit Test
-        run: runuser -f ubuntu -c '/home/ubuntu/.cargo/bin/cargo test test_dkg_secure_net -- --show-output'
+        run: sudo runuser -f ubuntu -c '/home/ubuntu/.cargo/bin/cargo test test_dkg_secure_net -- --show-output'
         
       - name: Build and push Docker image
         uses: docker/build-push-action@ad44023a93711e3deb337508980b4b5e9bcdc5dc

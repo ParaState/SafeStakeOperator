@@ -1,6 +1,6 @@
 # SafeStake: A trust-minimized middle layer for secure, decentralized ETH staking
 
-![dev workflow](https://github.com/ParaState/SafeStakeOperator/actions/workflows/ci_dev.yml/badge.svg?branch=dev)
+[![Publish Image & UnitTest](https://github.com/ParaState/SafeStakeOperator/actions/workflows/ci_dev.yml/badge.svg?branch=dev)](https://github.com/ParaState/SafeStakeOperator/actions/workflows/ci_dev.yml)
 
 ## What is SafeStake? <img src=".gitbook/assets/image (4).png" alt="" data-size="line">
 

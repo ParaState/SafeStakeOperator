@@ -1,5 +1,11 @@
 # SafeStake: A trust-minimized middle layer for secure, decentralized ETH staking
 
+[![Build Status][ci-badge]][ci-url]
+[![Discord chat][chat-badge]][chat-url]
+
+[ci-badge]: https://github.com/ParaState/SafeStakeOperator/workflows/Build%20and%20Test%20Suite/badge.svg?branch=dev
+[ci-url]: https://github.com/ParaState/SafeStakeOperator/actions
+
 ## What is SafeStake? <img src=".gitbook/assets/image (4).png" alt="" data-size="line">
 
 `SafeStake` is a decentralized staking framework and protocol that maximizes staker rewards by keeping validators secure and online to perform Ethereum Proof-of-Stake consensus (ETH2) duties. It splits a validator key into shares and distributes them over several nodes run by independent operators to achieve high levels of security and fault tolerance. Written in Rust, SafeStake runs on top of the ETH2/consensus client [Lighthouse](https://github.com/sigp/lighthouse) and uses [Hotstuff](https://github.com/asonnino/hotstuff) (a BFT consensus library) for consensus.

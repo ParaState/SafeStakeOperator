@@ -269,3 +269,17 @@ It is a good practice to back up your operator private key file
 ```
 
 **`Your SafeStake Operator Node is now configured`**
+
+## Backup and Migration
+
+If you are using our default settings, all data other than configration files is stored in the folder `/data`. It is possible for geth/nethermind and lighthouse to resync data in a new machine. For operator, it is important to always backup and copy the folder `/data/operator/` to the new machine before you start operator in the new machine.
+
+Some description of the folders and files under `/data/operator/v1/prater/`:
+```
+── prater
+    ├── contract_record.yml # record the current synced block number
+    ├── dvf_node_db # hotstuff consensus files
+    ├── node_key.json # operator's public and private key
+    ├── secrets # secret files for encryption
+    ├── validators # data files of the validators that the operator is serving, inherited from the native folder of lighthouse validator client, including slashing_protection.sqlite, etc.
+```

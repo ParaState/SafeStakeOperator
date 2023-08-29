@@ -1,8 +1,7 @@
 # SafeStake: Running a Boot Node (on going)
 
-{% hint style="danger" %}
 **Updates happen frequently! Our** [**Github**](https://github.com/ParaState/SafeStakeOperator) **always has the latest operator node resources and setup instructions.**
-{% endhint %}
+
 
 ***NOTE: This tutorial is meant for SafeStake admininistrator. You DON'T need to read this if you are a user who wants to setup an operator node. Instead, you should read the [tutorial for operator node](./safestake-running-an-operator-node-on-going.md).***
 
@@ -17,9 +16,9 @@ The duty agreement among operators uses Hotstuff consensus and runs on a p2p net
 
 * Public Static Network IP
 * Hardware(Recommend)
-  * CPU: 16
-  * Memory: 32G
-  * Disk: 600GB
+  * CPU: 2
+  * Memory: 2G
+  * Disk: 30GB
 * OS
   * Unix
 * Software
@@ -30,16 +29,17 @@ The duty agreement among operators uses Hotstuff consensus and runs on a p2p net
 
 | Port range | Protocol | Source    |
 | ---------- | -------- | --------- |
-| 22         | TCP      | 0.0.0.0/0 |
-| 9000       | UDP      | 0.0.0.0/0 |
+| 9005       | UDP      | 0.0.0.0/0 |
 
 **Installation**
 
 Clone this repository:
 
 ```
+sudo mkdir -p /data/boot
 git clone --recurse-submodules https://github.com/ParaState/SafeStakeOperator dvf
 cd dvf
+mv .env.example .env
 ```
 
 Install Docker and Docker Compose
@@ -47,11 +47,7 @@ Install Docker and Docker Compose
 * [install docker engine](https://docs.docker.com/engine/install/)
 * [install docker compose](https://docs.docker.com/compose/install/)
 
-Build root node:
 
-```
-sudo docker compose -f docker-compose-boot.yml build
-```
 
 **Start Service**
 
@@ -73,6 +69,5 @@ output
 
 _**NOTE:**_  SafeStake will maintain the ENR(s) of the boot node(s) on its website so that users registering as operators can utilize them to start operator nodes.
 
-{% hint style="success" %}
-**`<The boot node is now ready to be used./>`**
-{% endhint %}
+
+**`The boot node is now ready to be used.`**

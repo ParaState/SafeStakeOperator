@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Please see Releases. We recommend using the most recently released version.
+Please see [Releases](https://github.com/ParaState/SafeStakeOperator/releases). We recommend using the most recently released version.
 
 ## Reporting a Vulnerability
 

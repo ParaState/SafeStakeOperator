@@ -134,7 +134,46 @@ services:
     expose:
       - "8551"
       - "30303"
-
+  besu:
+    image: hyperledger/besu
+    pull_policy: always
+    restart: unless-stopped
+    network_mode: "host"
+    user: "0"
+    volumes:
+      - jwt-data:/data/jwt
+      - besu-data:/data/besu
+    command: [
+      "--network=${BESU_NETWORK}",
+      "--rpc-http-enabled=true",
+      "--engine-rpc-port=8551",
+      "--engine-jwt-secret=/data/jwt/jwtsecret",
+      "--data-storage-format=BONSAI",
+      "--data-path=/data/besu",
+    ]
+    expose:
+      - "8551"
+      - "30303"
+  erigon:
+    image: thorax/erigon:v2.48.1
+    pull_policy: always
+    restart: unless-stopped
+    network_mode: "host"
+    user: "0"
+    volumes:
+      - jwt-data:/data/jwt
+      - erigon-data:/data/erigon
+    command: [
+      "--chain=${ERIGON_NETWORK}",
+      "--authrpc.port=8551",
+      "--authrpc.jwtsecret=/data/jwt/jwtsecret",
+      "--datadir=/data/erigon",
+      "--prune=htc",
+      "--prune.r.before=4367322"
+    ]
+    expose:
+      - "8551"
+      - "30303"
 volumes:
   geth-data:
     driver: local
@@ -166,3 +205,15 @@ volumes:
       o: bind
       type: none
       device: /data/nethermind
+  besu-data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /data/besu
+  erigon-data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /data/erigon

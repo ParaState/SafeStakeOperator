@@ -30,7 +30,7 @@ _**Updates happen frequently! Our**_ [_**Github**_](https://github.com/ParaState
 
 Standalone mode contains the following list of programs/soft on a single host:
 
-* Geth Service
+* Geth/Nethermind/Besu/Erigon Service
 * Lighthouse Service
 * OperatorNode Service
 
@@ -40,7 +40,7 @@ Light mode contains only the OperatorNode service, the following list of program
 
 * OperatorNode Service
 
-> Geth service and Lighthouse service can run on other hosts. Users should configure the `beacon node endpoint` (discussed later) in order to connect to Lighthouse's beacon node instance. The purpose of this is to make the architecture clearer and easier to scale operator nodes. And the cost efficiency ratio of infrastructure will be higher.
+> Geth/Nethermind/Besu/Erigon service and Lighthouse service can run on other hosts. Users should configure the `beacon node endpoint` (discussed later) in order to connect to Lighthouse's beacon node instance. The purpose of this is to make the architecture clearer and easier to scale operator nodes. And the cost efficiency ratio of infrastructure will be higher.
 
 ### Preparation: Get your Infura WS\_URL
 
@@ -70,10 +70,10 @@ Log in to your host cloud service provider, open the following firewall inbound 
 
 | Type             | IpProtocol  | Port  | IpRanges  | Usage    |
 | ---------------- | ----------- | ------| --------  |--------  |
-| Inbound/Ingress  | TCP & UDP   | 30303 | 0.0.0.0/0 | Geth/Nethermind p2p |
+| Inbound/Ingress  | TCP & UDP   | 30303 | 0.0.0.0/0 | Geth/Nethermind/Besu/Erigon p2p |
 | Inbound/Ingress  | TCP & UDP   | 9000  | 0.0.0.0/0 | Lighthouse p2p |
 | Inbound/Ingress  | TCP         | 5052  | Internal  | Operator - Lighthouse |
-| Inbound/Ingress  | TCP         | 8551  | Internal  | Lighthouse - Geth/Nethermind |
+| Inbound/Ingress  | TCP         | 8551  | Internal  | Lighthouse - Geth/Nethermind/Besu/Erigon |
 | Inbound/Ingress  | TCP         | 26000 | 0.0.0.0/0 | hotstuff consensus |
 | Inbound/Ingress  | TCP         | 26001 | 0.0.0.0/0 | hotstuff consensus |
 | Inbound/Ingress  | TCP         | 26002 | 0.0.0.0/0 | hotstuff consensus |
@@ -99,8 +99,10 @@ Log in to your host cloud service provider, open the following firewall inbound 
 
 ```
  sudo mkdir -p /data/geth
- # OR, if you use Nethermind:
+ # OR, if you use Nethermind/Besu/Erigon:
  # sudo mkdir -p /data/nethermind
+ # sudo mkdir -p /data/besu
+ # sudo mkdir -p /data/erigon
  sudo mkdir -p /data/lighthouse
  sudo mkdir -p /data/jwt
  sudo mkdir -p /data/operator
@@ -118,7 +120,7 @@ openssl rand -hex 32 | tr -d "\n" | sudo tee /data/jwt/jwtsecret
 git clone --recurse-submodules https://github.com/ParaState/SafeStakeOperator.git dvf
 ```
 
-#### 8. Running Geth/Nethermind & Lighthouse Service
+#### 8. Running Geth/Nethermind/Besu/Erigon & Lighthouse Service
 NOTE: This step is to provide a quick way to setup and run the execution client and consensus client of goerli testnet. If you already have a node running execution client and consensus client, you can skip this step.
 
 ```bash
@@ -126,6 +128,8 @@ cd dvf
 sudo docker compose -f docker-compose-operator.yml up geth -d
 # OR, if you use Nethermind:
 # sudo docker compose -f docker-compose-operator.yml up nethermind -d
+# sudo docker compose -f docker-compose-operator.yml up besu -d
+# sudo docker compose -f docker-compose-operator.yml up erigon -d
 sudo docker compose -f docker-compose-operator.yml up lighthouse -d
 ```
 
@@ -160,6 +164,8 @@ Now that we have open the `.env` file, we will update the values based on our ow
 ```bash
 GETH_NETWORK=goerli
 NETHERMIND_NETWORK=goerli
+BESU_NETWORK=goerli
+ERIGON_NETWORK=goerli
 LIGHTHOUSE_NETWORK=prater
 OPERATOR_NETWORK=prater
 IMAGE_TAG=v1.2-testnet
@@ -183,12 +189,12 @@ BEACON_NODE_ENDPOINT= # The beacon node endpoint. Depending on whether you are r
 ```
 
 
-For `BEACON_NODE_ENDPOINT`, if you follow the previous step to run geth and lighthouse and you want operator runs on the same machine, then you can use a local IP:
+For `BEACON_NODE_ENDPOINT`, if you follow the previous step to run Geth/Nethermind/Besu/Erigon and Lighthouse and you want operator runs on the same machine, then you can use a local IP:
 ```bash
 BEACON_NODE_ENDPOINT=http://127.0.0.1:5052
 ```
 
-Otherwise, suppose the host where you run the Lighthouse & Geth service has an IP `12.102.103.1`, then you can set:
+Otherwise, suppose the host where you run the Lighthouse & Geth/Nethermind/Besu/Erigon service has an IP `12.102.103.1`, then you can set:
 ```bash
 BEACON_NODE_ENDPOINT=http://12.102.103.1:5052
 ```
@@ -239,7 +245,7 @@ OPERATOR_ID= #The Operator ID is the ID you receive after registering the operat
 #### 13. Start operator service
 
 ```bash
-sudo docker compose -f  docker-compose-operator.yml up --force-recreate -d operator
+sudo docker compose -f docker-compose-operator.yml up --force-recreate -d operator
 ```
 
 
@@ -272,7 +278,7 @@ It is a good practice to back up your operator private key file
 
 ## Backup and Migration
 
-If you are using our default settings, all data other than configration files is stored in the folder `/data`. It is possible for geth/nethermind and lighthouse to resync data in a new machine. For operator, it is important to always backup and copy the folder `/data/operator/` to the new machine before you start operator in the new machine.
+If you are using our default settings, all data other than configration files is stored in the folder `/data`. It is possible for Geth/Nethermind/Besu/Erigon and lighthouse to resync data in a new machine. For operator, it is important to always backup and copy the folder `/data/operator/` to the new machine before you start operator in the new machine.
 
 Some description of the folders and files under `/data/operator/v1/prater/`:
 ```

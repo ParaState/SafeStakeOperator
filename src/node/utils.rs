@@ -45,6 +45,12 @@ pub struct ValidatorPkRequest {
     #[serde(rename = "initializerAddress")]
     pub initializer_address: String,
     pub operators: Vec<u64>,
+    #[serde(rename = "operatorId")]
+    pub operator_id: u32,
+    #[serde(rename = "encryptedSharedKey")]
+    pub encrypted_shared_key: String,
+    #[serde(rename = "sharedPublicKey")]
+    pub shared_public_key: String
 }
 
 #[derive(Debug, Serialize)]

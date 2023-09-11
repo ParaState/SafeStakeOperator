@@ -332,13 +332,13 @@ impl SigningMethod {
                     let task_timeout = Duration::from_secs(spec.seconds_per_slot / 2);
                     let timeout = sleep(task_timeout);
                     let work = dvf_signer.threshold_sign(signing_root);
-
+                    let dt : DateTime<Utc> = Utc::now();
                     tokio::select!{
                         result = work => {
                             match result {
                                 Ok((signature, ids)) => {
                                     // [Issue] Several same reports will be sent to server from different aggregators
-                                    Self::dvf_report::<T>(slot, duty, dvf_signer.validator_public_key(), dvf_signer.operator_id(), ids).await?;
+                                    Self::dvf_report::<T>(slot, duty, dvf_signer.validator_public_key(), dvf_signer.operator_id(), ids, dt).await?;
                                     Ok(signature)
                                 },
                                 Err(e) => {
@@ -364,8 +364,9 @@ impl SigningMethod {
         validator_pk: String, 
         operator_id: u64, 
         ids: Vec<u64>,
+        dt: DateTime<Utc>
     ) -> Result<(), Error> {
-        let dt : DateTime<Utc> = Utc::now();
+        
         let signing_epoch = slot.epoch(E::slots_per_epoch());
 
         if duty ==  "ATTESTER" || duty == "PROPOSER" {

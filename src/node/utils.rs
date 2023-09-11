@@ -45,6 +45,12 @@ pub struct ValidatorPkRequest {
     #[serde(rename = "initializerAddress")]
     pub initializer_address: String,
     pub operators: Vec<u64>,
+    #[serde(rename = "operatorId")]
+    pub operator_id: u32,
+    #[serde(rename = "encryptedSharedKey")]
+    pub encrypted_shared_key: String,
+    #[serde(rename = "sharedPublicKey")]
+    pub shared_public_key: String
 }
 
 #[derive(Debug, Serialize)]
@@ -102,4 +108,31 @@ pub fn convert_address_to_withdraw_crendentials(address: H160) -> [u8; 32] {
         credentials[i] = address_bytes[i - 12];
     }
     credentials
+}
+
+#[test]
+fn request_signature_test() {
+    use crate::node::dvfcore::DvfPerformanceRequest;
+    use hsconfig::Secret;
+    use hscrypto::{PublicKey, SecretKey};
+    use keccak_hash::keccak;
+    let request = DvfPerformanceRequest {
+        validator_pk: "b5e172c2d0eac645da9266a42cadcfda25845effccd01c084f5047ed208d89ff1229bbb54ae43bd74dbdbacc756fead7".to_string(),
+        operator_id: 14185842736627717,
+        operators: vec![1, 2, 3, 4],
+        slot: 6450597,
+        epoch: 201581,
+        duty: "ATTESTER".to_string(),
+        time: 0
+    };
+    let test_secret = Secret {
+        name: PublicKey::decode_base64("Au8M2eERK1GCyt6njUQG1Bt0RYbWlJbZlcGFklDYbvVN").unwrap(),
+        secret: SecretKey::decode_base64("AQ+PCzHRx/bLEwhJhd8FjGR+88/CUO1RljqmDKn5Rds=").unwrap()
+    };
+    let res = serde_json::to_string(&request).unwrap();
+    // let hash = keccak(&res.as_bytes());
+    let hash = keccak(res.as_bytes());
+    println!("{}", res);
+    println!("{:?}", hash);
+    
 }

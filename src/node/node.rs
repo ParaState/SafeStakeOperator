@@ -260,7 +260,7 @@ impl<T: EthSpec> Node<T> {
                             ContractCommand::StartInitiator(initiator, operator_pks) => {
                                 info!("StartInitiator");
                                 let initiator_id = initiator.id;
-                                match start_initializer(
+                                match start_initiator(
                                     node.clone(),
                                     initiator,
                                     operator_pks,
@@ -291,7 +291,7 @@ impl<T: EthSpec> Node<T> {
                                     op_ids,
                                     minipool_address,
                                     initializer_store.clone(),
-                                    1e18,
+                                    1_000_000_000,
                                 )
                                     .await
                                 {
@@ -318,7 +318,7 @@ impl<T: EthSpec> Node<T> {
                                     op_ids,
                                     minipool_address,
                                     initializer_store.clone(),
-                                    31e18,
+                                    31_000_000_000
                                 )
                                     .await
                                 {
@@ -579,59 +579,6 @@ pub async fn add_validator<T: EthSpec>(
     Ok(())
 }
 
-// pub async fn activate_validator<T: EthSpec>(
-//     node: Arc<RwLock<Node<T>>>,
-//     validator: Validator,
-// ) -> Result<(), String> {
-//     let node = node.read().await;
-//     let validator_id = validator.id;
-//     let validator_pk = PublicKey::deserialize(&validator.public_key)
-//         .map_err(|e| format!("Unable to deserialize validator public key: {:?}", e))?;
-//     let validator_dir = node.config.validator_dir.clone();
-//     let secret_dir = node.config.secrets_dir.clone();
-
-//     let committee_def_path =
-//         default_operator_committee_definition_path(&validator_pk, validator_dir.clone());
-
-//     let voting_keystore_share_path = validator_dir
-//         .join(format!("{}", validator_pk))
-//         .join(format!("{}", SELF_OPERATOR_ID.get().unwrap()));
-
-//     let keystore_share =
-//         KeystoreShare::from_json_file(&voting_keystore_share_path).map_err(|e| {
-//             format!("failed to get keystore share from file, error: {:?}", e)
-//         })?;
-//     let voting_keystore_share_password_path =
-//         default_keystore_share_password_path(&keystore_share, secret_dir.clone());
-//     match &node.validator_store {
-//         Some(validator_store) => {
-//             let _ = validator_store
-//                 .add_validator_keystore_share(
-//                     voting_keystore_share_path,
-//                     voting_keystore_share_password_path,
-//                     true,
-//                     None,
-//                     None,
-//                     None,
-//                     None,
-//                     committee_def_path,
-//                     keystore_share.master_id,
-//                     keystore_share.share_id,
-//                 )
-//                 .await;
-//             info!("[VA {}] reactivate validator {}", validator_id, validator_pk);
-//         }
-//         _ => {
-//             error!(
-//                 "[VA {}] failed to add validator {}. Error: no validator store is set.",
-//                 validator_id, validator_pk
-//             );
-//         }
-//     }
-
-//     Ok(())
-// }
-
 pub async fn activate_validator<T: EthSpec>(
     node: Arc<RwLock<Node<T>>>,
     validator: Validator,
@@ -724,7 +671,7 @@ pub async fn stop_validator<T: EthSpec>(
     Ok(())
 }
 
-pub async fn start_initializer<T: EthSpec>(
+pub async fn start_initiator<T: EthSpec>(
     node: Arc<RwLock<Node<T>>>,
     initiator: Initiator,
     operator_public_keys: OperatorPublicKeys,
@@ -737,7 +684,10 @@ pub async fn start_initializer<T: EthSpec>(
     let operator_ips: Vec<Option<IpAddr>> = {
         node.discovery.query_ips(&operator_public_keys).await
     };
-
+    let secret = node.secret.secret.clone();
+    let secp = secp256k1::Secp256k1::new();
+    let node_secret_key = secp256k1::SecretKey::from_slice(&secret.0).expect("Unable to load secret key");
+    let node_public_key = secp256k1::PublicKey::from_secret_key(&secp, &node_secret_key);
     if operator_ips.iter().any(|x| x.is_none()) {
         sleep(Duration::from_secs(10)).await;
         return Err("StartInitializer: Insufficient operators discovered for DKG".to_string());
@@ -768,6 +718,19 @@ pub async fn start_initializer<T: EthSpec>(
         .run()
         .await
         .map_err(|e| format!("run dkg failed {:?}", e))?;
+
+    // encrypt shared secret key
+    let encrypted_shared_secret_key = 
+    {
+        let rng = rand::thread_rng();
+        let mut elgamal = Elgamal::new(rng);
+        let shared_secret_key = keypair.sk.serialize();
+        let encrypted_shared_secret_key = elgamal.encrypt(shared_secret_key.as_bytes(), &node_public_key).map_err(|_e| format!("elgamal encrypt shared secret failed "))?.to_bytes();
+        hex::encode(encrypted_shared_secret_key)
+    };
+
+    let shared_public_key = shared_pks.get(&(self_op_id as u64)).unwrap().as_hex_string()[2..].to_string();
+
     let pk_str: String = va_pk.as_hex_string()[2..].to_string();
     // push va pk to web server
     let request_body = ValidatorPkRequest {
@@ -775,6 +738,9 @@ pub async fn start_initializer<T: EthSpec>(
         initiator_id: initiator.id,
         initializer_address: format!("{0:0x}", initiator.owner_address),
         operators: op_ids,
+        operator_id: self_op_id,
+        encrypted_shared_key: encrypted_shared_secret_key,
+        shared_public_key: shared_public_key
     };
     let url_str = API_ADDRESS.get().unwrap().to_owned() + VALIDATOR_PK_URL;
     request_to_web_server(request_body, &url_str).await?;
@@ -787,7 +753,6 @@ pub async fn start_initializer<T: EthSpec>(
     Ok(())
 }
 
-// TODO process minipool created event
 pub async fn minipool_deposit<T: EthSpec>(
     node: Arc<RwLock<Node<T>>>,
     initiator_id: u32,
@@ -796,7 +761,7 @@ pub async fn minipool_deposit<T: EthSpec>(
     operator_ids: OperatorIds,
     minipool_address: H160,
     initializer_store: InitiatorStore,
-    amount: f64
+    amount: u64
 ) -> Result<(), String> {
     let node = node.read().await;
     let base_port = node.config.base_address.port();
@@ -831,9 +796,9 @@ pub async fn minipool_deposit<T: EthSpec>(
     })?;
     let request_body = DepositRequest::convert(deposit_data);
     let url = {
-        if (amount / 1e18).round() as u64 == 1u64 {
+        if amount == 1_000_000_000 {
             PRESTAKE_SIGNATURE_URL
-        } else if (amount / 1e18).round() as u64 == 31u64 {
+        } else if amount == 31_000_000_000 {
             STAKE_SIGNATURE_URL
         } else {
             error!("invalid amount");

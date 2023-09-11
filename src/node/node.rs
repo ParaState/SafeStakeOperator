@@ -291,7 +291,7 @@ impl<T: EthSpec> Node<T> {
                                     op_ids,
                                     minipool_address,
                                     initializer_store.clone(),
-                                    1e18,
+                                    1_000_000_000,
                                 )
                                     .await
                                 {
@@ -318,7 +318,7 @@ impl<T: EthSpec> Node<T> {
                                     op_ids,
                                     minipool_address,
                                     initializer_store.clone(),
-                                    31e18,
+                                    31_000_000_000
                                 )
                                     .await
                                 {
@@ -761,7 +761,7 @@ pub async fn minipool_deposit<T: EthSpec>(
     operator_ids: OperatorIds,
     minipool_address: H160,
     initializer_store: InitiatorStore,
-    amount: f64
+    amount: u64
 ) -> Result<(), String> {
     let node = node.read().await;
     let base_port = node.config.base_address.port();
@@ -796,9 +796,9 @@ pub async fn minipool_deposit<T: EthSpec>(
     })?;
     let request_body = DepositRequest::convert(deposit_data);
     let url = {
-        if (amount / 1e18).round() as u64 == 1u64 {
+        if amount == 1_000_000_000 {
             PRESTAKE_SIGNATURE_URL
-        } else if (amount / 1e18).round() as u64 == 31u64 {
+        } else if amount == 31_000_000_000 {
             STAKE_SIGNATURE_URL
         } else {
             error!("invalid amount");

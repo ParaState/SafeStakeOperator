@@ -11,12 +11,12 @@ use types::SignedRoot;
 pub async fn get_distributed_deposit<T: IOCommittee<U>, U: IOChannel, E: EthSpec>(
     signer: &SimpleDistributedSigner<T, U>,
     withdrawal_credentials: &[u8; 32],
-    amount: f64,
+    amount: u64,
 ) -> Result<DepositData, DvfError> {
     let mut deposit_data = DepositData {
         pubkey: PublicKeyBytes::from(signer.mpk()),
         withdrawal_credentials: Hash256::from_slice(withdrawal_credentials),
-        amount: amount as u64,
+        amount: amount,
         signature: Signature::empty().into(),
     };
     let spec = E::default_spec();

@@ -59,7 +59,7 @@ pub struct DepositRequest {
     pub validator_pk: String,
     #[serde(rename = "withdrawalCredentials")]
     pub withdrawal_credentials: String,
-    pub amount: u32,
+    pub amount: u64,
     pub signature: String,
 }
 
@@ -69,7 +69,7 @@ impl DepositRequest {
         Self {
             validator_pk: pk_str,
             withdrawal_credentials: format!("{0:0x}", deposit.withdrawal_credentials),
-            amount: deposit.amount as u32,
+            amount: deposit.amount,
             signature: hex::encode(deposit.signature.serialize()),
         }
     }

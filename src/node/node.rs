@@ -39,7 +39,7 @@ use crate::node::contract::{
     SharedPublicKeys, Validator, SELF_OPERATOR_ID, OperatorIds, CONTRACT_DATABASE_FILE
 };
 use crate::node::db::Database;
-use crate::node::utils::{request_to_web_server, convert_address_to_withdraw_crendentials, ValidatorPkRequest, DepositRequest};
+use crate::node::utils::{request_to_web_server, convert_address_to_withdraw_crendentials, ValidatorPkRequest, DepositRequest, SignDigest};
 use crate::validation::account_utils::default_keystore_share_password_path;
 use crate::validation::account_utils::default_keystore_share_path;
 use crate::validation::account_utils::default_operator_committee_definition_path;
@@ -153,11 +153,11 @@ impl<T: EthSpec> Node<T> {
             db.clone()
         );
         let node = Arc::new(RwLock::new(node));
-        let initializer_store = Arc::new(RwLock::new(HashMap::new()));
+        let initiator_store  = Arc::new(RwLock::new(HashMap::new()));
         Node::process_contract_command(
             Arc::clone(&node),
             db,
-            initializer_store,
+            initiator_store ,
         );
 
         info!("Node {} successfully booted", secret.name);
@@ -178,7 +178,7 @@ impl<T: EthSpec> Node<T> {
     pub fn process_contract_command(
         node: Arc<RwLock<Node<T>>>,
         db: Database,
-        initializer_store: InitiatorStore,
+        initiator_store : InitiatorStore,
     ) {
         tokio::spawn(async move {
             loop {
@@ -264,7 +264,7 @@ impl<T: EthSpec> Node<T> {
                                     node.clone(),
                                     initiator,
                                     operator_pks,
-                                    initializer_store.clone(),
+                                    initiator_store .clone(),
                                 )
                                     .await
                                 {
@@ -290,7 +290,7 @@ impl<T: EthSpec> Node<T> {
                                     op_pks,
                                     op_ids,
                                     minipool_address,
-                                    initializer_store.clone(),
+                                    initiator_store .clone(),
                                     1_000_000_000,
                                 )
                                     .await
@@ -317,14 +317,14 @@ impl<T: EthSpec> Node<T> {
                                     op_pks,
                                     op_ids,
                                     minipool_address,
-                                    initializer_store.clone(),
+                                    initiator_store .clone(),
                                     31_000_000_000
                                 )
                                     .await
                                 {
                                     Ok(_) => { 
                                         db.delete_contract_command(id).await; 
-                                        let _ = initializer_store.write().await.remove(&initiator_id);
+                                        let _ = initiator_store .write().await.remove(&initiator_id);
                                     }
                                     Err(e) => {
                                         error!("Failed to process minpool ready: {} {}", e, initiator_id);
@@ -675,7 +675,7 @@ pub async fn start_initiator<T: EthSpec>(
     node: Arc<RwLock<Node<T>>>,
     initiator: Initiator,
     operator_public_keys: OperatorPublicKeys,
-    initializer_store: Arc<
+    initiator_store : Arc<
         RwLock<HashMap<u32, (BlsKeypair, BlsPublicKey, HashMap<u64, BlsPublicKey>)>>,
     >,
 ) -> Result<(), String> {
@@ -733,19 +733,21 @@ pub async fn start_initiator<T: EthSpec>(
 
     let pk_str: String = va_pk.as_hex_string()[2..].to_string();
     // push va pk to web server
-    let request_body = ValidatorPkRequest {
+    let mut request_body = ValidatorPkRequest {
         validator_pk: pk_str,
         initiator_id: initiator.id,
         initializer_address: format!("{0:0x}", initiator.owner_address),
         operators: op_ids,
         operator_id: self_op_id,
         encrypted_shared_key: encrypted_shared_secret_key,
-        shared_public_key: shared_public_key
+        shared_public_key: shared_public_key,
+        sign_hex: None
     };
+    request_body.sign_hex = Some(request_body.sign_digest(&secret)?);
     let url_str = API_ADDRESS.get().unwrap().to_owned() + VALIDATOR_PK_URL;
     request_to_web_server(request_body, &url_str).await?;
     // save to local storage
-    initializer_store
+    initiator_store 
         .write()
         .await
         .insert(initiator.id, (keypair, va_pk, shared_pks));
@@ -760,7 +762,7 @@ pub async fn minipool_deposit<T: EthSpec>(
     operator_public_keys: OperatorPublicKeys,
     operator_ids: OperatorIds,
     minipool_address: H160,
-    initializer_store: InitiatorStore,
+    initiator_store : InitiatorStore,
     amount: u64
 ) -> Result<(), String> {
     let node = node.read().await;
@@ -771,7 +773,7 @@ pub async fn minipool_deposit<T: EthSpec>(
 
     if operator_ips.iter().any(|x| x.is_none()) {
         error!("Some operators are not online, it's critical error, minipool exiting");
-        initializer_store.write().await.remove(&initiator_id).ok_or(format!("can't remove initiator store id: {}", initiator_id))?;
+        initiator_store .write().await.remove(&initiator_id).ok_or(format!("can't remove initiator store id: {}", initiator_id))?;
         return Err("MinipoolDeposit: Insufficient operators discovered for distributed signing".to_string());
     }
     let operator_ips: Vec<SocketAddr> = operator_ips.iter().map(|x| {
@@ -782,7 +784,7 @@ pub async fn minipool_deposit<T: EthSpec>(
     let self_op_id = *SELF_OPERATOR_ID
         .get()
         .ok_or("Self operator has not been set".to_string())?;
-    let store = initializer_store.read().await;
+    let mut store = initiator_store .write().await;
     let (keypair, va_pk, op_bls_pks) = store.get(&initiator_id).ok_or(format!("can't get initiator store id: {}", initiator_id))?;
     let io_committee = Arc::new(NetIOCommittee::new(self_op_id as u64, base_port + DKG_PORT_OFFSET, &op_ids, &operator_ips).await);
     let signer = SimpleDistributedSigner::new(self_op_id as u64, keypair.clone(), va_pk.clone(), op_bls_pks.clone(), io_committee, THRESHOLD as usize);
@@ -794,7 +796,8 @@ pub async fn minipool_deposit<T: EthSpec>(
     let deposit_data = get_distributed_deposit::<NetIOCommittee, NetIOChannel, T>(&signer, &withdraw_cret, amount).await.map_err(|e| {
         format!("Can't get distributed deposit data {:?}", e)
     })?;
-    let request_body = DepositRequest::convert(deposit_data);
+    let mut request_body = DepositRequest::convert(deposit_data);
+    request_body.sign_hex = Some(request_body.sign_digest(&node.secret.secret)?);
     let url = {
         if amount == 1_000_000_000 {
             PRESTAKE_SIGNATURE_URL
@@ -807,6 +810,10 @@ pub async fn minipool_deposit<T: EthSpec>(
     };
     let url_str = API_ADDRESS.get().unwrap().to_owned() + url;
     request_to_web_server(request_body, &url_str).await.map_err(|e| format!("can't send request to server {:?}, url: {}", e, url_str))?;
+    if amount == 31_000_000_000 {
+        // clean initiator store
+        let _ = store.remove(&initiator_id);
+    }
     Ok(())
 }
 

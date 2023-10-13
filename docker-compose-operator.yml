@@ -1,7 +1,7 @@
 version: '3'
 services:
   geth:
-    image: ethereum/client-go:v1.12.2
+    image: ethereum/client-go:v1.13.3
     pull_policy: always
     restart: unless-stopped
     network_mode: "host"
@@ -36,7 +36,7 @@ services:
 
   lighthouse:
     network_mode: "host"
-    image: sigp/lighthouse:v4.3.0
+    image: sigp/lighthouse:v4.5.0
     pull_policy: always
     restart: unless-stopped
     volumes:

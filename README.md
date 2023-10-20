@@ -44,4 +44,4 @@ Join our [Discord](http://discord.gg/zFS3Mnfpwj) chat channel!
 
 ## Beta Advisory
 
-Currently, the SafeStake project is in public testnet stage. It is still in active testing and not yet ready for production use. In addition, all possible implementations of SafeStake have not been fully reviewed and vetted.
+Currently, the SafeStake project is in public testnet stage. It is still in active testing and not yet ready for production use. In addition, the smart contracts are being audited.

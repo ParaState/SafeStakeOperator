@@ -27,6 +27,12 @@ impl Digest {
     }
 }
 
+impl From<&[u8; 32]> for Digest {
+    fn from(value: &[u8; 32]) -> Self {
+        Digest(value.clone())
+    }
+}
+
 impl fmt::Debug for Digest {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f, "{}", base64::encode(&self.0))
@@ -192,7 +198,7 @@ impl Signature {
         Signature { part1, part2 }
     }
 
-    fn flatten(&self) -> [u8; 64] {
+    pub fn flatten(&self) -> [u8; 64] {
         [self.part1, self.part2]
             .concat()
             .try_into()

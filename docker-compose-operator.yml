@@ -1,7 +1,7 @@
 version: '3'
 services:
   geth:
-    image: ethereum/client-go:v1.11.3
+    image: ethereum/client-go:v1.13.3
     pull_policy: always
     restart: unless-stopped
     network_mode: "host"
@@ -33,13 +33,13 @@ services:
       - "8547"
       - "8551"
       - "30303"
+
   lighthouse:
     network_mode: "host"
-    image: sigp/lighthouse:v3.5.1
+    image: sigp/lighthouse:v4.5.0
     pull_policy: always
     restart: unless-stopped
     volumes:
-      - geth-data:/data/geth
       - jwt-data:/data/jwt
       - lighthouse-data:/data/lighthouse
     command:
@@ -69,9 +69,6 @@ services:
       - "5052"
       - "9000"
       - "5054"
-    depends_on:
-      geth:
-        condition: service_started
 
   operator:
     network_mode: "host"
@@ -85,7 +82,7 @@ services:
       - -c
       - |
         node_ip=$$(curl -s ifconfig.me)
-        dvf validator_client --debug-level=info --network=${OPERATOR_NETWORK} --beacon-nodes=${BEACON_NODE_ENDPOINT} --api=${API_SERVER} --ws-url=${WS_URL}  --ip=$$node_ip --id=${OPERATOR_ID} --registry-contract=${REGISTRY_CONTRACT_ADDRESS} --network-contract=${NETWORK_CONTRACT_ADDRESS} --base-port=26000 2>&1
+        dvf validator_client --builder-proposals --debug-level=info --network=${OPERATOR_NETWORK} --beacon-nodes=${BEACON_NODE_ENDPOINT} --api=${API_SERVER} --ws-url=${WS_URL}  --ip=$$node_ip --id=${OPERATOR_ID} --registry-contract=${REGISTRY_CONTRACT_ADDRESS} --network-contract=${NETWORK_CONTRACT_ADDRESS} --base-port=26000 2>&1
     expose:
       - "26000"
       - "26001"
@@ -93,7 +90,6 @@ services:
       - "26003"
       - "26004"
       - "26005"
-      - "27000"
     deploy:
       resources:
         limits:
@@ -115,6 +111,65 @@ services:
         limits:
           memory: 5G
 
+  nethermind:
+    image: nethermind/nethermind
+    pull_policy: always
+    restart: unless-stopped
+    network_mode: "host"
+    volumes:
+      - jwt-data:/data/jwt
+      - nethermind-data:/data/nethermind
+    command: [
+      "--config=${NETHERMIND_NETWORK}",
+      "--JsonRpc.Enabled=true",
+      "--JsonRpc.EngineHost=0.0.0.0",
+      "--JsonRpc.EnginePort=8551",
+      "--JsonRpc.JwtSecretFile=/data/jwt/jwtsecret",
+      "--datadir=/data/nethermind",
+    ]
+    expose:
+      - "8551"
+      - "30303"
+  besu:
+    image: hyperledger/besu
+    pull_policy: always
+    restart: unless-stopped
+    network_mode: "host"
+    user: "0"
+    volumes:
+      - jwt-data:/data/jwt
+      - besu-data:/data/besu
+    command: [
+      "--network=${BESU_NETWORK}",
+      "--rpc-http-enabled=true",
+      "--engine-rpc-port=8551",
+      "--engine-jwt-secret=/data/jwt/jwtsecret",
+      "--data-storage-format=BONSAI",
+      "--data-path=/data/besu",
+    ]
+    expose:
+      - "8551"
+      - "30303"
+  erigon:
+    image: thorax/erigon:v2.48.1
+    pull_policy: always
+    restart: unless-stopped
+    network_mode: "host"
+    user: "0"
+    volumes:
+      - jwt-data:/data/jwt
+      - erigon-data:/data/erigon
+    command: [
+      "--chain=${ERIGON_NETWORK}",
+      "--authrpc.port=8551",
+      "--authrpc.jwtsecret=/data/jwt/jwtsecret",
+      "--datadir=/data/erigon",
+      "--prune=htc",
+      "--prune.r.before=4367322"
+    ]
+    expose:
+      - "8551"
+      - "30303"
 volumes:
   geth-data:
     driver: local
@@ -140,3 +195,21 @@ volumes:
       o: bind
       type: none
       device: /data/operator
+  nethermind-data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /data/nethermind
+  besu-data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /data/besu
+  erigon-data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /data/erigon

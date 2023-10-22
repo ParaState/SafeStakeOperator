@@ -418,7 +418,7 @@ impl Contract {
                                             Ok(validators) => { 
                                                 for va in validators {
                                                     if !va.active {
-                                                        db.disable_validator(hex::encode(&va.public_key)).await;
+                                                        db.enable_validator(hex::encode(&va.public_key)).await;
                                                         let va_id = va.id;
                                                         let cmd = ContractCommand::ActivateValidator(va);
                                                         db.insert_contract_command(va_id, serde_json::to_string(&cmd).unwrap()).await;

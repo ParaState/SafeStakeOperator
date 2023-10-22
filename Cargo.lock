@@ -2171,6 +2171,7 @@ dependencies = [
  "hotstuff_config",
  "hyper",
  "itertools",
+ "keccak-hash",
  "lazy_static",
  "libp2p 0.51.3",
  "libp2p-core 0.39.1",

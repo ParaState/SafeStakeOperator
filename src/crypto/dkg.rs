@@ -19,7 +19,7 @@ use crate::math::polynomial::{Commitable, CommittedPoly, Polynomial};
 use serde_derive::{Serialize, Deserialize};
 use serde::{Serialize as SerializeTrait, Deserialize as DeserializeTrait, Serializer, Deserializer};
 use async_trait::async_trait;
-use log::info;
+use log::{info, error};
 pub struct PlainVssShare {
     pub share: blst_scalar,
     pub committed_poly: CommittedPoly,
@@ -704,10 +704,15 @@ where
     /// 2. Master public key
     /// 3. A hashmap from a party's ID to its shared public key
     async fn run(&self) -> Result<(WrapKeypair, WrapPublicKey, HashMap<u64, WrapPublicKey>), DvfError> {
+        info!("[DKG] Party {}: Distributed key generation start", self.party);
         let (kp, kps, _poly, committed_poly) = self.share_generation()?;
+        info!("[DKG] Party {}: Genenate local key shares --> Done", self.party);
         let payloads: HashMap<u64, VssSharePayload> = self.share_transmission(&kps, &committed_poly).await?;
+        info!("[DKG] Party {}: Transmit encrypted local key shares and committment to other parties --> Done", self.party);
         let vrfy_result = self.share_verification(&payloads);
+        info!("[DKG] Party {}: Verify received shares and committment --> Success", self.party);
         let other_vrfy_results = self.exchange_verification_results(&vrfy_result).await;
+        info!("[DKG] Party {}: Exchange verification results --> Done", self.party);
 
         // Issue dispute claim if any verification fails
         let mut self_abort = false;
@@ -717,6 +722,7 @@ where
             }
             self_abort = true;
             self.issude_dispute_claim(*id, payloads.get(&id).unwrap()).await?;
+            info!("[DKG] Party {}: Issue dispute claim against {} --> Done", self.party, id);
         }
         let mut futs: Vec<_> = Default::default();
         for (id1, other_vrfy_result) in other_vrfy_results.iter() {
@@ -740,11 +746,14 @@ where
             .map(|(a, b, _c)| (a, b))
             .collect::<Vec<(u64, u64)>>();
         if valid_claims.len() > 0 {
+            error!("[DKG] Party {}: Aborting due to a valid received dispute claim", self.party);
             return Err(DvfError::InvalidDkgShare(valid_claims));
         }
         if self_abort {
+            error!("[DKG] Party {}: Aborting due to a valid local dispute claim", self.party);
             return Err(DvfError::VssShareVerificationFailed);
         }
+        info!("[DKG] Party {}: No valid dispute claims found --> Continue", self.party);
 
         let mut committed_polys = HashMap::<u64, CommittedPoly>::default();
         committed_polys.insert(self.party, committed_poly);
@@ -758,15 +767,18 @@ where
         let mut pks = self.exchange_public_keys(&self_pk, &self_sk, &committed_polys).await?;
         pks.insert(self.party, self_pk);
         let mpk = blst_p1s_add(&pks.into_values().collect::<Vec<blst_p1>>());
+        info!("[DKG] Party {}: Derive master public key --> Done", self.party);
 
         // Derive group secret key and group public key 
         let mut shares = self.reveal_shares(&payloads);
         let self_share = blst_wrap_sk_to_blst_scalar(&kps[&self.party].sk);
         shares.insert(self.party, self_share);
         let (gsk, gpk) = self.construct_group_key(&shares);
+        info!("[DKG] Party {}: Derive group secret key and public key --> Done", self.party);
 
         // Exchange and verify group public keys
         let gpks = self.exchange_group_public_keys(&gpk, &gsk, &committed_polys).await?;
+        info!("[DKG] Party {}: Exchange and verify group public key --> Success", self.party);
 
         // Convert to desired structs
         let gsk = blst_scalar_to_blst_wrap_sk(&gsk);
@@ -775,6 +787,7 @@ where
         let gpks = gpks.iter()
             .map(|(id, gpk)| (*id, blst_p1_to_blst_wrap_pk(&gpk)))
             .collect::<HashMap<u64, WrapPublicKey>>();
+        info!("[DKG] Party {}: Distributed key generation --> Success", self.party);
 
         Ok((gkp, mpk, gpks))
     }
@@ -872,6 +885,12 @@ mod tests {
     const T: usize = 3;
     const IDS: [u64; 4] = [1, 2, 3, 4];
 
+    fn enable_logger() {
+        let mut logger = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
+        logger.format_timestamp_millis();
+        logger.init();
+    }
+
     fn verify_dkg_results(results: HashMap<u64, (Keypair, PublicKey, HashMap<u64, PublicKey>)>) {
         // Verify master public keys
         for i in 1..IDS.len() {
@@ -957,7 +976,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_dkg_secure_net() {
-        println!("enter test_dkg_secure_net");
+        enable_logger();
         let ports: Vec<u16> = IDS.iter().map(|id| (25000 + *id) as u16).collect();
         let addrs: Vec<SocketAddr> = ports.iter().map(|port| SocketAddr::new("127.0.0.1".parse().unwrap(), *port)).collect();
 
@@ -965,7 +984,6 @@ mod tests {
         let addrs_ref = &addrs;
         // Use dkg to generate secret-shared keys
         let futs = (0..IDS.len()).map(|i| async move {
-            println!("Enter thread for party {}", IDS[i]);
             let io = &Arc::new(SecureNetIOCommittee::new(IDS[i], ports_ref[i], IDS.as_slice(), addrs_ref.as_slice()).await);
             let dkg = DKGMalicious::new(IDS[i], io.clone(), T);
             let result = dkg.run().await;
@@ -977,14 +995,12 @@ mod tests {
                 }
             }
         });
-        println!("after constructing futures");
 
         let results = join_all(futs)
             .await
             .into_iter()
             .flatten()
             .collect::<HashMap<u64, (Keypair, PublicKey, HashMap<u64, PublicKey>)>>();
-        println!("after joining futures");
         
         verify_dkg_results(results);
     }

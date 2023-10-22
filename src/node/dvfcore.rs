@@ -128,6 +128,7 @@ pub struct DvfSigner {
     pub operator_committee: OperatorCommittee,
     pub local_keypair: Keypair,
     pub store: Store,
+    pub node_secret: hscrypto::SecretKey
 }
 
 impl Drop for DvfSigner {
@@ -147,6 +148,7 @@ impl DvfSigner {
     ) -> Result<Self, DvfError> {
         let node_tmp = Arc::clone(&node_para);
         let node = node_tmp.read().await;
+        let node_secret = node.secret.secret.clone();
         let validator_id = committee_def.validator_id;
         // find operator id from operatorCommitteeDefinition
         let operator_index: Vec<usize> = committee_def.node_public_keys.iter().enumerate().filter(|&(_i, x)| {
@@ -228,6 +230,7 @@ impl DvfSigner {
             operator_committee,
             local_keypair: keypair,
             store,
+            node_secret
         })
     }
 
@@ -259,19 +262,6 @@ impl DvfSigner {
     pub fn operator_id(&self) -> u64 {
         self.operator_id
     }
-}
-
-#[derive(Debug, PartialEq, Serialize)]
-pub struct DvfPerformanceRequest {
-    #[serde(rename = "publicKey")]
-    pub validator_pk: String,
-    #[serde(rename = "operatorId")]
-    pub operator_id: u64,
-    pub operators: Vec<u64>,
-    pub slot: u64,
-    pub epoch: u64,
-    pub duty: String,
-    pub time: i64,
 }
 
 pub struct DvfCore {

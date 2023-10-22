@@ -17,6 +17,7 @@ pub trait TOperatorCommittee : Send {
     async fn consensus(&self, msg: Hash256) -> Result<(), DvfError>;
     async fn sign(&self, msg: Hash256) -> Result<(Signature, Vec<u64>), DvfError>;
     async fn get_leader(&self, nonce: u64) -> u64;
+    async fn get_op_pos(&self, op_id: u64) -> usize;
     fn get_validator_pk(&self) -> String;
     fn threshold(&self) -> usize;
 }
@@ -58,6 +59,10 @@ where
 
     pub fn get_validator_pk(&self) -> String {
         self.cmt.get_validator_pk()
+    }
+
+    pub async fn get_op_pos(&self, op_id: u64) -> usize {
+        self.cmt.get_op_pos(op_id).await
     }
 }
 

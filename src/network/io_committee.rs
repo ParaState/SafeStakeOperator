@@ -84,6 +84,7 @@ impl IOChannel for MemIOChannel {
 }
 
 pub struct ConnectionManager {
+    party: u64,
     /// Address to listen to.
     _address: SocketAddr,
     /// Struct responsible to define how to handle received messages.
@@ -94,13 +95,13 @@ pub struct ConnectionManager {
 
 impl Drop for ConnectionManager {
     fn drop(&mut self) {
-        info!("Shutting down connection manager");
+        info!("[DKG-IO] Party {}: Shutting down connection manager", self.party);
         self.thread_handle.abort();
     }
 }
 
 impl ConnectionManager {
-    pub fn new(address: SocketAddr) -> Self {
+    pub fn new(party: u64, address: SocketAddr) -> Self {
         let connections: Arc<RwLock<HashMap<u64, NetIOChannel>>> = 
             Arc::new(RwLock::new(HashMap::default()));
         let connections_clone = connections.clone();
@@ -115,7 +116,7 @@ impl ConnectionManager {
                 .await
                 .expect(format!("Failed to bind TCP address {}", address_clone).as_str());
 
-            info!("Listening on {}. [DKG]", address_clone);
+            info!("[DKG-IO] Party {}: Listening on {}.", party, address_clone);
             loop {
                 let (socket, _peer) = match listener.accept().await {
                     Ok(value) => value,
@@ -126,9 +127,12 @@ impl ConnectionManager {
                 };
                 let channel = NetIOChannel::new(socket);
                 let peer = bincode::deserialize::<u64>(&channel.recv().await[..]).unwrap();
-                let mut connections = connections_clone.write().await;
+                info!("[[DKG-IO]] Party {}: received connection from {}.", party, peer);
+                {
+                    let mut connections = connections_clone.write().await;
+                    connections.insert(peer, channel);
+                }
                 let mut notifications = notifications_clone.write().await;
-                connections.insert(peer, channel);
                 if let Some(notify) = notifications.get(&peer) {
                     notify.notify_one();
                 }
@@ -141,6 +145,7 @@ impl ConnectionManager {
         });
 
         Self {
+            party,
             _address: address,
             connections,
             notifications,
@@ -150,7 +155,7 @@ impl ConnectionManager {
 
     /// Connect from `party` to a peer with `peer_address`.
     /// The `party` id is sent to the peer right after connection to identify itself.
-    pub async fn connect(party: u64, peer_address: SocketAddr) -> Option<NetIOChannel> {
+    pub async fn connect(party: u64, peer: u64, peer_address: SocketAddr) -> Option<NetIOChannel> {
         let mut delay = 200;
         let mut retry = 0;
         loop {
@@ -158,6 +163,7 @@ impl ConnectionManager {
                 Ok(stream) => {
                     let channel = NetIOChannel::new(stream);
                     channel.send(Bytes::from(bincode::serialize(&party).unwrap())).await;
+                    info!("[DKG-IO] Party {}: connecting to party {}.", party, peer);
                     return Some(channel);
                 },
                 Err(_e) => {
@@ -185,12 +191,14 @@ impl ConnectionManager {
                 notify
             }
         };
+        {
+            notify.notified().await;
+            let mut notifications = self.notifications.write().await;
+            notifications.remove(&peer);
+        }
 
-        notify.notified().await;
-        let mut notifications = self.notifications.write().await;
-        notifications.remove(&peer);
-
-        self.connections.write().await.remove(&peer)
+        let mut connections = self.connections.write().await;
+        connections.remove(&peer)
     }
 }
 
@@ -299,9 +307,9 @@ impl NetIOCommittee {
     /// Construct a network IO committee for `party` who is listening on `port`.
     /// The committee is identified by the id set `ids` and the address set `addresses`.
     pub async fn new(party: u64, port: u16, ids: &[u64], addresses: &[SocketAddr]) -> NetIOCommittee {
-        info!("{:?}", ids);
-        info!("{:?}", addresses);
-        let mut connection_manager = ConnectionManager::new(SocketAddr::new("0.0.0.0".parse().unwrap(), port));
+        info!("[DKG-IO] Party {}: ids({:?})", party, ids);
+        info!("[DKG-IO] Party {}: addrs({:?})", party, addresses);
+        let mut connection_manager = ConnectionManager::new(party, SocketAddr::new("0.0.0.0".parse().unwrap(), port));
         let mut channels: HashMap<u64, NetIOChannel> = Default::default();
         let n = ids.len();
         for i in 0..n {
@@ -310,7 +318,7 @@ impl NetIOCommittee {
             }
             let channel = {
                 if ids[i] < party {
-                    ConnectionManager::connect(party, addresses[i]).await.unwrap()
+                    ConnectionManager::connect(party, ids[i], addresses[i]).await.unwrap()
                 }
                 else {
                     connection_manager.accept(ids[i]).await.unwrap()
@@ -318,12 +326,25 @@ impl NetIOCommittee {
             };
             channels.insert(ids[i], channel);
         }
-        info!("channel connect");
-        Self {
+        info!("[DKG-IO] Party {}: all channels created --> Done", party);
+        let committee = Self {
             party,
             ids: ids.to_vec(),
             channels,
+        };
+        committee.broadcast(Bytes::from("Y")).await;
+        info!("[DKG-IO] Party {}: broadcast ack to other parties --> Done", party);
+        for i in 0..n {
+            if ids[i] == party {
+                continue;
+            }
+            let ack = committee.channels.get(&ids[i]).unwrap().recv().await;
+            if ack != Bytes::from("Y") {
+                panic!("Party {}: Invalid acknowledge for channel connection from party {}", party, ids[i]);
+            }
         }
+        info!("[DKG-IO] Party {}: all channels connected and acknowledged", party);
+        committee
     }
 
     // pub async fn broadcast(&self, message: Bytes) {

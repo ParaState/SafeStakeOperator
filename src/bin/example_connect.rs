@@ -4,7 +4,7 @@ use dvf::network::io_committee::ConnectionManager;
 
 
 pub async fn func1() {
-    let channel = ConnectionManager::connect(0, "127.0.0.1:0".parse().unwrap()).await;
+    let channel = ConnectionManager::connect(0, 0, "127.0.0.1:0".parse().unwrap()).await;
     info!("Channel established: {}", channel.is_some());
 }
 

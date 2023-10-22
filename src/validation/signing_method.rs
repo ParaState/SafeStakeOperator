@@ -17,9 +17,9 @@ use task_executor::TaskExecutor;
 use types::*;
 use url::Url;
 use web3signer::{ForkInfo, SigningRequest, SigningResponse};
-use crate::node::dvfcore::{DvfSigner, DvfPerformanceRequest};
+use crate::node::dvfcore::DvfSigner;
 use crate::node::config::{API_ADDRESS, COLLECT_PERFORMANCE_URL};
-use crate::node::utils::request_to_web_server;
+use crate::node::utils::{request_to_web_server, DvfPerformanceRequest, SignDigest};
 pub use web3signer::Web3SignerObject;
 use chrono::prelude::*;
 use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
@@ -40,7 +40,7 @@ pub enum Error {
     MergeForkNotSupported,
     GenesisForkVersionRequired,
     CommitteeSignFailed(String),
-
+    SignDigestFailed(String),
     NotLeader,
 }
 
@@ -167,7 +167,7 @@ impl SigningMethod {
         signing_root: Hash256,
         executor: &TaskExecutor,
         fork_info: Option<ForkInfo>,
-        signing_epoch: Epoch,
+        mut signing_epoch: Epoch,
         spec: &ChainSpec,
     ) -> Result<Signature, Error> {
 
@@ -299,7 +299,9 @@ impl SigningMethod {
                     SignableMessage::SignedContributionAndProof(_) => {
                         (Slot::new(0 as u64), "CONTRIB", true)
                     }
-                    SignableMessage::ValidatorRegistration(_) => {
+                    SignableMessage::ValidatorRegistration(_) => {  
+                        let op_pos = dvf_signer.operator_committee.get_op_pos(dvf_signer.operator_id).await;
+                        signing_epoch = Epoch::new(op_pos as u64);
                         (Slot::new(0 as u64), "VA_REG", true)
                     }
                 };
@@ -330,13 +332,13 @@ impl SigningMethod {
                     let task_timeout = Duration::from_secs(spec.seconds_per_slot / 2);
                     let timeout = sleep(task_timeout);
                     let work = dvf_signer.threshold_sign(signing_root);
-
+                    let dt : DateTime<Utc> = Utc::now();
                     tokio::select!{
                         result = work => {
                             match result {
                                 Ok((signature, ids)) => {
                                     // [Issue] Several same reports will be sent to server from different aggregators
-                                    Self::dvf_report::<T>(slot, duty, dvf_signer.validator_public_key(), dvf_signer.operator_id(), ids).await?;
+                                    Self::dvf_report::<T>(slot, duty, dvf_signer.validator_public_key(), dvf_signer.operator_id(), ids, dt, &dvf_signer.node_secret).await?;
                                     Ok(signature)
                                 },
                                 Err(e) => {
@@ -362,20 +364,24 @@ impl SigningMethod {
         validator_pk: String, 
         operator_id: u64, 
         ids: Vec<u64>,
+        dt: DateTime<Utc>,
+        secret: &hscrypto::SecretKey
     ) -> Result<(), Error> {
-        let dt : DateTime<Utc> = Utc::now();
+        
         let signing_epoch = slot.epoch(E::slots_per_epoch());
 
         if duty ==  "ATTESTER" || duty == "PROPOSER" {
-            let request_body = DvfPerformanceRequest {
+            let mut request_body = DvfPerformanceRequest {
                 validator_pk,
                 operator_id,
                 operators: ids, 
                 slot: slot.as_u64(),
                 epoch: signing_epoch.as_u64(),
                 duty: duty.to_string(),
-                time: Utc::now().signed_duration_since(dt).num_milliseconds()
+                time: Utc::now().signed_duration_since(dt).num_milliseconds(),
+                sign_hex: None
             };
+            request_body.sign_hex = Some(request_body.sign_digest(secret).map_err(|e| { Error::SignDigestFailed(e)})?);
             log::info!("[Dvf Request] Body: {:?}", &request_body);
             let url_str = API_ADDRESS.get().unwrap().to_owned() + COLLECT_PERFORMANCE_URL;
             request_to_web_server(request_body, &url_str).await.map_err(|e| Error::Web3SignerRequestFailed(e))?;

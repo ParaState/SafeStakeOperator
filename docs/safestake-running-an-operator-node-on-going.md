@@ -126,7 +126,7 @@ NOTE: This step is to provide a quick way to setup and run the execution client 
 ```bash
 cd dvf
 sudo docker compose -f docker-compose-operator.yml up geth -d
-# OR, if you use Nethermind:
+# OR, if you use Nethermind/Besu/Erigon:
 # sudo docker compose -f docker-compose-operator.yml up nethermind -d
 # sudo docker compose -f docker-compose-operator.yml up besu -d
 # sudo docker compose -f docker-compose-operator.yml up erigon -d

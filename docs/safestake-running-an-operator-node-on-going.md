@@ -209,7 +209,7 @@ Output:
 dvf-dvf_key_tool-1  | INFO: node public key AtzozvDHiWUpO+oJph2ikv+EyBN5pdBXsfgZqLi0+Yqd
 dvf-dvf_key_tool-1 exited with code 0
 ```
-Save the public key, which will be used later. 
+Save the public key, which will be used later. Or you can find the public key in the "name" field of the file `/data/operator/v1/prater/node_key.json`
 
 #### 11. Go to [SafeStake website](https://testnet.safestake.xyz/):
 * Click "Join As Operator".

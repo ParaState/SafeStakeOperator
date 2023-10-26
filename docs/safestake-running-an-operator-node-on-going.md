@@ -299,12 +299,12 @@ graph TD;
     B --> |No| C[register a validator\n in our website and \n choose your operator];
     B --> |Yes| D[check if the following errors \nshown in the log of first 100 lines];
     D --> |?| E[Wrong scheme: https];
-    E --> |solution| F[WS_URL in .env file should be set\n beginning with wss:// instead of https://];
+    E --> |solution| F["WS_URL in .env file should be set\n beginning with wss:// instead of https://"];
     F --> G[change the block number in the file\n /data/operator/v1/prater/contract_record.yml to \na block number before the registration of the validator];
     G --> H[restart operator];
     D --> |?| I["Ssl(Error { code : ErrorCode(1)"];
     I --> |solution| J[ws is not supported, use\n wss instead of ws for WS_URL];
     J --> G;
     D --> |?| K["Failed to connect to {ip}:26000"];
-    K --> L[need to open the port 26000 to the internet,\n also carefully check if other firewall rules shown\n in the doc are set correctly in your server];
+    K --> |solution| L[need to open the port 26000 to the internet,\n also carefully check if other firewall rules shown\n in the doc are set correctly in your server];
 ```

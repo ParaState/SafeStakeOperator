@@ -294,7 +294,7 @@ Some description of the folders and files under `/data/operator/v1/prater/`:
 
 ## Common issues troubleshooting
 ```mermaid
-flowchart TD;
+graph TD;
     A[Operator is shown as \n inactive/idle in explorer] --> B{any validator chooses\nthe operator?};
     B --> |No| C[register a validator\n in our website and \n choose your operator];
     B --> |Yes| D[check if the following errors \nshown in the log of first 100 lines];

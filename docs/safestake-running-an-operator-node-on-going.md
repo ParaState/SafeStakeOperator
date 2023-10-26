@@ -57,7 +57,7 @@ Light mode contains only the OperatorNode service, the following list of program
 
 <figure><img src="imgs/infura-step3.png" alt=""><figcaption></figcaption></figure>
 
-* Copy your "WS\_URL"
+* Copy your "WS\_URL", mkae sure the url begins with wss:// instead of https://
 
 <figure><img src="imgs/infura-step4.png" alt=""><figcaption></figcaption></figure>
 
@@ -276,6 +276,8 @@ It is a good practice to back up your operator private key file
 
 **`Your SafeStake Operator Node is now configured`**
 
+then you may go to [SafeStake website](https://testnet.safestake.xyz/) to register a validator and then choose your operator.
+
 ## Backup and Migration
 
 If you are using our default settings, all data other than configration files is stored in the folder `/data`. It is possible for Geth/Nethermind/Besu/Erigon and lighthouse to resync data in a new machine. For operator, it is important to always backup and copy the folder `/data/operator/` to the new machine before you start operator in the new machine.
@@ -288,4 +290,22 @@ Some description of the folders and files under `/data/operator/v1/prater/`:
     ├── node_key.json # operator's public and private key
     ├── secrets # secret files for encryption
     ├── validators # data files of the validators that the operator is serving, inherited from the native folder of lighthouse validator client, including slashing_protection.sqlite, etc.
+```
+
+## Common issues troubleshooting
+```mermaid
+flowchart TD
+    A[Operator is shown as \n inactive/idle in explorer] --> B{any validator chooses\nthe operator?}
+    B --> |No| C[register a validator\n in our website and \n choose your operator]
+    B --> |Yes| D[check if the following errors \nshown in the log of first 100 lines]
+    D --> |?| E[Wrong scheme: https]
+    E --> |solution| F[WS_URL in .env file should be set\n beginning with wss:// instead of https://]
+    F --> G[change the block number in the file\n /data/operator/v1/prater/contract_record.yml to \na block number before the registration of the validator ]
+    G --> H[restart operator]
+    D --> |?| I["Ssl(Error { code : ErrorCode(1)"]
+    I --> |solution| J[ws is not supported, use\n wss instead of ws for WS_URL]
+    J --> G
+    D --> |?| K["Failed to connect to {ip}:26000"]
+    K --> L[need to open the port 26000 to the internet,\n also carefully check if other firewall rules shown\n in the doc are set correctly in your server]
+
 ```

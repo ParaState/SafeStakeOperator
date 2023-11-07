@@ -125,6 +125,7 @@ NOTE: This step is to provide a quick way to setup and run the execution client 
 
 ```bash
 cd dvf
+cp .env.example .env
 sudo docker compose -f docker-compose-operator.yml up geth -d
 # OR, if you use Nethermind/Besu/Erigon:
 # sudo docker compose -f docker-compose-operator.yml up nethermind -d
@@ -152,7 +153,6 @@ if the output shows `{"data":"Synced"}`, it means it is already synced.
 
 #### 9. Edit local environment variables
 ```bash
-cp .env.example .env
 vim .env
 ```
 

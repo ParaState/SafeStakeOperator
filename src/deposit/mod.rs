@@ -1,17 +1,47 @@
-use types::EthSpec;
+use types::{EthSpec, SignedRoot, ChainSpec, DepositData};
 use bls::{Hash256, Signature, SignatureBytes, PublicKeyBytes};
-use types::DepositData;
 use crate::utils::error::DvfError;
 use crate::crypto::dkg::SimpleDistributedSigner;
 use crate::network::io_committee::{IOCommittee, IOChannel};
-use types::SignedRoot;
+use eth2::{BeaconNodeHttpClient, Timeouts};
+use std::time::Duration;
+use sensitive_url::SensitiveUrl;
+use log::error;
 
+/// Gets syncing status from beacon node client and returns true if syncing and false otherwise.
+async fn is_syncing(client: &BeaconNodeHttpClient) -> Result<bool, String> {
+    Ok(client
+        .get_node_syncing()
+        .await
+        .map_err(|e| format!("Failed to get sync status: {:?}", e))?
+        .data
+        .is_syncing)
+}
+
+/// Return a valid BeaconNodeHttpClient.
+pub async fn get_valid_beacon_node_http_client(beacon_nodes_urls: &Vec<SensitiveUrl>, spec: &ChainSpec) -> Result<BeaconNodeHttpClient, DvfError> {
+    for i in 0..beacon_nodes_urls.len() {
+        let client = BeaconNodeHttpClient::new(beacon_nodes_urls[i].clone(), Timeouts::set_all(Duration::from_secs(spec.seconds_per_slot)));
+        match is_syncing(&client).await {
+            Ok(b) => {
+                if b {
+                    return Ok(client);
+                }
+            },
+            Err(e) => {
+                error!("Failed to get sync status {}", e)
+            }
+        }  
+    }
+    Err(DvfError::BeaconNodeClientError)
+}
 
 /// Refer to `/lighthouse/common/deposit_contract/src/lib.rs`
 pub async fn get_distributed_deposit<T: IOCommittee<U>, U: IOChannel, E: EthSpec>(
     signer: &SimpleDistributedSigner<T, U>,
     withdrawal_credentials: &[u8; 32],
     amount: u64,
+    beacon_nodes_urls: &Vec<SensitiveUrl>
 ) -> Result<DepositData, DvfError> {
     let mut deposit_data = DepositData {
         pubkey: PublicKeyBytes::from(signer.mpk()),
@@ -20,7 +50,14 @@ pub async fn get_distributed_deposit<T: IOCommittee<U>, U: IOChannel, E: EthSpec
         signature: Signature::empty().into(),
     };
     let mut spec = E::default_spec();
-    spec.genesis_fork_version = [00, 00, 16, 32];
+    // query genesis fork version from beacon node
+    let client = get_valid_beacon_node_http_client(beacon_nodes_urls, &spec).await?;
+    let genesis_data = client.get_beacon_genesis().await.map_err(|e| {
+        error!("Failed to get beacon genesis data {:?}", e);
+        DvfError::BeaconNodeGenesisError
+    })?.data;
+    spec.genesis_fork_version = genesis_data.genesis_fork_version;
+    // spec.genesis_fork_version = [00, 00, 16, 32];    //this value is for goerli testnet
     let domain = spec.get_deposit_domain();
     let msg = deposit_data.as_deposit_message().signing_root(domain);
 

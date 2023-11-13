@@ -2,7 +2,8 @@ use super::db::Database;
 use super::utils::{convert_va_pk_to_u64, FromFile, ToFile};
 use async_trait::async_trait;
 use hscrypto::PublicKey;
-use tokio::sync::RwLock;
+use bls::{PublicKey as BlsPublickey, SecretKey as BlsSecretKey};
+use tokio::sync::{RwLock, Mutex};
 use serde_derive::{Deserialize as DeriveDeserialize, Serialize as DeriveSerialize};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -11,12 +12,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use store::Store;
 use tokio::sync::OnceCell;
 use log::{error, info, warn};
 use web3::{
     contract::{Contract as EthContract, Options},
-    futures::TryStreamExt,
     transports::WebSocket,
     types::{Address, BlockNumber, FilterBuilder, H256, Log, U256, U64},
     Web3,
@@ -35,6 +34,7 @@ const CONTRACT_VA_RM_EVENT_NAME: &str = "ValidatorRemoval";
 const CONTRACT_INI_REG_EVENT_NAME: &str = "InitiatorRegistration";
 const CONTRACT_MINIPOOL_CREATED_EVENT_NAME: &str = "InitiatorMiniPoolCreated";
 const CONTRACT_MINIPOOL_READY_EVENT_NAME: &str = "InitiatorMiniPoolReady";
+const CONTRACT_INI_RM_EVENT_NAME: &str = "InitiatorRemoval";
 pub static SELF_OPERATOR_ID: OnceCell<u32> = OnceCell::const_new();
 pub static DEFAULT_TRANSPORT_URL: OnceCell<String> = OnceCell::const_new();
 pub static REGISTRY_CONTRACT: OnceCell<String> = OnceCell::const_new();
@@ -126,6 +126,15 @@ pub enum ContractCommand {
     StartInitiator(Initiator, OperatorPublicKeys),
     MiniPoolCreated(u32, ValidatorPublicKey, OperatorPublicKeys, OperatorIds, Address),
     MiniPoolReady(u32, ValidatorPublicKey, OperatorPublicKeys, OperatorIds, Address),
+    RemoveInitiator(Initiator, OperatorPublicKeys)
+}
+
+#[derive(Clone)]
+pub struct InitiatorStoreRecord {
+    pub id: u32,
+    pub share_bls_sk: BlsSecretKey,
+    pub validator_pk: BlsPublickey,
+    pub share_bls_pks: HashMap<u64, BlsPublickey>
 }
 
 #[async_trait]
@@ -136,7 +145,7 @@ pub trait TopicHandler: Send + Sync + 'static {
         db: &Database,
         operator_pk_base64: &String,
         config: &ContractConfig,
-        // sender: &MonitoredSender<ContractCommand>,
+        web3: &Web3<WebSocket>
     ) -> Result<(), ContractError>;
 }
 
@@ -151,9 +160,9 @@ impl TopicHandler for ValidatorRegistrationHandler {
         db: &Database,
         operator_pk_base64: &String,
         config: &ContractConfig,
-        // sender: &MonitoredSender<ContractCommand>,
+        web3: &Web3<WebSocket>
     ) -> Result<(), ContractError> {
-        process_validator_registration(log, db, operator_pk_base64, config)
+        process_validator_registration(log, db, operator_pk_base64, config, web3)
             .await
             .map_err(|e| {
                 error!("error happens when process validator registration");
@@ -171,11 +180,11 @@ impl TopicHandler for ValidatorRemovalHandler {
         &self,
         log: Log,
         db: &Database,
-        operator_pk_base64: &String,
-        config: &ContractConfig,
-        // sender: &MonitoredSender<ContractCommand>,
+        _operator_pk_base64: &String,
+        _config: &ContractConfig,
+        _web3: &Web3<WebSocket>
     ) -> Result<(), ContractError> {
-        process_validator_removal(log, db, operator_pk_base64, config)
+        process_validator_removal(log, db)
             .await
             .map_err(|e| {
                 error!("error happens when process validator removal");
@@ -195,9 +204,9 @@ impl TopicHandler for InitiatorRegistrationHandler {
         db: &Database,
         operator_pk_base64: &String,
         config: &ContractConfig,
-        // sender: &MonitoredSender<ContractCommand>,
+        web3: &Web3<WebSocket>
     ) -> Result<(), ContractError> {
-        process_initiator_registration(log, db, operator_pk_base64, config)
+        process_initiator_registration(log, db, operator_pk_base64, config, web3)
             .await
             .map_err(|e| {
                 error!("error happens when process initiator registration");
@@ -215,11 +224,11 @@ impl TopicHandler for MinipoolCreatedHandler {
         &self,
         log: Log,
         db: &Database,
-        operator_pk_base64: &String,
-        config: &ContractConfig,
-        // sender: &MonitoredSender<ContractCommand>,
+        _operator_pk_base64: &String,
+        _config: &ContractConfig,
+        _web3: &Web3<WebSocket>
     ) -> Result<(), ContractError> {
-        process_minipool_created(log, db, operator_pk_base64, config)
+        process_minipool_created(log, db)
             .await
             .map_err(|e| {
                 error!("error happens when process minipool created");
@@ -237,16 +246,36 @@ impl TopicHandler for MinipoolReadyHandler {
         &self,
         log: Log,
         db: &Database,
-        operator_pk_base64: &String,
-        config: &ContractConfig,
-        // sender: &MonitoredSender<ContractCommand>,
+        _operator_pk_base64: &String,
+        _config: &ContractConfig,
+        _web3: &Web3<WebSocket>
     ) -> Result<(), ContractError> {
-        process_minipool_ready(log, db, operator_pk_base64, config)
+        process_minipool_ready(log, db)
             .await
             .map_err(|e| {
                 error!("error happens when process minipool ready");
                 e
             })
+    }
+}
+
+#[derive(Clone)]
+pub struct InitiatorRemovalHandler {}
+
+#[async_trait]
+impl TopicHandler for InitiatorRemovalHandler {
+    async fn process(
+        &self,
+        log: Log,
+        db: &Database,
+        _operator_pk_base64: &String,
+        _config: &ContractConfig,
+        _web3: &Web3<WebSocket>
+    ) -> Result<(), ContractError> {
+        process_initiator_removal(log, db).await.map_err(|e| {
+            error!("error happens when process initiator removal");
+            e
+        })
     }
 }
 
@@ -257,6 +286,7 @@ pub struct ContractConfig {
     pub initiator_registration_topic: String,
     pub initiator_minipool_created_topic: String,
     pub initiator_minipool_ready_topic: String,
+    pub initiator_removal_topic: String,
     pub safestake_network_abi_path: String,
     pub safestake_registry_abi_path: String,
 }
@@ -282,53 +312,71 @@ pub struct Contract {
     pub base_dir: PathBuf,
     pub handlers: Arc<RwLock<HashMap<H256, Box<dyn TopicHandler>>>>,
     pub va_filter_builder: Option<FilterBuilder>,
-    pub initiator_filter_builder: Option<FilterBuilder>
+    pub initiator_filter_builder: Option<FilterBuilder>,
+    pub web3: Arc<Mutex<Web3<WebSocket>>>
 }
 
 impl Contract {
-    pub fn new<P: AsRef<Path>>(base_dir: P, operator_pk: PublicKey, db: Database) -> Result<Self, String> {
+    pub async fn new<P: AsRef<Path>>(base_dir: P, operator_pk: PublicKey, db: Database) -> Result<Self, String> {
         let config = ContractConfig::from_file(CONTRACT_CONFIG_FILE)?;
+        let url = DEFAULT_TRANSPORT_URL.get().unwrap();
+        let transport = WebSocket::new(&url).await.map_err(|e| format!("failed connect to {}: {:?}", url, e))?;
+        let web3 = Web3::new(transport);
+
         let record = match ContractRecord::from_file(base_dir.as_ref().join(CONTRACT_RECORD_FILE)) {
             Ok(record) => record,
             Err(err_str) => {
                 warn!("Can't recover from contract record file {}, get current block number from contract", err_str);
-                ContractRecord { block_num: 0 }
+                let block_num = get_current_block(&web3).await.map_err(|e| format!("can't get current block number {:?}", e))?.as_u64();
+                ContractRecord { block_num }
             }
         };
-        
         Ok(Self {
             config,
             record,
             db,
             operator_pk,
-            // store,
             base_dir: base_dir.as_ref().to_path_buf(),
             handlers: Arc::new(RwLock::new(HashMap::new())),
             va_filter_builder: None,
-            initiator_filter_builder: None
+            initiator_filter_builder: None,
+            web3: Arc::new(Mutex::new(web3))
         })
     }
 
     pub async fn check_operator_id(&self) {
-        let op = query_operator_from_contract(&self.config, *SELF_OPERATOR_ID.get().unwrap()).await.unwrap();
-        if op.public_key != self.operator_pk.0 {
-            panic!("operator id is not consistent with smart contract! Please input right operator id");
-        }
-        self.db.insert_operator(op).await;
+        let web3_arc: Arc<Mutex<Web3<WebSocket>>> = Arc::clone(&self.web3);
+        let mut web3 = web3_arc.lock().await;
+        let url = DEFAULT_TRANSPORT_URL.get().unwrap();
+        match query_operator_from_contract(&self.config, *SELF_OPERATOR_ID.get().unwrap(), &web3).await {
+            Ok(op) => {
+                if op.public_key != self.operator_pk.0 {
+                    panic!("operator id is not consistent with smart contract! Please input right operator id");
+                }
+                self.db.insert_operator(op).await;
+            }
+            Err(e) => {
+                error!("query operator from contract error {:?}", e);
+                re_connect_web3(&mut web3, url).await;
+            }
+        };
     }
 
     pub fn spawn(base_dir: PathBuf, operator_pk: PublicKey, db: Database) {
         tokio::spawn(async move {
-            let mut contract = Contract::new(base_dir, operator_pk, db)
-                .map_err(|e| {
-                    error!("contract error: {}", e);
-                })
-                .unwrap();
-            contract.construct_filter().await;
-            contract.check_operator_id().await;
-            contract.get_logs_from_contract().await;
-            contract.monitor_validator_paidblock();
-            // contract.listen_logs(tx).await;
+            match Contract::new(base_dir, operator_pk, db).await {
+                Ok(mut contract) => {
+                    contract.construct_filter().await;
+                    contract.check_operator_id().await;
+                    contract.get_logs_from_contract().await;
+                    contract.monitor_validator_paidblock();
+                }
+                Err(e) => {
+                    error!("can't create contract object {}", e);
+                    std::process::exit(1);
+                }
+            }
+            
         });
     }
 
@@ -343,6 +391,7 @@ impl Contract {
             H256::from_slice(&hex::decode(&config.initiator_minipool_created_topic).unwrap());
         let minipool_ready_topic =
             H256::from_slice(&hex::decode(&config.initiator_minipool_ready_topic).unwrap());
+        let ini_rm_topic = H256::from_slice(&hex::decode(&config.initiator_minipool_created_topic).unwrap());
         let va_filter_builder = FilterBuilder::default()
             .address(vec![Address::from_slice(
                 &hex::decode({
@@ -369,7 +418,8 @@ impl Contract {
                 Some(vec![
                     ini_reg_topic,
                     minipool_created_topic,
-                    minipool_ready_topic
+                    minipool_ready_topic,
+                    ini_rm_topic
                 ]),
                 None,
                 None,
@@ -382,19 +432,23 @@ impl Contract {
         handlers.insert(ini_reg_topic, Box::new(InitiatorRegistrationHandler {}));
         handlers.insert(minipool_created_topic, Box::new(MinipoolCreatedHandler {}));
         handlers.insert(minipool_ready_topic, Box::new(MinipoolReadyHandler {}));
+        handlers.insert(ini_rm_topic, Box::new(InitiatorRemovalHandler {}));
     }
 
     pub fn monitor_validator_paidblock(&mut self) {
         let config = self.config.clone();
         let db = self.db.clone();
+        let web3 = Arc::clone(&self.web3);
+        let url = DEFAULT_TRANSPORT_URL.get().unwrap();
         tokio::spawn(async move {
             let mut query_interval = tokio::time::interval(Duration::from_secs(3600 * 6));
             loop {
                 query_interval.tick().await;
+                let mut web3 = web3.lock().await;
                 match db.query_all_validator_address().await {
                     Ok(owners) => {
                         for owner in owners {
-                            match check_account(&config, owner).await {
+                            match check_account(&config, owner, &web3).await {
                                 Ok(t) => {
                                     if t {
                                         // stop validators related to the block
@@ -433,6 +487,7 @@ impl Contract {
                                 },
                                 Err(e) => {
                                     error!("check account failed {}", e.to_string());
+                                    re_connect_web3(&mut web3, url).await;
                                 }
                             }
                         }
@@ -457,21 +512,29 @@ impl Contract {
         let initiator_filter_builder = self.initiator_filter_builder.as_ref().unwrap().clone();
         let handlers = self.handlers.clone();
         let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
+        let web3: Arc<Mutex<Web3<WebSocket>>> = Arc::clone(&self.web3);
         tokio::spawn(async move {
-            if record.block_num == 0 {
-                get_block_number(&mut record).await;
-                update_record_file(&record, &record_path);
-            }
-            let mut query_interval = tokio::time::interval(Duration::from_secs(60));
+            // {
+            //     let mut web3 = web3.lock().await;
+            //     if record.block_num == 0 {
+            //         match get_current_block(&web3).await {
+            //             Ok(b) => {
+            //                 record.block_num = b.as_u64()
+            //             }
+            //             Err(e) => {
+            //                 error!("get current block failed {:?}", e);
+            //                 // re construct web3 
+            //                 re_connect_web3(&mut web3, transport_url).await;
+            //             }
+            //         };
+            //         update_record_file(&record, &record_path);
+            //     }
+            // }
+            let mut query_interval = tokio::time::interval(Duration::from_secs(60 * 3));
+            query_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             loop {
                 query_interval.tick().await;
-                let web3 = connect_web3(transport_url).await;
-                if let Err(e) = web3 {
-                    error!("{}", e.to_string());
-                    continue;
-                }
-                let web3 = web3.unwrap();
-
+                let mut web3 = web3.lock().await;
                 let va_filter = va_filter_builder
                     .clone()
                     .from_block(BlockNumber::Number(U64::from(record.block_num)))
@@ -490,6 +553,7 @@ impl Contract {
                     },
                     Err(e) => {
                         error!("{}, {}", ContractError::LogError.to_string(), e);
+                        re_connect_web3(&mut web3, transport_url).await;
                     }
                 }
                 match web3.eth().logs(initiator_filter).await {
@@ -499,10 +563,20 @@ impl Contract {
                     },
                     Err(e) => {
                         error!("{}, {}", ContractError::LogError.to_string(), e);
+                        re_connect_web3(&mut web3, transport_url).await;
                     }
                 }
                 if all_logs.len() == 0 {
-                    get_block_number(&mut record).await;
+                    match get_current_block(&web3).await {
+                        Ok(b) => {
+                            record.block_num = b.as_u64()
+                        }
+                        Err(e) => {
+                            error!("get current block failed {:?}", e);
+                            // re construct web3 
+                            re_connect_web3(&mut web3, transport_url).await;
+                        }
+                    }
                 } else {
                     all_logs.sort_by(|a, b| {
                         a.block_number.unwrap().cmp(&b.block_number.unwrap())
@@ -519,6 +593,7 @@ impl Contract {
                                         &db,
                                         &operator_pk_base64,
                                         &config,
+                                        &web3
                                     )
                                     .await
                                 {
@@ -538,119 +613,32 @@ impl Contract {
             }
         });
     }
+}
+// async fn connect_web3(url: &String) -> Result<Web3<WebSocket>, ContractError> {
+//     let transport = WebSocket::new(url).await
+//         .map_err(ContractError::Web3Error)?;
+//     Ok(Web3::new(transport))
+// }
 
-    pub async fn listen_logs(&self) {
-        let config = self.config.clone();
-        // let store = self.store.clone();
-        let db = self.db.clone();
-        let operator_pk = self.operator_pk.clone();
-        let operator_pk_base64 = base64::encode(&operator_pk);
-        let va_filter_builder = self.va_filter_builder.as_ref().unwrap().clone();
-        let va_filter = va_filter_builder.build();
-        let initiator_filter_builder = self.initiator_filter_builder.as_ref().unwrap().clone();
-        let initiator_filter = initiator_filter_builder.build();
-        let handlers = self.handlers.clone();
-        let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
-        tokio::spawn(async move {
-            loop {
-                let web3 = connect_web3(transport_url).await;
-                if let Err(e) = web3 {
-                    error!("{}", e.to_string());
-                    tokio::time::sleep(Duration::from_secs(60 * 3)).await;
-                    continue;
-                }
-                let web3 = web3.unwrap();
+// pub async fn get_block_number(record: &mut ContractRecord, web3: &Web3<WebSocket>) {
+//     match get_current_block().await {
+//         Ok(v) => {
+//             record.block_num = v.as_u64();
+//         }
+//         Err(e) => {
+//             // [zico] For errors, leave record number as it is
+//             error!("{}", e.to_string());
+//         }
+//     }
+// }
 
-                let mut va_sub = web3
-                    .eth_subscribe()
-                    .subscribe_logs(va_filter.clone())
-                    .await
-                    .unwrap();
-                let mut initiator_sub = web3
-                    .eth_subscribe()
-                    .subscribe_logs(initiator_filter.clone())
-                    .await
-                    .unwrap();
-                let mut logs = vec![];
-                loop {
-                    match va_sub.try_next().await.unwrap() {
-                        Some(log) => {
-                            logs.push(log)
-                        },
-                        None => {
-                            error!("none event");
-                            break;
-                        }
-                    }
-                }
-                loop {
-                    match initiator_sub.try_next().await.unwrap() {
-                        Some(log) => {
-                            logs.push(log)
-                        },
-                        None => {
-                            error!("none event");
-                            break;
-                        }
-                    }
-                }
-                for log in logs {
-                    let topic = log.topics[0].clone();
-                    match handlers.read().await.get(&topic) {
-                        Some(handler) => {
-                            match handler
-                                .process(
-                                    log,
-                                    &db,
-                                    &operator_pk_base64,
-                                    &config,
-                                    // &sender,
-                                )
-                                .await
-                            {
-                                Ok(_) => {
-                                    // store hash to local database
-                                    // match transaction_hash {
-                                    //     Some(hash) => store.write(hash.as_bytes().to_vec(), vec![0]).await,
-                                    //     None => {}
-                                    // };
-                                }
-                                Err(e) => {
-                                    error!("error hapens, reason: {}", e.to_string());
-                                }
-                            }
-                        }
-                        None => {
-                            error!("Can't find handler");
-                        }
-                    };
-                }
-            }
-        });
-    }
+pub async fn re_connect_web3(web3: &mut Web3<WebSocket>, transport_url: &String) {
+    let transport = WebSocket::new(transport_url).await
+        .unwrap();
+    *web3 = Web3::new(transport);
 }
 
-async fn connect_web3(url: &String) -> Result<Web3<WebSocket>, ContractError> {
-    let transport = WebSocket::new(url).await
-        .map_err(ContractError::Web3Error)?;
-    Ok(Web3::new(transport))
-}
-
-pub async fn get_block_number(record: &mut ContractRecord) {
-    match get_current_block().await {
-        Ok(v) => {
-            record.block_num = v.as_u64();
-        }
-        Err(e) => {
-            // [zico] For errors, leave record number as it is
-            error!("{}", e.to_string());
-        }
-    }
-}
-
-pub async fn get_current_block() -> Result<U64, ContractError> {
-    let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
-    let web3 = connect_web3(transport_url).await?;
+pub async fn get_current_block(web3: &Web3<WebSocket>) -> Result<U64, ContractError> {
     web3.eth().block_number()
         .await
         .map_err(ContractError::BlockNumberError)
@@ -665,22 +653,12 @@ pub fn update_record_file<P: AsRef<Path>>(record: &ContractRecord, path: P) {
         .unwrap();
 }
 
-pub async fn log_listened(store: &Store, log_hash: &H256) -> bool {
-    match store.read(log_hash.as_fixed_bytes().to_vec()).await {
-        Ok(res) => res.map_or_else(|| false, |_| true),
-        Err(_) => {
-            error!("{}", ContractError::StoreError.to_string());
-            false
-        }
-    }
-}
-
 pub async fn process_validator_registration(
     raw_log: Log,
     db: &Database,
     operator_pk_base64: &String,
     config: &ContractConfig,
-    // sender: &MonitoredSender<ContractCommand>,
+    web3: &Web3<WebSocket>
 ) -> Result<(), ContractError> {
     info!("process_validator_registration");
     let validator_reg_event = Event {
@@ -761,7 +739,7 @@ pub async fn process_validator_registration(
                 operator_pks.push(pk_str);
             }
             None => {
-                let operator = query_operator_from_contract(config, *op_id).await?;
+                let operator = query_operator_from_contract(config, *op_id, web3).await?;
                 operator_pks.push(base64::encode(&operator.public_key));
                 db.insert_operator(operator).await;
             }
@@ -809,9 +787,6 @@ pub async fn process_validator_registration(
 pub async fn process_validator_removal(
     raw_log: Log,
     db: &Database,
-    _operator_pk_base64: &String,
-    _config: &ContractConfig,
-    // sender: &MonitoredSender<ContractCommand>,
 ) -> Result<(), ContractError> {
     info!("process_validator_removal");
     let validator_rm_event = Event {
@@ -848,9 +823,9 @@ pub async fn process_validator_removal(
         .ok_or(ContractError::LogParseError)?;
     let id = convert_va_pk_to_u64(&va_pk);
 
-    let va_str = hex::encode(&va_pk);
+    // let va_str = hex::encode(&va_pk);
 
-    db.delete_validator(va_str).await;
+    // db.delete_validator(va_str).await;
 
     let cmd = ContractCommand::RemoveValidator(Validator {
             id,
@@ -868,7 +843,7 @@ pub async fn process_initiator_registration(
     db: &Database,
     operator_pk_base64: &String,
     config: &ContractConfig,
-    // sender: &MonitoredSender<ContractCommand>,
+    web3: &Web3<WebSocket>
 ) -> Result<(), ContractError> {
     let ini_reg_event = Event {
         name: CONTRACT_INI_REG_EVENT_NAME.to_string(),
@@ -932,7 +907,7 @@ pub async fn process_initiator_registration(
                 operator_pks.push(pk_str);
             }
             None => {
-                let operator = query_operator_from_contract(config, *op_id).await?;
+                let operator = query_operator_from_contract(config, *op_id, web3).await?;
                 operator_pks.push(base64::encode(&operator.public_key));
                 db.insert_operator(operator).await;
             }
@@ -959,12 +934,53 @@ pub async fn process_initiator_registration(
     Ok(())
 }
 
+pub async fn process_initiator_removal(
+    raw_log: Log,
+    db: &Database
+) -> Result<(), ContractError> {
+    let ini_rm_event = Event {
+        name: CONTRACT_INI_RM_EVENT_NAME.to_string(),
+        inputs: vec![
+            EventParam {
+                name: "initiatorId".to_string(),
+                kind: ParamType::Uint(32),
+                indexed: false
+            }
+        ],
+        anonymous: false,
+    };
+    let log = ini_rm_event.parse_log(RawLog { topics: raw_log.topics, data: raw_log.data.0 }).map_err(|_| ContractError::LogParseError)?;
+    let id = log.params[0].value.clone().into_uint().ok_or(ContractError::LogParseError)?.as_u32();
+    let initiator = db.query_initiator(id).await.map_err(|_| ContractError::DatabaseError)?;
+    match initiator {
+        Some(initiator) => {
+            if initiator.validator_pk.is_none() {
+                return Err(ContractError::DatabaseError)
+            }
+            let (op_pks, _) = db
+                .query_initiator_releated_op_pks(id)
+                .await
+                .map_err(|_| {
+                    error!("Can't query initiator related op pks");
+                    ContractError::DatabaseError
+                })?;
+            let op_pk_bns = op_pks.into_iter()
+                .map(|s| base64::decode(s).unwrap())
+                .collect();
+            let cmd = ContractCommand::RemoveInitiator(initiator, op_pk_bns);
+            db.insert_contract_command(id as u64, serde_json::to_string(&cmd).unwrap()).await;
+        },
+        None => {
+            error!("can't delete initiator {}, can't find it in local store", id);
+            return Err(ContractError::DatabaseError);
+        }
+    }
+    Ok(())
+}
+
 pub async fn process_minipool_created(
     raw_log: Log,
     db: &Database,
-    _operator_pk_base64: &String,
-    _config: &ContractConfig,
-    // sender: &MonitoredSender<ContractCommand>,
 ) -> Result<(), ContractError> {
     let minipool_created_event = Event {
         name: CONTRACT_MINIPOOL_CREATED_EVENT_NAME.to_string(),
@@ -1047,9 +1063,6 @@ pub async fn process_minipool_created(
 pub async fn process_minipool_ready(
     raw_log: Log,
     db: &Database,
-    _operator_pk_base64: &String,
-    _config: &ContractConfig,
-    // sender: &MonitoredSender<ContractCommand>,
 ) -> Result<(), ContractError> {
     let minipool_ready_event = Event {
         name: CONTRACT_MINIPOOL_READY_EVENT_NAME.to_string(),
@@ -1111,16 +1124,15 @@ pub async fn process_minipool_ready(
 pub async fn query_operator_from_contract(
     config: &ContractConfig,
     id: u32,
+    web3: &Web3<WebSocket>
 ) -> Result<Operator, ContractError> {
-    let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
-    let web3 = connect_web3(transport_url).await?;
     let raw_abi = std::fs::read_to_string(&config.safestake_registry_abi_path).or_else(|e| {
         error!(
             "Can't read from {} {}",
             &config.safestake_registry_abi_path, e
         );
         Err(ContractError::FileError)
-    })?;
+    }).unwrap();
     let raw_json: Value = serde_json::from_str(&raw_abi).unwrap();
     let abi = raw_json["abi"].to_string();
     let address = Address::from_slice(&hex::decode({
@@ -1129,7 +1141,7 @@ pub async fn query_operator_from_contract(
     let contract = EthContract::from_json(web3.eth(), address, abi.as_bytes()).or_else(|e| {
         error!("Can't create contract from json {}", e);
         Err(ContractError::ContractParseError)
-    })?;
+    }).unwrap();
     let (name, address, pk, _, _, _, _): (String, Address, Vec<u8>, U256, U256, U256, bool) =
         contract
             .query("getOperatorById", (id, ), None, Options::default(), None)
@@ -1150,16 +1162,15 @@ pub async fn query_operator_from_contract(
 pub async fn check_account(
     config: &ContractConfig,
     owner: Address,
+    web3: &Web3<WebSocket>
 ) -> Result<bool, ContractError> {
-    let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
-    let web3 = connect_web3(transport_url).await?;
     let raw_abi = std::fs::read_to_string(&config.safestake_network_abi_path).or_else(|e| {
         error!(
             "Can't read from {} {}",
             &config.safestake_network_abi_path, e
         );
         Err(ContractError::FileError)
-    })?;
+    }).unwrap();
     let raw_json: Value = serde_json::from_str(&raw_abi).unwrap();
     let abi = raw_json["abi"].to_string();
     let address = Address::from_slice(&hex::decode({
@@ -1168,12 +1179,12 @@ pub async fn check_account(
     let contract = EthContract::from_json(web3.eth(), address, abi.as_bytes()).or_else(|e| {
         error!("Can't create contract from json {}", e);
         Err(ContractError::ContractParseError)
-    })?;
+    }).unwrap();
     let paid_block: U256 = contract.query("getAccountPaidBlockNumber", (owner, ), None, Options::default(), None).await.or_else(|e| {
         error!("Can't getAccountPaidBlockNumber from contract {}", e);
         Err(ContractError::QueryError)
     })?;
-    let current_block = get_current_block().await?;
+    let current_block = get_current_block(web3).await?;
     info!("current block {:?}, paid block {:?} , account {}", current_block, paid_block,  owner);
     if current_block.as_u64() >= paid_block.as_u64() {
         Ok(true)

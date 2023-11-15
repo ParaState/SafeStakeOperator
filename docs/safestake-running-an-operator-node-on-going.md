@@ -8,7 +8,7 @@ _**Updates happen frequently! Our**_ [_**Github**_](https://github.com/ParaState
 
 ### Server Host
 
-* Public Static Network IP
+* Public Static Network IP of IPv4 (need to disable IPv6)
 * Hardware
   * (Standalone Mode Recommend)
     * CPU: 16

@@ -25,11 +25,10 @@ pub async fn get_valid_beacon_node_http_client(beacon_nodes_urls: &Vec<Sensitive
         match is_syncing(&client).await {
             Ok(b) => {
                 if b {
-                    info!("beacon node is syncing!");
-                    return Ok(client);
+                    error!("beacon node is syncing!");
                 } else {
-                    error!("beacon node is not syncing!");
-                    Err(DvfError::BeaconNodeClientError) 
+                    info!("beacon node is fully synchronized!");
+                    return Ok(client);
                 }
             },
             Err(e) => {

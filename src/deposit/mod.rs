@@ -6,7 +6,7 @@ use crate::network::io_committee::{IOCommittee, IOChannel};
 use eth2::{BeaconNodeHttpClient, Timeouts};
 use std::time::Duration;
 use sensitive_url::SensitiveUrl;
-use log::error;
+use log::{error, info};
 
 /// Gets syncing status from beacon node client and returns true if syncing and false otherwise.
 async fn is_syncing(client: &BeaconNodeHttpClient) -> Result<bool, String> {
@@ -25,7 +25,11 @@ pub async fn get_valid_beacon_node_http_client(beacon_nodes_urls: &Vec<Sensitive
         match is_syncing(&client).await {
             Ok(b) => {
                 if b {
+                    info!("beacon node is syncing!");
                     return Ok(client);
+                } else {
+                    error!("beacon node is not syncing!");
+                    Err(DvfError::BeaconNodeClientError) 
                 }
             },
             Err(e) => {

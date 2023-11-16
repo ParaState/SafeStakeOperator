@@ -8,7 +8,7 @@ use slot_clock::{SystemTimeSlotClock, SlotClock};
 use eth2::BeaconNodeHttpClient;
 use std::time::Duration;
 use sensitive_url::SensitiveUrl;
-use log::{error, info};
+use log::error;
 use super::deposit::get_valid_beacon_node_http_client;
 use safe_arith::SafeArith;
 
@@ -128,11 +128,13 @@ pub async fn test_distrubuted_voluntary_exit() {
     use futures::future::join_all;
     use std::collections::HashMap;
     use bls::Keypair;
+    use log::info;
     use types::MainnetEthSpec;
     const T: usize = 3;
     const IDS: [u64; 4] = [1, 2, 3, 4];
-    let beacon_node = "http://127.0.0.1:5052";
-
+    
+    let args = std::env::args().collect::<Vec<String>>();
+    let beacon_node = &args[1].clone();
     let mut logger = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
     logger.format_timestamp_millis();
     logger.init();

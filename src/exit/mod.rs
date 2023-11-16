@@ -159,6 +159,7 @@ pub async fn test_distrubuted_voluntary_exit() {
         }
     });
 
+
     let results = join_all(futs)
             .await
             .into_iter()
@@ -169,7 +170,8 @@ pub async fn test_distrubuted_voluntary_exit() {
         let io = Arc::new(SecureNetIOCommittee::new(IDS[i], ports_ref[i], IDS.as_slice(), addrs_ref.as_slice()).await);
         let (keypair, va_pk, shared_pks) = res.get(&IDS[i]).unwrap();
         let signer = SimpleDistributedSigner::new(IDS[i], keypair.clone(), va_pk.clone(), shared_pks.clone(), io, T);
-        let signed_voluntary_exit = get_distributed_voluntary_exit::<SecureNetIOCommittee, SecureNetIOChannel, MainnetEthSpec>(&signer, &vec![SensitiveUrl::parse(beacon_node).unwrap()], va_pk).await.unwrap();
+        let existing_pk = PublicKey::deserialize(&hex::decode("81c2f66c9838ab0e6f653bab3a6aeb6185256c392471aa94f0a452af9bd7c587f8252e20528f42f003806d28163bb427").unwrap()).unwrap();
+        let signed_voluntary_exit = get_distributed_voluntary_exit::<SecureNetIOCommittee, SecureNetIOChannel, MainnetEthSpec>(&signer, &vec![SensitiveUrl::parse(beacon_node).unwrap()], &existing_pk).await.unwrap();
         info!("{:?}", serde_json::to_string(&signed_voluntary_exit));
     });
     let _ = join_all(futs).await;

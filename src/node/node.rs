@@ -19,11 +19,11 @@ use types::EthSpec;
 use validator_dir::insecure_keys::INSECURE_PASSWORD;
 use web3::types::H160;
 use crate::utils::error::DvfError;
-use crate::crypto::dkg::{DKGSemiHonest, SimpleDistributedSigner, DKGTrait};
+use crate::crypto::dkg::{SimpleDistributedSigner, DKGTrait, DKGMalicious};
 use crate::crypto::elgamal::{Ciphertext, Elgamal};
 use crate::deposit::get_distributed_deposit;
 use crate::exit::get_distributed_voluntary_exit;
-use crate::network::io_committee::{NetIOChannel, NetIOCommittee};
+use crate::network::io_committee::{SecureNetIOCommittee, SecureNetIOChannel};
 use crate::node::config::{
     base_to_transaction_addr, base_to_mempool_addr, base_to_consensus_addr, base_to_signature_addr,
     API_ADDRESS, DB_FILENAME, DISCOVERY_PORT_OFFSET, DKG_PORT_OFFSET, NodeConfig,
@@ -720,7 +720,7 @@ pub async fn start_initiator<T: EthSpec>(
         .map(|x| *x as u64)
         .collect();
     let io = Arc::new(
-        NetIOCommittee::new(
+        SecureNetIOCommittee::new(
             self_op_id as u64,
             base_port + DKG_PORT_OFFSET,
             op_ids.as_slice(),
@@ -728,7 +728,7 @@ pub async fn start_initiator<T: EthSpec>(
         )
             .await,
     );
-    let dkg = DKGSemiHonest::new(self_op_id as u64, io, THRESHOLD as usize);
+    let dkg = DKGMalicious::new(self_op_id as u64, io, THRESHOLD as usize);
     let (keypair, va_pk, shared_pks) = dkg
         .run()
         .await
@@ -801,7 +801,7 @@ pub async fn remove_initiator<T: EthSpec>(
         .map(|x| *x as u64)
         .collect();
     let io_committee = Arc::new(
-        NetIOCommittee::new(
+        SecureNetIOCommittee::new(
             self_op_id as u64,
             base_port + DKG_PORT_OFFSET,
             op_ids.as_slice(),
@@ -821,7 +821,7 @@ pub async fn remove_initiator<T: EthSpec>(
     if mpk != va_pk {
         return Err(format!("validator pks don't match, local stored: {:?}, received {:?}", va_pk, mpk));
     }
-    let _ = get_distributed_voluntary_exit::<NetIOCommittee, NetIOChannel, T>(&signer, &node.config.beacon_nodes, &mpk).await.map_err(|e| {
+    let _ = get_distributed_voluntary_exit::<SecureNetIOCommittee, SecureNetIOChannel, T>(&signer, &node.config.beacon_nodes, &mpk).await.map_err(|e| {
         format!("Can't get distributed voluntary exit {:?}", e)
     })?;
     Ok(())
@@ -864,14 +864,14 @@ pub async fn minipool_deposit<T: EthSpec>(
     let va_pk = initiator_store.validator_pk;
     let op_bls_pks = initiator_store.share_bls_pks;
 
-    let io_committee = Arc::new(NetIOCommittee::new(self_op_id as u64, base_port + DKG_PORT_OFFSET, &op_ids, &operator_ips).await);
+    let io_committee = Arc::new(SecureNetIOCommittee::new(self_op_id as u64, base_port + DKG_PORT_OFFSET, &op_ids, &operator_ips).await);
     let signer = SimpleDistributedSigner::new(self_op_id as u64, keypair.clone(), va_pk.clone(), op_bls_pks.clone(), io_committee, THRESHOLD as usize);
     let mpk = BlsPublicKey::deserialize(&validator_pk).map_err(|e| format!("Can't deserilize bls pk {:?}", e))?;
     if mpk != va_pk {
         return Err(format!("validator pks don't match, local stored: {:?}, received {:?}", va_pk, mpk));
     }
     let withdraw_cret = convert_address_to_withdraw_crendentials(minipool_address);
-    let deposit_data = get_distributed_deposit::<NetIOCommittee, NetIOChannel, T>(&signer, &withdraw_cret, amount, &node.config.beacon_nodes).await.map_err(|e| {
+    let deposit_data = get_distributed_deposit::<SecureNetIOCommittee, SecureNetIOChannel, T>(&signer, &withdraw_cret, amount, &node.config.beacon_nodes).await.map_err(|e| {
         format!("Can't get distributed deposit data {:?}", e)
     })?;
     let mut request_body = DepositRequest::convert(deposit_data);

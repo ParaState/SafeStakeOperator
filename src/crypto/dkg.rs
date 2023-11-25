@@ -875,7 +875,7 @@ mod tests {
     use crate::network::io_committee::{MemIOCommittee, NetIOCommittee, SecureNetIOCommittee};
     use crate::crypto::ThresholdSignature;
     use types::{Hash256}; 
-    use eth2_hashing::{Context, Sha256Context};
+    use ethereum_hashing::{Context, Sha256Context};
     use futures::future::join_all;
     use futures::executor::block_on;
     use bls::{Keypair, Signature, PublicKey};

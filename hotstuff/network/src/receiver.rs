@@ -73,7 +73,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
 
     async fn spawn_runner(&self, socket: TcpStream, peer: SocketAddr) {
         let handler_map = self.handler_map.clone(); 
-        let name = self.name.clone();
+        let name = self.name;
 
         tokio::spawn(async move {
             // let mut handler_opt: Option<Handler> = None;

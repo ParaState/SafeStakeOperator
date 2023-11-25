@@ -10,7 +10,7 @@ use directory::{parse_path_or_default, DEFAULT_BEACON_NODE_DIR, DEFAULT_VALIDATO
 use dvf_directory::get_default_base_dir;
 use env_logger::{Env};
 use environment::{EnvironmentBuilder, LoggerConfig};
-use eth2_hashing::have_sha_extensions;
+use ethereum_hashing::have_sha_extensions;
 use eth2_network_config::{Eth2NetworkConfig, DEFAULT_HARDCODED_NETWORK, HARDCODED_NET_NAMES};
 use lighthouse_version::VERSION;
 use malloc_utils::configure_memory_allocator;
@@ -443,6 +443,16 @@ fn run<E: EthSpec>(
         };
     }
 
+    let sse_logging = {
+        if let Some(bn_matches) = matches.subcommand_matches("beacon_node") {
+            bn_matches.is_present("gui")
+        } else if let Some(vc_matches) = matches.subcommand_matches("validator_client") {
+            vc_matches.is_present("http")
+        } else {
+            false
+        }
+    };
+
     let logger_config = LoggerConfig {
         path: log_path,
         debug_level: String::from(debug_level),
@@ -455,13 +465,14 @@ fn run<E: EthSpec>(
         max_log_number: logfile_max_number,
         compression: logfile_compress,
         is_restricted: logfile_restricted,
+        sse_logging
     };
 
     let builder = environment_builder.initialize_logger(logger_config)?;
 
     let mut environment = builder
         .multi_threaded_tokio_runtime()?
-        .optional_eth2_network_config(Some(eth2_network_config))?
+        .eth2_network_config(eth2_network_config)?
         .build()?;
 
     // Allow Prometheus to export the time at which the process was started.

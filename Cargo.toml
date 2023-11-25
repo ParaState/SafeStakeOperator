@@ -13,14 +13,14 @@ num-bigint = { version = "0.4.0", features = ["rand"] }
 num-traits = "0.2.8"
 array-init = "2.0.0"
 aes-gcm = "0.9.4"
-enr = { version = "0.6.2", features = ["k256", "ed25519", "rust-secp256k1"] }
+enr = { version = "0.9.1", features = ["k256", "ed25519", "rust-secp256k1"] }
 secp256k1 = { version = "0.24.0", features = ["alloc", "rand", "serde"] }
 sha256 = "1.0.3"
 
 rayon = "1.4.1"
 blst = "0.3.3"
-eth2_hashing = "0.3.0"
-
+# eth2_hashing = "0.3.0"
+ethereum_hashing = "1.0.0-beta.2"
 types = { path = "lighthouse/consensus/types" }
 
 # common
@@ -42,7 +42,8 @@ bytes = "1.0.1"
 downcast-rs = "1.2.0"
 chrono = "0.4.20"
 
-tree_hash = "0.4.1"
+tree_hash = "0.5"
+tree_hash_derive = "0.5"
 clap = "2.33.3"
 slashing_protection = { path = "lighthouse/validator_client/slashing_protection" }
 slot_clock = { path = "lighthouse/common/slot_clock" }
@@ -80,9 +81,11 @@ eth2_keystore = { path = "lighthouse/crypto/eth2_keystore" }
 account_utils = { path = "lighthouse/common/account_utils" }
 lighthouse_version = { path = "lighthouse/common/lighthouse_version" }
 warp_utils = { path = "lighthouse/common/warp_utils" }
-warp = "0.3.2"
+# warp = "0.3.6"
+warp = { git = "https://github.com/seanmonstar/warp.git", default-features = false, features = ["tls"] }
 hyper = "0.14.4"
-eth2_serde_utils = "0.1.1"
+# eth2_serde_utils = "0.1.1"
+ethereum_serde_utils = "0.5"
 libsecp256k1 = "0.7.0"
 ring = "0.16.19"
 rand = { version = "0.8.5", features = ["small_rng"] }
@@ -113,12 +116,12 @@ web3 = "0.19.0"
 rusqlite = "0.28.0"
 
 futures = "0.3.28"
-async-std = "1.12.0"
-libp2p = { version = "0.51.2", features = ["full"] }
-libp2p-core = "0.39.1"
+# async-std = "1.12.0"
+libp2p = { version = "0.52", features = ["full"] }
+libp2p-core = "0.40"
 multiaddr = { version = "0.17.1" }
 #libp2p-quic = "0.7.0-alpha.3"
-libp2p-quic = { version = "0.7.0-alpha.3", features = ["async-std"] }
+libp2p-quic = { version = "0.9.2", features = ["tokio"] }
 
 hmac = "0.11.0"
 pbkdf2 = { version = "0.8.0", default-features = false }
@@ -129,22 +132,22 @@ keccak-hash = "0.10.0"
 [patch]
 [patch.crates-io]
 fixed-hash = { git = "https://github.com/paritytech/parity-common", rev = "df638ab0885293d21d656dc300d39236b69ce57d" }
-warp = { git = "https://github.com/macladson/warp", rev = "7e75acc368229a46a236a8c991bf251fe7fe50ef" }
-eth2_ssz = { path = "lighthouse/consensus/ssz" }
-eth2_ssz_derive = { path = "lighthouse/consensus/ssz_derive" }
-eth2_ssz_types = { path = "lighthouse/consensus/ssz_types" }
-eth2_hashing = { path = "lighthouse/crypto/eth2_hashing" }
-tree_hash = { path = "lighthouse/consensus/tree_hash" }
-tree_hash_derive = { path = "lighthouse/consensus/tree_hash_derive" }
-eth2_serde_utils = { path = "lighthouse/consensus/serde_utils" }
+# warp = { git = "https://github.com/macladson/warp", rev = "7e75acc368229a46a236a8c991bf251fe7fe50ef" }
+# eth2_ssz = { path = "lighthouse/consensus/ssz" }
+# eth2_ssz_derive = { path = "lighthouse/consensus/ssz_derive" }
+# eth2_ssz_types = { path = "lighthouse/consensus/ssz_types" }
+# eth2_hashing = { path = "lighthouse/crypto/eth2_hashing" }
+# tree_hash = { path = "lighthouse/consensus/tree_hash" }
+# tree_hash_derive = { path = "lighthouse/consensus/tree_hash_derive" }
+# eth2_serde_utils = { path = "lighthouse/consensus/serde_utils" }
 arbitrary = { git = "https://github.com/michaelsproul/arbitrary", rev = "a572fd8743012a4f1ada5ee5968b1b3619c427ba" }
 
-[patch."https://github.com/ralexstokes/mev-rs"]
-mev-rs = { git = "https://github.com/ralexstokes//mev-rs", rev = "7813d4a4a564e0754e9aaab2d95520ba437c3889" }
-[patch."https://github.com/ralexstokes/ethereum-consensus"]
-ethereum-consensus = { git = "https://github.com/ralexstokes//ethereum-consensus", rev = "9b0ee0a8a45b968c8df5e7e64ea1c094e16f053d" }
-[patch."https://github.com/ralexstokes/ssz-rs"]
-ssz-rs = { git = "https://github.com/ralexstokes//ssz-rs", rev = "adf1a0b14cef90b9536f28ef89da1fab316465e1" }
+# [patch."https://github.com/ralexstokes/mev-rs"]
+# mev-rs = { git = "https://github.com/ralexstokes//mev-rs", rev = "7813d4a4a564e0754e9aaab2d95520ba437c3889" }
+# [patch."https://github.com/ralexstokes/ethereum-consensus"]
+# ethereum-consensus = { git = "https://github.com/ralexstokes//ethereum-consensus", rev = "9b0ee0a8a45b968c8df5e7e64ea1c094e16f053d" }
+# [patch."https://github.com/ralexstokes/ssz-rs"]
+# ssz-rs = { git = "https://github.com/ralexstokes//ssz-rs", rev = "adf1a0b14cef90b9536f28ef89da1fab316465e1" }
 
 
 

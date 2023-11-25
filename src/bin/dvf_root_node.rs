@@ -193,20 +193,3 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 }
-
-/// tracing_test https://docs.rs/tracing-test/latest/tracing_test/
-/// https://stackoverflow.com/questions/72884779/how-to-print-tracing-output-in-tests
-#[cfg(test)]
-mod tests {
-    use tracing::debug;
-    use tracing_test::traced_test;
-
-    // Note this useful idiom: importing names from outer (for mod tests) scope.
-    use super::*;
-
-    #[traced_test]
-    #[test]
-    fn test() {
-        println!("Testing")
-    }
-}

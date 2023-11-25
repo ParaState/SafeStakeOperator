@@ -60,7 +60,7 @@ sudo docker compose -f docker-compose-boot.yml up -d
 Get root node enr
 
 ```
-docker-compose -f docker-compose-boot.yml logs -f dvf_root_node | grep enr
+docker compose -f docker-compose-boot.yml logs -f dvf_root_node | grep enr
 ```
 
 output

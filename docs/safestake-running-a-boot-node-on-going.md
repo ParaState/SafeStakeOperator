@@ -27,9 +27,9 @@ The duty agreement among operators uses Hotstuff consensus and runs on a p2p net
 
 **Set firewall rule**
 
-| Port range | Protocol | Source    |
-| ---------- | -------- | --------- |
-| 9005       | UDP      | 0.0.0.0/0 |
+| Port range | Protocol  | Source    |
+| ---------- | --------  | --------- |
+| 9005       | TCP & UDP | 0.0.0.0/0 |
 
 **Installation**
 

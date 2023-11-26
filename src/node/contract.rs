@@ -39,7 +39,7 @@ pub static SELF_OPERATOR_ID: OnceCell<u32> = OnceCell::const_new();
 pub static DEFAULT_TRANSPORT_URL: OnceCell<String> = OnceCell::const_new();
 pub static REGISTRY_CONTRACT: OnceCell<String> = OnceCell::const_new();
 pub static NETWORK_CONTRACT: OnceCell<String> = OnceCell::const_new();
-
+const QUERY_LOGS_INTERVAL: u64  = 60 * 3;
 #[derive(Debug)]
 pub enum ContractError {
     StoreError,
@@ -530,7 +530,7 @@ impl Contract {
             //         update_record_file(&record, &record_path);
             //     }
             // }
-            let mut query_interval = tokio::time::interval(Duration::from_secs(60 * 3));
+            let mut query_interval = tokio::time::interval(Duration::from_secs(QUERY_LOGS_INTERVAL));
             query_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             loop {
                 query_interval.tick().await;
@@ -546,6 +546,12 @@ impl Contract {
                     .limit(20)
                     .build(); 
                 let mut all_logs: Vec<Log> = Vec::new();
+                match get_current_block(&web3).await {
+                    Ok(_) => {},
+                    Err(_) => {
+                        re_connect_web3(&mut web3, transport_url).await;
+                    }
+                }
                 match web3.eth().logs(va_filter).await {
                     Ok(mut logs) => {
                         info!("Get {} va logs.", &logs.len());

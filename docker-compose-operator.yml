@@ -1,7 +1,7 @@
 version: '3'
 services:
   geth:
-    image: ethereum/client-go:v1.13.3
+    image: ethereum/client-go:v1.13.4
     pull_policy: always
     restart: unless-stopped
     network_mode: "host"
@@ -65,8 +65,7 @@ services:
         "--subscribe-all-subnets",
         "--import-all-attestations",
         "--validator-monitor-auto",
-        "--checkpoint-sync-url=https://goerli.checkpoint-sync.ethpandaops.io",
-        "--terminal-total-difficulty-override=${TTD}"
+        "--checkpoint-sync-url=https://checkpoint-sync.holesky.ethpandaops.io",
       ]
     expose:
       - "5052"

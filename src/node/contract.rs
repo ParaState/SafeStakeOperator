@@ -514,22 +514,6 @@ impl Contract {
         let transport_url = DEFAULT_TRANSPORT_URL.get().unwrap();
         let web3: Arc<Mutex<Web3<WebSocket>>> = Arc::clone(&self.web3);
         tokio::spawn(async move {
-            // {
-            //     let mut web3 = web3.lock().await;
-            //     if record.block_num == 0 {
-            //         match get_current_block(&web3).await {
-            //             Ok(b) => {
-            //                 record.block_num = b.as_u64()
-            //             }
-            //             Err(e) => {
-            //                 error!("get current block failed {:?}", e);
-            //                 // re construct web3 
-            //                 re_connect_web3(&mut web3, transport_url).await;
-            //             }
-            //         };
-            //         update_record_file(&record, &record_path);
-            //     }
-            // }
             let mut query_interval = tokio::time::interval(Duration::from_secs(QUERY_LOGS_INTERVAL));
             query_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             loop {
@@ -1186,7 +1170,7 @@ pub async fn check_account(
         error!("Can't create contract from json {}", e);
         Err(ContractError::ContractParseError)
     }).unwrap();
-    let paid_block: U256 = contract.query("getAccountPaidBlockNumber", (owner, ), None, Options::default(), None).await.or_else(|e| {
+    let (_, _, _, _, _, _, _, paid_block): (U256, U256, U256, U256, U256, U256, bool, U256) = contract.query("_owners", (owner,), None, Options::default(), None).await.or_else(|e| {
         error!("Can't getAccountPaidBlockNumber from contract {}", e);
         Err(ContractError::QueryError)
     })?;

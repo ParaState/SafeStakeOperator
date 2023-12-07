@@ -391,7 +391,7 @@ impl Contract {
             H256::from_slice(&hex::decode(&config.initiator_minipool_created_topic).unwrap());
         let minipool_ready_topic =
             H256::from_slice(&hex::decode(&config.initiator_minipool_ready_topic).unwrap());
-        let ini_rm_topic = H256::from_slice(&hex::decode(&config.initiator_minipool_created_topic).unwrap());
+        let ini_rm_topic = H256::from_slice(&hex::decode(&config.initiator_removal_topic).unwrap());
         let va_filter_builder = FilterBuilder::default()
             .address(vec![Address::from_slice(
                 &hex::decode({

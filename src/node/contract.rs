@@ -623,9 +623,14 @@ impl Contract {
 // }
 
 pub async fn re_connect_web3(web3: &mut Web3<WebSocket>, transport_url: &String) {
-    let transport = WebSocket::new(transport_url).await
-        .unwrap();
-    *web3 = Web3::new(transport);
+    match WebSocket::new(transport_url).await {
+        Ok(t) => {
+            *web3 = Web3::new(t);
+        },
+        Err(e) => {
+            error!("Failed to connect {}", e);
+        }
+    }
 }
 
 pub async fn get_current_block(web3: &Web3<WebSocket>) -> Result<U64, ContractError> {

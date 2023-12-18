@@ -192,7 +192,7 @@ Output:
 dvf-dvf_key_tool-1  | INFO: node public key AtzozvDHiWUpO+oJph2ikv+EyBN5pdBXsfgZqLi0+Yqd
 dvf-dvf_key_tool-1 exited with code 0
 ```
-Save the public key, which will be used later. Or you can find the public key in the "name" field of the file `/data/operator/v1/prater/node_key.json`
+Save the public key, which will be used later. Or you can find the public key in the "name" field of the file `/data/operator/v1/holesky/node_key.json`
 
 #### 11. Go to [SafeStake website](https://testnet.safestake.xyz/):
 * Click "Join As Operator".
@@ -254,7 +254,7 @@ It is a good practice to back up your operator private key file
 > **Keep it safe and put it in a safe place!**
 
 ```
-/data/operator/v1/prater/node_key.json
+/data/operator/v1/holesky/node_key.json
 ```
 
 **`Your SafeStake Operator Node is now configured`**
@@ -265,9 +265,9 @@ then you may go to [SafeStake website](https://testnet.safestake.xyz/) to regist
 
 If you are using our default settings, all data other than configration files is stored in the folder `/data`. It is possible for Geth/Nethermind/Besu/Erigon and lighthouse to resync data in a new machine. For operator, it is important to always backup and copy the folder `/data/operator/` to the new machine before you start operator in the new machine.
 
-Some description of the folders and files under `/data/operator/v1/prater/`:
+Some description of the folders and files under `/data/operator/v1/holesky/`:
 ```
-── prater
+── holesky
     ├── contract_record.yml # record the current synced block number
     ├── dvf_node_db # hotstuff consensus files
     ├── node_key.json # operator's public and private key
@@ -283,7 +283,7 @@ graph TD;
     B --> |Yes| D[check if the following errors \nshown in the log of first 100 lines];
     D --> |?| E[Wrong scheme: https];
     E --> |solution| F["WS_URL in .env file should be set\n beginning with ws:// or wss:// instead of https://"];
-    F --> G[change the block number in the file\n /data/operator/v1/prater/contract_record.yml to \na block number before the registration of the validator];
+    F --> G[change the block number in the file\n /data/operator/v1/holesky/contract_record.yml to \na block number before the registration of the validator];
     G --> H[restart operator];
     D --> |?| K["Failed to connect to {ip}:26000"];
     K --> |solution| L[need to open the port 26000 to the internet,\n also carefully check if other firewall rules shown\n in the doc are set correctly in your server];

@@ -37,11 +37,11 @@ services:
       - "30303"
 
   mev-boost:
-    image: flashbots/mev-boost:1.6
+    image: flashbots/mev-boost:latest
     network_mode: "host"
     pull_policy: always
     restart: unless-stopped
-    command: -${GETH_NETWORK} -relays ${MEV_BOOST_RELAYS}
+    command: -${GETH_NETWORK} -relay-check -relays ${MEV_BOOST_RELAYS}
     expose:
       - "18550"
   lighthouse:

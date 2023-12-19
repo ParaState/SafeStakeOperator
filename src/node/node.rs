@@ -694,12 +694,11 @@ pub async fn start_initiator<T: EthSpec>(
     // initiator_store : InitiatorStore,
     db: &Database
 ) -> Result<(), String> {
-    let node = node.read().await;
-    let base_port = node.config.base_address.port();
-    let operator_ips: Vec<Option<IpAddr>> = {
-        node.discovery.query_ips(&operator_public_keys).await
+
+    let (base_port,  operator_ips, secret)= {
+        let node = node.read().await;
+        (node.config.base_address.port(), node.discovery.query_ips(&operator_public_keys).await, node.secret.secret.clone())
     };
-    let secret = node.secret.secret.clone();
     let secp = secp256k1::Secp256k1::new();
     let node_secret_key = secp256k1::SecretKey::from_slice(&secret.0).expect("Unable to load secret key");
     let node_public_key = secp256k1::PublicKey::from_secret_key(&secp, &node_secret_key);
@@ -761,11 +760,6 @@ pub async fn start_initiator<T: EthSpec>(
     request_body.sign_hex = Some(request_body.sign_digest(&secret)?);
     let url_str = API_ADDRESS.get().unwrap().to_owned() + VALIDATOR_PK_URL;
     request_to_web_server(request_body, &url_str).await?;
-    // save to local storage
-    // initiator_store 
-    //     .write()
-    //     .await
-    //     .insert(initiator.id, (keypair, va_pk, shared_pks));
     db.insert_initiator_store(InitiatorStoreRecord{
         id: initiator.id,
         share_bls_sk: keypair.sk,
@@ -783,10 +777,9 @@ pub async fn remove_initiator<T: EthSpec>(
     // _initiator_store: InitiatorStore,
     db: &Database
 ) -> Result<(), String> {
-    let node = node.read().await;
-    let base_port = node.config.base_address.port();
-    let operator_ips: Vec<Option<IpAddr>> = {
-        node.discovery.query_ips(&operator_public_keys).await
+    let (base_port, operator_ips, beacon_node_urls) = {
+        let node = node.read().await;
+        (node.config.base_address.port(), node.discovery.query_ips(&operator_public_keys).await, node.config.beacon_nodes.clone())
     };
     let initiator_id = initiator.id;
     let operator_ips: Vec<SocketAddr> = operator_ips.iter().map(|x| {
@@ -809,8 +802,6 @@ pub async fn remove_initiator<T: EthSpec>(
         )
             .await,
     );
-    // let mut store = initiator_store.write().await;
-    // let (keypair, va_pk, op_bls_pks) = store.get(&initiator_id).ok_or(format!("can't get initiator store id: {}", initiator_id))?;
     let initiator_store = db.query_initiator_store(initiator_id).await.map_err(|e| format!("Can't find initiator store {:?}", e))?.ok_or(format!("Can't find initiator store"))?;
     let keypair = BlsKeypair::from_components(initiator_store.share_bls_sk.public_key(), initiator_store.share_bls_sk);
     let va_pk = initiator_store.validator_pk;
@@ -821,7 +812,7 @@ pub async fn remove_initiator<T: EthSpec>(
     if mpk != va_pk {
         return Err(format!("validator pks don't match, local stored: {:?}, received {:?}", va_pk, mpk));
     }
-    let _ = get_distributed_voluntary_exit::<SecureNetIOCommittee, SecureNetIOChannel, T>(&signer, &node.config.beacon_nodes, &mpk).await.map_err(|e| {
+    let _ = get_distributed_voluntary_exit::<SecureNetIOCommittee, SecureNetIOChannel, T>(&signer, &beacon_node_urls, &mpk).await.map_err(|e| {
         format!("Can't get distributed voluntary exit {:?}", e)
     })?;
     Ok(())
@@ -838,12 +829,10 @@ pub async fn minipool_deposit<T: EthSpec>(
     db: &Database,
     amount: u64
 ) -> Result<(), String> {
-    let node = node.read().await;
-    let base_port = node.config.base_address.port();
-    let operator_ips: Vec<Option<IpAddr>> = {
-        node.discovery.query_ips(&operator_public_keys).await
+    let (base_port, operator_ips, beacon_node_urls, secret) = {
+        let node = node.read().await;
+        (node.config.base_address.port(), node.discovery.query_ips(&operator_public_keys).await, node.config.beacon_nodes.clone(), node.secret.secret.clone())
     };
-
     if operator_ips.iter().any(|x| x.is_none()) {
         error!("Some operators are not online, it's critical error, minipool exiting");
         // initiator_store .write().await.remove(&initiator_id).ok_or(format!("can't remove initiator store id: {}", initiator_id))?;
@@ -871,11 +860,11 @@ pub async fn minipool_deposit<T: EthSpec>(
         return Err(format!("validator pks don't match, local stored: {:?}, received {:?}", va_pk, mpk));
     }
     let withdraw_cret = convert_address_to_withdraw_crendentials(minipool_address);
-    let deposit_data = get_distributed_deposit::<SecureNetIOCommittee, SecureNetIOChannel, T>(&signer, &withdraw_cret, amount, &node.config.beacon_nodes).await.map_err(|e| {
+    let deposit_data = get_distributed_deposit::<SecureNetIOCommittee, SecureNetIOChannel, T>(&signer, &withdraw_cret, amount, &beacon_node_urls).await.map_err(|e| {
         format!("Can't get distributed deposit data {:?}", e)
     })?;
     let mut request_body = DepositRequest::convert(deposit_data);
-    request_body.sign_hex = Some(request_body.sign_digest(&node.secret.secret)?);
+    request_body.sign_hex = Some(request_body.sign_digest(&secret)?);
     let url = {
         if amount == 1_000_000_000 {
             PRESTAKE_SIGNATURE_URL
@@ -888,10 +877,6 @@ pub async fn minipool_deposit<T: EthSpec>(
     };
     let url_str = API_ADDRESS.get().unwrap().to_owned() + url;
     request_to_web_server(request_body, &url_str).await.map_err(|e| format!("can't send request to server {:?}, url: {}", e, url_str))?;
-    // if amount == 31_000_000_000 {
-    //     // clean initiator store
-    //     let _ = store.remove(&initiator_id);
-    // }
     Ok(())
 }
 

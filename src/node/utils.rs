@@ -9,7 +9,7 @@ use log::{error, info};
 use types::DepositData;
 use url::Url;
 use web3::types::H160;
-
+use crate::node::contract::SELF_OPERATOR_ID;
 
 pub trait FromFile<T: DeserializeOwned> {
     fn from_file<P: AsRef<Path>>(path: P) -> Result<T, String> {
@@ -94,7 +94,9 @@ pub struct DepositRequest {
     pub amount: u64,
     pub signature: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub sign_hex: Option<String>
+    pub sign_hex: Option<String>,
+    #[serde(rename = "operatorId")]
+    pub operator_id: u32,
 }
 
 impl SignDigest for DepositRequest {}
@@ -107,7 +109,8 @@ impl DepositRequest {
             withdrawal_credentials: format!("{0:0x}", deposit.withdrawal_credentials),
             amount: deposit.amount,
             signature: hex::encode(deposit.signature.serialize()),
-            sign_hex: None
+            sign_hex: None,
+            operator_id: *SELF_OPERATOR_ID.get().unwrap()
         }
     }
 }

@@ -253,6 +253,7 @@ impl DvfSigner {
     pub async fn is_aggregator(&self, nonce: u64) -> bool {
         self.operator_committee.get_leader(nonce).await == self.operator_id
             || self.operator_committee.get_leader(nonce + 1).await == self.operator_id
+            || self.operator_committee.get_leader(nonce + 2).await == self.operator_id
     }
 
     pub fn validator_public_key(&self) -> String {

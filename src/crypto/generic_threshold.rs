@@ -1,8 +1,8 @@
 use bls::{Signature, PublicKey, SecretKey, Keypair, SECRET_KEY_BYTES_LEN};
-use types::{Hash256}; 
-use crate::utils::error::{DvfError};
-use log::{error};
-use crate::crypto::define::{MODULUS};
+use types::Hash256;
+use crate::utils::error::DvfError;
+use log::error;
+use crate::crypto::define::MODULUS;
 use num_bigint::ToBigInt;
 use crate::math::polynomial::Polynomial;
 use num_bigint::{BigInt, Sign};

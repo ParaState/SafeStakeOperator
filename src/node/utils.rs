@@ -1,10 +1,10 @@
-use std::fs::File;
+use std::{fs::File, time::Duration};
 use std::path::Path;
 use keccak_hash::keccak;
 use hscrypto::{SecretKey, Signature, Digest};
-use reqwest::Client;
+use reqwest::{Client, Error};
 use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use log::{error, info};
 use types::DepositData;
 use url::Url;
@@ -115,17 +115,37 @@ impl DepositRequest {
     }
 }
 
+#[derive(Deserialize)]
+struct Response {
+    code: usize,
+    message: String,
+    data: String
+}
+
 pub async fn request_to_web_server<T: Serialize>(body: T, url_str: &str) -> Result<(), String> {
-    let client = Client::new();
+    let client = Client::builder().timeout(Duration::from_secs(1)).build().unwrap();
     let url = Url::parse(url_str).map_err(|_e| format!("Can't parse url {}", url_str))?;
-    match client.post(url).json(&body).send().await {
-        Ok(result) => {
-            info!("{:?}", result);
-        }
-        Err(e) => {
-            error!("Can't send request: {}", e);
-        }
-    };
+    for _ in 0..3 {
+        match client.post(url.clone()).json(&body).send().await {
+            Ok(result) => {
+                let response: Result<Response, Error> = result.json().await;
+                match response {
+                    Ok(res) => {
+                        if res.code == 200 {
+                            info!("Successfully send request {}", serde_json::to_string(&body).unwrap());
+                            break;
+                        }
+                    },
+                    Err(e) => {
+                        error!("Can't send request: {:?}, retrying", e);
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Can't send request: {}", e);
+            }
+        };
+    }
     Ok(())
 }
 

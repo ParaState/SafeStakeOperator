@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs::{remove_dir_all, remove_file};
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 

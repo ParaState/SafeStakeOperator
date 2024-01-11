@@ -384,7 +384,9 @@ impl SigningMethod {
             request_body.sign_hex = Some(request_body.sign_digest(secret).map_err(|e| { Error::SignDigestFailed(e)})?);
             log::info!("[Dvf Request] Body: {:?}", &request_body);
             let url_str = API_ADDRESS.get().unwrap().to_owned() + COLLECT_PERFORMANCE_URL;
-            request_to_web_server(request_body, &url_str).await.map_err(|e| Error::Web3SignerRequestFailed(e))?;
+            tokio::spawn( async move {
+                _ = request_to_web_server(request_body, &url_str).await.map_err(|e| Error::Web3SignerRequestFailed(e));
+            });
         }
         Ok(())
     }

@@ -115,15 +115,14 @@ impl DepositRequest {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct Response {
     code: usize,
-    message: String,
-    data: String
+    message: String
 }
 
 pub async fn request_to_web_server<T: Serialize>(body: T, url_str: &str) -> Result<(), String> {
-    let client = Client::builder().timeout(Duration::from_secs(1)).build().unwrap();
+    let client = Client::builder().timeout(Duration::from_secs(3)).build().unwrap();
     let url = Url::parse(url_str).map_err(|_e| format!("Can't parse url {}", url_str))?;
     for _ in 0..3 {
         match client.post(url.clone()).json(&body).send().await {
@@ -134,6 +133,8 @@ pub async fn request_to_web_server<T: Serialize>(body: T, url_str: &str) -> Resu
                         if res.code == 200 {
                             info!("Successfully send request {}", serde_json::to_string(&body).unwrap());
                             break;
+                        } else {
+                            error!("Can't send request, response: {:?}, retrying", serde_json::to_string(&res).unwrap())
                         }
                     },
                     Err(e) => {

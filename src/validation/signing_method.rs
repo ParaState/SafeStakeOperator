@@ -329,7 +329,7 @@ impl SigningMethod {
                     // I set this to be the epoch remaining time for selection proof, so bad committee (VA) might take several mintues
                     // to timeout, making duties of other VAs outdated.)
                     // 2. most duties should complete in a slot
-                    let task_timeout = Duration::from_secs(spec.seconds_per_slot / 2);
+                    let task_timeout = Duration::from_secs(spec.seconds_per_slot * 2 / 3);
                     let timeout = sleep(task_timeout);
                     let work = dvf_signer.threshold_sign(signing_root);
                     let dt : DateTime<Utc> = Utc::now();

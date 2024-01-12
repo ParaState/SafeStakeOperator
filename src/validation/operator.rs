@@ -94,7 +94,7 @@ impl TOperator for RemoteOperator {
         }
         
         let n_try: u64 = 3;
-        let timeout_mill: u64 = 400;
+        let timeout_mill: u64 = 1000;
         let dvf_message = DvfMessage { version: VERSION, validator_id: self.validator_id, message: msg.to_fixed_bytes().to_vec() };
         let serialize_msg = bincode::serialize(&dvf_message).unwrap();
         for i in 0..n_try {
@@ -120,8 +120,8 @@ impl TOperator for RemoteOperator {
                         }
                     }
                 }
-                Err(_) => {
-                    warn!("Retry from operator {}/{}", self.operator_id, self.validator_id);
+                Err(e) => {
+                    warn!("Retry from operator {}/{}, error: {}", self.operator_id, self.validator_id, e);
                 }
             }
             if i < n_try - 1 {

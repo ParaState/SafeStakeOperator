@@ -1,7 +1,7 @@
 version: '3'
 services:
   geth:
-    image: ethereum/client-go:v1.13.5
+    image: ethereum/client-go:v1.13.10
     pull_policy: always
     restart: unless-stopped
     network_mode: "host"
@@ -38,7 +38,7 @@ services:
 
   lighthouse:
     network_mode: "host"
-    image: sigp/lighthouse:v4.5.0
+    image: sigp/lighthouse:v4.6.0-rc.0
     pull_policy: always
     restart: unless-stopped
     volumes:
@@ -47,11 +47,9 @@ services:
     command:
       [
         "lighthouse",
-        #lighthouse bn --builder https://mainnet-builder.test
         "bn",
         "--network=${LIGHTHOUSE_NETWORK}",
         "--datadir=/data/lighthouse",
-        # "--jwt-secrets=/data/jwt/jwtsecret",
         "--execution-jwt=/data/jwt/jwtsecret",
         "--http",
         "--listen-address=0.0.0.0",
@@ -59,9 +57,7 @@ services:
         "--http-port=5052",
         "--staking",
         "--http-allow-sync-stalled",
-        "--merge",
         "--execution-endpoint=http://127.0.0.1:8551",
-        # "--eth1-endpoints=http://127.0.0.1:8545",
         "--metrics",
         "--metrics-address=0.0.0.0",
         "--subscribe-all-subnets",
@@ -162,7 +158,7 @@ services:
       - "8546"
       - "30303"
   erigon:
-    image: thorax/erigon:v2.48.1
+    image: thorax/erigon:v2.56.2
     pull_policy: always
     restart: unless-stopped
     network_mode: "host"

@@ -1,7 +1,7 @@
 version: '3'
 services:
   geth:
-    image: ethereum/client-go:v1.13.5
+    image: ethereum/client-go:v1.13.10
     pull_policy: always
     restart: unless-stopped
     network_mode: "host"
@@ -20,6 +20,9 @@ services:
       "--authrpc.port=8551",
       "--discovery.port=30303",
       "--port=30303",
+      "--ws",
+      "--ws.addr=0.0.0.0",
+      "--ws.port=8546",
       "--datadir=/data/geth",
       "--pprof",
       "--pprof.addr=0.0.0.0",
@@ -30,13 +33,12 @@ services:
     expose:
       - "8545"
       - "8546"
-      - "8547"
       - "8551"
       - "30303"
 
   lighthouse:
     network_mode: "host"
-    image: sigp/lighthouse:v4.5.0
+    image: sigp/lighthouse:v4.6.0-rc.0
     pull_policy: always
     restart: unless-stopped
     volumes:
@@ -55,15 +57,13 @@ services:
         "--http-port=5052",
         "--staking",
         "--http-allow-sync-stalled",
-        "--merge",
         "--execution-endpoint=http://127.0.0.1:8551",
         "--metrics",
         "--metrics-address=0.0.0.0",
         "--subscribe-all-subnets",
         "--import-all-attestations",
         "--validator-monitor-auto",
-        "--checkpoint-sync-url=https://goerli.checkpoint-sync.ethpandaops.io",
-        "--terminal-total-difficulty-override=${TTD}"
+        "--checkpoint-sync-url=https://checkpoint-sync.holesky.ethpandaops.io",
       ]
     expose:
       - "5052"
@@ -124,11 +124,13 @@ services:
       "--JsonRpc.Enabled=true",
       "--JsonRpc.EngineHost=0.0.0.0",
       "--JsonRpc.EnginePort=8551",
+      "--JsonRpc.WebSocketsPort=8546",
       "--JsonRpc.JwtSecretFile=/data/jwt/jwtsecret",
       "--datadir=/data/nethermind",
     ]
     expose:
       - "8551"
+      - "8546"
       - "30303"
   besu:
     image: hyperledger/besu
@@ -143,15 +145,19 @@ services:
       "--network=${BESU_NETWORK}",
       "--rpc-http-enabled=true",
       "--engine-rpc-port=8551",
+      "--rpc-ws-enabled",
+      "--rpc-ws-host=0.0.0.0",
+      "--rpc-ws-port=8546",
       "--engine-jwt-secret=/data/jwt/jwtsecret",
       "--data-storage-format=BONSAI",
       "--data-path=/data/besu",
     ]
     expose:
       - "8551"
+      - "8546"
       - "30303"
   erigon:
-    image: thorax/erigon:v2.48.1
+    image: thorax/erigon:v2.56.2
     pull_policy: always
     restart: unless-stopped
     network_mode: "host"
@@ -162,6 +168,7 @@ services:
     command: [
       "--chain=${ERIGON_NETWORK}",
       "--authrpc.port=8551",
+      "--ws",
       "--authrpc.jwtsecret=/data/jwt/jwtsecret",
       "--datadir=/data/erigon",
       "--prune=htc",
@@ -169,6 +176,7 @@ services:
     ]
     expose:
       - "8551"
+      - "8545"
       - "30303"
 volumes:
   geth-data:

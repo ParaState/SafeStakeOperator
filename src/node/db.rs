@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 
 use rusqlite::{Connection, DropBehavior, params, Result};
@@ -6,6 +7,8 @@ use tokio::sync::oneshot;
 use log::{error};
 use crate::node::contract::{Operator, Validator, Initiator};
 use web3::types::Address;
+
+use super::contract::InitiatorStoreRecord;
 
 pub type DbError = rusqlite::Error;
 type DbResult<T> = Result<T, DbError>;
@@ -34,7 +37,10 @@ pub enum DbCommand {
     InsertContractCommand(u64, String),
     GetContractCommand(oneshot::Sender<DbResult<(String, u32)>>),
     DeleteContractCommand(u32),
-    UpdatetimeContractCommand(u32)
+    UpdatetimeContractCommand(u32),
+    DeleteInitiator(u32, oneshot::Sender<DbResult<Option<Initiator>>>),
+    InsertInitiatorStore(InitiatorStoreRecord),
+    QueryInitiatorStore(u32, oneshot::Sender<DbResult<Option<InitiatorStoreRecord>>>)
 }
 
 #[derive(Clone)]
@@ -108,6 +114,21 @@ impl Database {
             sequence_num INTEGER NOT NULL
         )";
 
+        let create_initiator_store_sql = "CREATE TABLE IF NOT EXISTS initiator_store_record(
+            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            initiator_id INTEGER NOT NULL,
+            share_bls_sk CHARACTER(64) NOT NULL,
+            validator_pk CHARACTER(96) NOT NULL
+        )";
+
+        let create_initiator_store_oppk_sql = "CREATE TABLE IF NOT EXISTS initiator_store_record_oppk(
+            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            operator_id INTEGER NOT NULL,
+            share_bls_pk CHARACTER(96) NOT NULL,
+            record_id INTEGER NOT NULL,
+            CONSTRAINT initiator_store_constraint FOREIGN KEY (record_id) REFERENCES initiator_store_record(id) ON DELETE CASCADE
+        )";
+
         conn.execute(create_operators_sql, [],)?;
         conn.execute(create_validators_sql, [],)?;
         conn.execute(create_releation_sql, [],)?;
@@ -116,6 +137,8 @@ impl Database {
         conn.execute(create_contract_command_sql, [])?;
         conn.execute(create_contract_cmd_sequence_sql, [])?;
         conn.execute(create_update_time_trigger_sql, [])?;
+        conn.execute(create_initiator_store_sql, [])?;
+        conn.execute(create_initiator_store_oppk_sql, [])?;
         let (tx, mut rx) = channel(1000);
 
         tokio::spawn(async move {
@@ -194,6 +217,17 @@ impl Database {
                     }
                     DbCommand::UpdatetimeContractCommand(id) => {
                         updatetime_contract_command(&conn, id);
+                    }
+                    DbCommand::DeleteInitiator(id, sender) => {
+                        let response = delete_initiator(&conn, id);
+                        let _ = sender.send(response);
+                    }
+                    DbCommand::InsertInitiatorStore(record) => {
+                        insert_initiator_store(&mut conn, record);
+                    }
+                    DbCommand::QueryInitiatorStore(initiator_id, sender) => {
+                        let response = query_initiator_store(&mut conn, initiator_id);
+                        let _ = sender.send(response);
                     }
                 }
             }
@@ -347,6 +381,28 @@ impl Database {
         if let Err(e) = self.channel.send(DbCommand::DeleteContractCommand(id)).await {
             panic!("Failed to send insert validator command to store: {}", e);
         }
+    }
+
+    pub async fn delete_initiator(&self, id: u32) -> DbResult<Option<Initiator>>{
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self.channel.send(DbCommand::DeleteInitiator(id, sender)).await {
+            panic!("Failed to send delete initiator command to store: {}", e);
+        }
+        receiver.await.expect("Failed to receive reply to delete initiator command from db")
+    }
+
+    pub async fn insert_initiator_store(&self, record: InitiatorStoreRecord) {
+        if let Err(e) = self.channel.send(DbCommand::InsertInitiatorStore(record)).await {
+            panic!("Failed to send insert initiator store command to database: {}", e);
+        }
+    }
+
+    pub async fn query_initiator_store(&self, initiator_id: u32) -> DbResult<Option<InitiatorStoreRecord>> {
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self.channel.send(DbCommand::QueryInitiatorStore(initiator_id, sender)).await {
+            panic!("Failed to send query initiator store command to store: {}", e);
+        }
+        receiver.await.expect("Failed to receive reply of query initiator store from db")
     }
 }
 
@@ -731,14 +787,110 @@ fn updatetime_contract_command(conn: &Connection, id: u32) {
     }
 }
 
+fn delete_initiator(conn: &Connection, id: u32) -> DbResult<Option<Initiator>>{
+    let initiator = query_initiator(conn, id)?;
+    match initiator {
+        Some(_) => {
+            if let Err(e) = conn.execute("DELETE FROM initiators WHERE id = ?1", params![id]) {
+                error!("Can't delete from initiators {} id {}", e, id);
+            }
+        }
+        None => {
+            error!("can't find initiator {} when delete it", id)
+        }
+    }
+    Ok(initiator)
+}
+
+fn insert_initiator_store(conn: &mut Connection, record: InitiatorStoreRecord) {
+    match conn.transaction() {
+        Ok(mut tx) => {
+            tx.set_drop_behavior(DropBehavior::Commit);
+            if let Err(e) = &tx.execute("insert into initiator_store_record(initiator_id, share_bls_sk, validator_pk) values(?1, ?2, ?3)", params![&record.id, hex::encode(&record.share_bls_sk.serialize()), hex::encode(&record.validator_pk.serialize())]) {
+                error!("can't  insert initiator store {} {}", record.id, e);
+                let _ = &tx.set_drop_behavior(DropBehavior::Rollback);
+            }
+            let id = tx.last_insert_rowid();
+            for (op_id, share_bls_pk) in &record.share_bls_pks {
+                if let Err(e) = &tx.execute("insert into initiator_store_record_oppk(operator_id, share_bls_pk, record_id) values (?1, ?2, ?3)", params![op_id, hex::encode(&share_bls_pk.serialize()), id]) {
+                    error!("can't  insert initiator store {} {}", record.id, e);
+                    let _ = &tx.set_drop_behavior(DropBehavior::Rollback);
+                }
+            }
+            if let Err(e) = tx.finish() {
+                error!("Can't finish the transaction {}", e);
+            }
+        },
+        Err(e) => {
+            error!("Can't create a transaction for database {}", e);
+        }
+    }
+    
+}
+
+fn query_initiator_store(conn: &Connection, initiator_id: u32) -> DbResult<Option<InitiatorStoreRecord>> {
+    match conn.prepare("select A.share_bls_sk, A.validator_pk, B.operator_id, B.share_bls_pk from initiator_store_record as a join initiator_store_record_oppk as b on A.id = B.record_id where A.initiator_id =(?)") {
+        Ok(mut stmt) => {
+            let mut rows = stmt.query([initiator_id]).unwrap();
+            let mut op_pks: HashMap<u64, bls::PublicKey> = HashMap::new();
+            let mut sk: Option<bls::SecretKey> = None;
+            let mut va_pk: Option<bls::PublicKey> = None;
+            while let Some(row) = rows.next().unwrap() {
+                if sk.is_none() {
+                    let share_bls_sk: String = row.get(0).unwrap();
+                    let share_bls_sk = bls::SecretKey::deserialize(&hex::decode(share_bls_sk).unwrap()).unwrap();
+                    sk = Some(share_bls_sk);
+                }
+                if va_pk.is_none() {
+                    let validator_pk: String = row.get(1).unwrap();
+                    let validator_pk = bls::PublicKey::deserialize(&hex::decode(validator_pk).unwrap()).unwrap();
+                    va_pk = Some(validator_pk);
+                }
+                
+                let operator_id: u64 = row.get(2).unwrap();
+                let share_bls_pk: String = row.get(3).unwrap();
+                let op_pk = bls::PublicKey::deserialize(&hex::decode(share_bls_pk).unwrap()).unwrap();
+                op_pks.insert(operator_id, op_pk);
+            }
+            if sk.is_none() {
+                return Ok(None);
+            }
+            Ok(Some(InitiatorStoreRecord { id: initiator_id, share_bls_sk: sk.unwrap(), validator_pk: va_pk.unwrap(), share_bls_pks: op_pks })) 
+        }
+        Err(e) => {
+            error!("Can't prepare statement {}", e);
+            Err(e)
+        }
+    }
+}
+        
+
 #[tokio::test]
 async fn test_database() {
-    use tokio::time::{Duration};
-    let db = Database::new("./test.db").unwrap();
-    let mut query_interval = tokio::time::interval(Duration::from_secs(10));
-    loop {
-        
-        query_interval.tick().await;
-        println!("hello world");
+    use crate::crypto::ThresholdSignature;
+    use crate::node::contract::InitiatorStoreRecord;
+    use std::collections::HashMap;
+    let mut logger = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
+    logger.format_timestamp_millis();
+    logger.init();
+    let mut sig = ThresholdSignature::new(3);
+    let keys = sig.key_gen(&[1,2,3,4]).unwrap();
+    if std::fs::metadata("/tmp/test.db").is_ok() {
+        std::fs::remove_file("/tmp/test.db").unwrap();
     }
+    let _ = Database::new("/tmp/test.db").unwrap();
+    let mut pks = HashMap::new();
+    for (id, key_pair) in &keys.1 {
+        pks.insert(*id, key_pair.pk.clone());
+    }
+    let initiator_store = InitiatorStoreRecord {
+        id: 1,
+        share_bls_sk: keys.0.sk.clone(),
+        validator_pk: keys.0.pk.clone(),
+        share_bls_pks: pks
+    };
+    let mut conn = Connection::open("/tmp/test.db").unwrap();
+    insert_initiator_store(&mut conn, initiator_store.clone());
+    let record = query_initiator_store(&mut conn, 1).unwrap().unwrap();
+    assert_eq!(record.share_bls_sk.serialize().as_bytes(), initiator_store.share_bls_sk.serialize().as_bytes());
 }

@@ -42,24 +42,6 @@ Light mode contains only the OperatorNode service, the following list of program
 
 > Geth/Nethermind/Besu/Erigon service and Lighthouse service can run on other hosts. Users should configure the `beacon node endpoint` (discussed later) in order to connect to Lighthouse's beacon node instance. The purpose of this is to make the architecture clearer and easier to scale operator nodes. And the cost efficiency ratio of infrastructure will be higher.
 
-### Preparation: Get your Infura WS\_URL
-
-* Follow the instructions found at [https://docs.infura.io/infura/](https://docs.infura.io/infura/)
-* Create Infura account [here](https://app.infura.io/register) and login the account
-* Create new key
-
-<figure><img src="imgs/infura-step1.png" alt=""><figcaption></figcaption></figure>
-
-* Select "WEBSOCKETS"
-<figure><img src="imgs/infura-step2.png" alt=""><figcaption></figcaption></figure>
-
-* Select "Görli" network under "Ethereum"
-
-<figure><img src="imgs/infura-step3.png" alt=""><figcaption></figcaption></figure>
-
-* Copy your "WS\_URL", mkae sure the url begins with wss:// instead of https://
-
-<figure><img src="imgs/infura-step4.png" alt=""><figcaption></figcaption></figure>
 
 ### Deployment
 
@@ -73,6 +55,7 @@ Log in to your host cloud service provider, open the following firewall inbound 
 | Inbound/Ingress  | TCP & UDP   | 30303 | 0.0.0.0/0 | Geth/Nethermind/Besu/Erigon p2p |
 | Inbound/Ingress  | TCP & UDP   | 9000  | 0.0.0.0/0 | Lighthouse p2p |
 | Inbound/Ingress  | TCP         | 5052  | Internal  | Operator - Lighthouse |
+| Inbound/Ingress  | TCP         | 8546  | Internal  | Operator - Geth/Nethermind/Besu websocket (port 8545 for Erigon)|
 | Inbound/Ingress  | TCP         | 8551  | Internal  | Lighthouse - Geth/Nethermind/Besu/Erigon |
 | Inbound/Ingress  | TCP         | 26000 | 0.0.0.0/0 | hotstuff consensus |
 | Inbound/Ingress  | TCP         | 26001 | 0.0.0.0/0 | hotstuff consensus |
@@ -162,12 +145,12 @@ Now that we have open the `.env` file, we will update the values based on our ow
 
 **Leave these variables unchanged now**:
 ```bash
-GETH_NETWORK=goerli
-NETHERMIND_NETWORK=goerli
-BESU_NETWORK=goerli
-ERIGON_NETWORK=goerli
-LIGHTHOUSE_NETWORK=prater
-OPERATOR_NETWORK=prater
+GETH_NETWORK=holesky
+NETHERMIND_NETWORK=holesky
+BESU_NETWORK=holesky
+ERIGON_NETWORK=holesky
+LIGHTHOUSE_NETWORK=holesky
+OPERATOR_NETWORK=holesky
 IMAGE_TAG=v1.2-testnet
 REGISTRY_CONTRACT_ADDRESS=f31605c163b54C00371b10af21E8eDa32B969F21
 NETWORK_CONTRACT_ADDRESS=C1b4AA96afA5D3566A86920e69Fc6C274d54F3B4
@@ -184,7 +167,7 @@ OPERATOR_ID=<YOUR_OPERATOR_ID>
 **Update these variables with yours**
 
 ```bash
-WS_URL= #YOUR Infura WSS URL
+WS_URL= #YOUR WS URL: ws://<geth/nethermind/besu node ip>:8546 or ws://<erigon node ip>:8545
 BEACON_NODE_ENDPOINT= # The beacon node endpoint. Depending on whether you are running single-node mode or multi-node mode, fill in the correct Lighthouse beacon node service url, e.g. http://127.0.0.1:5052 for a local node
 ```
 
@@ -209,7 +192,7 @@ Output:
 dvf-dvf_key_tool-1  | INFO: node public key AtzozvDHiWUpO+oJph2ikv+EyBN5pdBXsfgZqLi0+Yqd
 dvf-dvf_key_tool-1 exited with code 0
 ```
-Save the public key, which will be used later. Or you can find the public key in the "name" field of the file `/data/operator/v1/prater/node_key.json`
+Save the public key, which will be used later. Or you can find the public key in the "name" field of the file `/data/operator/v1/holesky/node_key.json`
 
 #### 11. Go to [SafeStake website](https://testnet.safestake.xyz/):
 * Click "Join As Operator".
@@ -271,7 +254,7 @@ It is a good practice to back up your operator private key file
 > **Keep it safe and put it in a safe place!**
 
 ```
-/data/operator/v1/prater/node_key.json
+/data/operator/v1/holesky/node_key.json
 ```
 
 **`Your SafeStake Operator Node is now configured`**
@@ -282,9 +265,9 @@ then you may go to [SafeStake website](https://testnet.safestake.xyz/) to regist
 
 If you are using our default settings, all data other than configration files is stored in the folder `/data`. It is possible for Geth/Nethermind/Besu/Erigon and lighthouse to resync data in a new machine. For operator, it is important to always backup and copy the folder `/data/operator/` to the new machine before you start operator in the new machine.
 
-Some description of the folders and files under `/data/operator/v1/prater/`:
+Some description of the folders and files under `/data/operator/v1/holesky/`:
 ```
-── prater
+── holesky
     ├── contract_record.yml # record the current synced block number
     ├── dvf_node_db # hotstuff consensus files
     ├── node_key.json # operator's public and private key
@@ -299,12 +282,9 @@ graph TD;
     B --> |No| C[register a validator\n in our website and \n choose your operator];
     B --> |Yes| D[check if the following errors \nshown in the log of first 100 lines];
     D --> |?| E[Wrong scheme: https];
-    E --> |solution| F["WS_URL in .env file should be set\n beginning with wss:// instead of https://"];
-    F --> G[change the block number in the file\n /data/operator/v1/prater/contract_record.yml to \na block number before the registration of the validator];
+    E --> |solution| F["WS_URL in .env file should be set\n beginning with ws:// or wss:// instead of https://"];
+    F --> G[change the block number in the file\n /data/operator/v1/holesky/contract_record.yml to \na block number before the registration of the validator];
     G --> H[restart operator];
-    D --> |?| I["Ssl(Error { code : ErrorCode(1)"];
-    I --> |solution| J[ws is not supported, use\n wss instead of ws for WS_URL];
-    J --> G;
     D --> |?| K["Failed to connect to {ip}:26000"];
     K --> |solution| L[need to open the port 26000 to the internet,\n also carefully check if other firewall rules shown\n in the doc are set correctly in your server];
 ```

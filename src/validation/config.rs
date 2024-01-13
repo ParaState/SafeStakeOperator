@@ -260,7 +260,15 @@ impl Config {
             );
             config.beacon_nodes = vec![SensitiveUrl::parse(&server)
                 .map_err(|e| format!("Unable to parse beacon node URL: {:?}", e))?];
+        } else {
+            error!(
+                log,
+                "beacon-nodes is not configured";
+                "msg" => "please use --beacon--nodes arg"
+            );
+            panic!("beacon-nodes is none");
         }
+        config.dvf_node_config = config.dvf_node_config.set_beacon_nodes(config.beacon_nodes.clone());
 
         if cli_args.is_present("delete-lockfiles") {
             warn!(

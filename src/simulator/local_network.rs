@@ -19,6 +19,7 @@ use crate::simulator::ValidatorConfig;
 use crate::node::config::DEFAULT_BASE_PORT;
 
 const BOOTNODE_PORT: u16 = 42424;
+const QUIC_PORT: u16 = 43424;
 pub const INVALID_ADDRESS: &str = "http://127.0.0.1:42423";
 
 /// Helper struct to reduce `Arc` usage.
@@ -57,10 +58,14 @@ impl<E: EthSpec> LocalNetwork<E> {
         context: RuntimeContext<E>,
         mut beacon_config: ClientConfig,
     ) -> Result<Self, String> {
-        beacon_config.network.discovery_port = BOOTNODE_PORT;
-        beacon_config.network.libp2p_port = BOOTNODE_PORT;
-        beacon_config.network.enr_udp_port = Some(BOOTNODE_PORT);
-        beacon_config.network.enr_tcp_port = Some(BOOTNODE_PORT);
+        beacon_config.network.set_ipv4_listening_address(
+            std::net::Ipv4Addr::UNSPECIFIED,
+            BOOTNODE_PORT,
+            BOOTNODE_PORT,
+            QUIC_PORT,
+        );
+        beacon_config.network.enr_udp4_port = Some(BOOTNODE_PORT);
+        beacon_config.network.enr_tcp4_port = Some(BOOTNODE_PORT);
         beacon_config.network.discv5_config.table_filter = |_| true;
         let beacon_node =
             LocalBeaconNode::production(context.service_context("boot_node".into()), beacon_config)
@@ -91,7 +96,7 @@ impl<E: EthSpec> LocalNetwork<E> {
     }
 
     /// Adds a beacon node to the network, connecting to the 0'th beacon node via ENR.
-    pub async fn add_beacon_node(&self, mut beacon_config: ClientConfig) -> Result<(), String> {
+    pub async fn add_beacon_node(&self, mut beacon_config: ClientConfig, is_proposer: bool) -> Result<(), String> {
         let self_1 = self.clone();
         println!("Adding beacon node..");
         {
@@ -106,11 +111,16 @@ impl<E: EthSpec> LocalNetwork<E> {
                     .expect("bootnode must have a network"),
             );
             let count = self.beacon_node_count() as u16;
-            beacon_config.network.discovery_port = BOOTNODE_PORT + count;
-            beacon_config.network.libp2p_port = BOOTNODE_PORT + count;
-            beacon_config.network.enr_udp_port = Some(BOOTNODE_PORT + count);
-            beacon_config.network.enr_tcp_port = Some(BOOTNODE_PORT + count);
+            beacon_config.network.set_ipv4_listening_address(
+                std::net::Ipv4Addr::UNSPECIFIED,
+                BOOTNODE_PORT + count,
+                BOOTNODE_PORT + count,
+                QUIC_PORT + count,
+            );
+            beacon_config.network.enr_udp4_port = Some(BOOTNODE_PORT + count);
+            beacon_config.network.enr_tcp4_port = Some(BOOTNODE_PORT + count);
             beacon_config.network.discv5_config.table_filter = |_| true;
+            beacon_config.network.proposer_only = is_proposer;
         }
 
         let mut write_lock = self_1.beacon_nodes.write();

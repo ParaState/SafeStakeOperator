@@ -1,7 +1,7 @@
 use lighthouse_network::discv5::{
     self,
     enr::{CombinedKey, Enr, EnrPublicKey, NodeId},
-    Discv5, Discv5ConfigBuilder, Discv5Event,
+    Discv5, Discv5ConfigBuilder, Discv5Event, ListenConfig
 };
 use hsconfig::Secret;
 use std::{
@@ -84,9 +84,9 @@ impl Discovery {
         info!("Node public key: {}", secret.name.encode_base64());
         info!("Node id: {}", base64::encode(local_enr.node_id().raw()));
         info!("Node ENR: {:?}", local_enr.to_base64());
-
+        
         // default configuration without packet filtering
-        let config = Discv5ConfigBuilder::new().build();
+        let config = Discv5ConfigBuilder::new(ListenConfig::Ipv4 { ip: "0.0.0.0".parse().unwrap(), port: udp_port }).build();
 
         // construct the discv5 server
         let mut discv5: Discv5 = Discv5::new(local_enr.clone(), enr_key, config).unwrap();
@@ -104,8 +104,9 @@ impl Discovery {
 
         let discv5_service_handle = tokio::spawn(async move {
             // start the discv5 service
-            let listen_addr = SocketAddr::new("0.0.0.0".parse().expect("valid ip"), udp_port);
-            let _ = discv5.start(listen_addr).await;
+            // let listen_addr = SocketAddr::new("0.0.0.0".parse().expect("valid ip"), udp_port);
+            // let _ = discv5.start(listen_addr).await;
+            let _ = discv5.start().await;
             let mut event_stream = discv5.event_stream().await.unwrap();
             loop {
                 tokio::select! {
@@ -185,13 +186,13 @@ impl Discovery {
     }
 
     pub async fn update_ip(&self, pk: &[u8]) -> Option<IpAddr> {
-        let curve_pk = secp256k1::PublicKey::from_slice(pk);
-        if curve_pk.is_err() {
-            error!("Failed to construct secp256k1 public key from the slice");
-            return None;
-        };
-        let curve_pk = curve_pk.unwrap();
-        let node_id = NodeId::from(curve_pk);
+        // let curve_pk = secp256k1::PublicKey::from_slice(pk);
+        // if curve_pk.is_err() {
+        //     error!("Failed to construct secp256k1 public key from the slice");
+        //     return None;
+        // };
+        // let curve_pk = curve_pk.unwrap();
+        let node_id = NodeId::parse( &keccak_hash::keccak(pk).0).unwrap();
         self.discover(node_id).await;
         // Randomly pick a boot node
         let boot_idx = rand::random::<usize>() % self.boot_enrs.len();

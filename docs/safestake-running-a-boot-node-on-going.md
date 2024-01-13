@@ -27,9 +27,9 @@ The duty agreement among operators uses Hotstuff consensus and runs on a p2p net
 
 **Set firewall rule**
 
-| Port range | Protocol | Source    |
-| ---------- | -------- | --------- |
-| 9005       | UDP      | 0.0.0.0/0 |
+| Port range | Protocol  | Source    |
+| ---------- | --------  | --------- |
+| 9005       | TCP & UDP | 0.0.0.0/0 |
 
 **Installation**
 
@@ -60,7 +60,7 @@ sudo docker compose -f docker-compose-boot.yml up -d
 Get root node enr
 
 ```
-docker-compose -f docker-compose-boot.yml logs -f dvf_root_node | grep enr
+docker compose -f docker-compose-boot.yml logs -f dvf_root_node | grep enr
 ```
 
 output

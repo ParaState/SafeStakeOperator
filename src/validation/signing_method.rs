@@ -329,7 +329,7 @@ impl SigningMethod {
                     // I set this to be the epoch remaining time for selection proof, so bad committee (VA) might take several mintues
                     // to timeout, making duties of other VAs outdated.)
                     // 2. most duties should complete in a slot
-                    let task_timeout = Duration::from_secs(spec.seconds_per_slot / 2);
+                    let task_timeout = Duration::from_secs(spec.seconds_per_slot * 2 / 3);
                     let timeout = sleep(task_timeout);
                     let work = dvf_signer.threshold_sign(signing_root);
                     let dt : DateTime<Utc> = Utc::now();
@@ -384,7 +384,9 @@ impl SigningMethod {
             request_body.sign_hex = Some(request_body.sign_digest(secret).map_err(|e| { Error::SignDigestFailed(e)})?);
             log::info!("[Dvf Request] Body: {:?}", &request_body);
             let url_str = API_ADDRESS.get().unwrap().to_owned() + COLLECT_PERFORMANCE_URL;
-            request_to_web_server(request_body, &url_str).await.map_err(|e| Error::Web3SignerRequestFailed(e))?;
+            tokio::spawn( async move {
+                _ = request_to_web_server(request_body, &url_str).await.map_err(|e| Error::Web3SignerRequestFailed(e));
+            });
         }
         Ok(())
     }

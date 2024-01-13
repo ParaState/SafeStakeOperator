@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use lighthouse_network::discv5::enr::EnrPublicKey;
-use lighthouse_network::discv5::{enr, enr::CombinedKey, Discv5, Discv5ConfigBuilder, Discv5Event};
+use lighthouse_network::discv5::{enr, enr::CombinedKey, Discv5, Discv5ConfigBuilder, Discv5Event, ListenConfig};
 use dvf::utils::ip_util::get_public_ip;
 use futures::{prelude::*};
 use hsconfig::Export as _;
@@ -129,14 +129,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     info!("Boot node id: {}", base64::encode(local_enr.node_id().raw()));
     info!("Boot node ENR: {:?}", local_enr.to_base64());
 
-    let config = Discv5ConfigBuilder::new().build();
+    let config = Discv5ConfigBuilder::new(ListenConfig::Ipv4 { ip: "0.0.0.0".parse().unwrap(), port: port }).build();
 
     // construct the discv5 server
     let mut discv5: Discv5 = Discv5::new(local_enr.clone(), enr_key, config).unwrap();
 
     // start the discv5 service
     let listen_addr = SocketAddr::new("0.0.0.0".parse().expect("valid ip"), port);
-    let _ = discv5.start(listen_addr).await;
+    let _ = discv5.start().await;
 
     // construct a 60 second interval to search for new peers.
     let mut query_interval = tokio::time::interval(Duration::from_secs(60));
@@ -191,22 +191,5 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 };
             }
         }
-    }
-}
-
-/// tracing_test https://docs.rs/tracing-test/latest/tracing_test/
-/// https://stackoverflow.com/questions/72884779/how-to-print-tracing-output-in-tests
-#[cfg(test)]
-mod tests {
-    use tracing::debug;
-    use tracing_test::traced_test;
-
-    // Note this useful idiom: importing names from outer (for mod tests) scope.
-    use super::*;
-
-    #[traced_test]
-    #[test]
-    fn test() {
-        println!("Testing")
     }
 }

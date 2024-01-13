@@ -4,7 +4,7 @@ use dvf::validation::operator::{LocalOperator};
 use dvf::crypto::{ThresholdSignature};
 use std::sync::Arc;
 use types::Hash256;
-use eth2_hashing::{Context, Sha256Context};
+use ethereum_hashing::{Context, Sha256Context};
 use futures::executor::block_on; 
 
 #[cfg(feature = "fake_committee")]

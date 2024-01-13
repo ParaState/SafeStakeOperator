@@ -9,7 +9,7 @@ use log::{warn};
 use lazy_static::lazy_static;
 use lighthouse_network::discv5::enr::{CombinedKey, Enr};
 use std::fs::File;
-
+use sensitive_url::SensitiveUrl;
 /// The file name for the serialized `OperatorCommitteeDefinition` struct.
 pub const NODE_KEY_FILENAME: &str = "node_key.json";
 pub const DB_FILENAME: &str = "dvf_node_db";
@@ -86,17 +86,13 @@ pub fn base_to_signature_addr(base_addr: SocketAddr) -> SocketAddr {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct NodeConfig {
-    // pub id: u64,
     pub base_address: SocketAddr,
-    // pub transaction_address: SocketAddr,
-    // pub mempool_address: SocketAddr,
-    // pub consensus_address: SocketAddr,
-    // pub signature_address: SocketAddr,
     pub base_store_path: PathBuf,
     pub node_key_path: PathBuf,
     pub validator_dir: PathBuf,
     pub secrets_dir: PathBuf,
     pub boot_enrs: Vec<Enr<CombinedKey>>,
+    pub beacon_nodes: Vec<SensitiveUrl>
 }
 
 impl Default for NodeConfig {
@@ -134,17 +130,13 @@ impl NodeConfig {
             .expect("Unable to parse boot enr");
 
         Self {
-            // id,
             base_address: SocketAddr::new(ip.clone(), base_port),
-            // transaction_address: SocketAddr::new(ip.clone(), base_port + TRANSACTION_PORT_OFFSET),
-            // mempool_address: SocketAddr::new(ip.clone(), base_port + MEMPOOL_PORT_OFFSET),
-            // consensus_address: SocketAddr::new(ip.clone(), base_port + CONSENSUS_PORT_OFFSET),
-            // signature_address: SocketAddr::new(ip.clone(), base_port + SIGNATURE_PORT_OFFSET),
             base_store_path,
             node_key_path,
             validator_dir,
             secrets_dir,
             boot_enrs,
+            beacon_nodes: Vec::new()
         }
     }
 
@@ -183,6 +175,11 @@ impl NodeConfig {
 
     pub fn set_store_path(mut self, base_dir: PathBuf) -> Self {
         self.base_store_path = base_dir.join(DB_FILENAME);
+        self
+    }
+
+    pub fn set_beacon_nodes(mut self, beacon_nodes: Vec<SensitiveUrl>) -> Self {
+        self.beacon_nodes = beacon_nodes;
         self
     }
 }

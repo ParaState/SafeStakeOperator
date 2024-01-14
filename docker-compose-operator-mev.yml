@@ -1,7 +1,7 @@
 version: '3'
 services:
   geth:
-    image: ethereum/client-go:v1.13.4
+    image: ethereum/client-go:v1.13.10
     pull_policy: always
     restart: unless-stopped
     network_mode: "host"

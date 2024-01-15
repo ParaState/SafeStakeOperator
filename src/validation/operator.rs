@@ -94,7 +94,7 @@ impl TOperator for RemoteOperator {
         }
         
         let n_try: u64 = 3;
-        let timeout_mill: u64 = 1000;
+        let timeout_mill: u64 = 600;
         let dvf_message = DvfMessage { version: VERSION, validator_id: self.validator_id, message: msg.to_fixed_bytes().to_vec() };
         let serialize_msg = bincode::serialize(&dvf_message).unwrap();
         for i in 0..n_try {

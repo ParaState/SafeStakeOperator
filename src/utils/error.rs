@@ -48,7 +48,15 @@ pub enum DvfError {
     /// Validator store is not construted yet
     ValidatorStoreNotReady,
     /// Unknown error
-    Unknown
+    Unknown,
+    /// BeaconNode client error
+    BeaconNodeClientError,
+    /// Get beacon genesis error
+    BeaconNodeGenesisError,
+    /// Get beacon validator data error
+    BeaconNodeValidatorError(String),
+    /// Get beacon state fork error
+    BeaconNodeStateForkError(String)
 }
 
 impl From<BlsError> for DvfError {

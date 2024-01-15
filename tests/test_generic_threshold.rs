@@ -1,7 +1,7 @@
 use dvf::crypto::{ThresholdSignature};
 use bls::{Signature, PublicKey};
 use types::{Hash256}; 
-use eth2_hashing::{Context, Sha256Context};
+use ethereum_hashing::{Context, Sha256Context};
 
 #[test]
 fn test_generic_threshold() {

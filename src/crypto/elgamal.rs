@@ -1,5 +1,5 @@
 use secp256k1::{All, Secp256k1, SecretKey, PublicKey, ecdh};
-use sha256::{digest};
+use sha256::digest;
 use aes_gcm::{Aes128Gcm, Key, Nonce, Error};
 use aes_gcm::aead::{Aead, NewAead};
 use rand::Rng;

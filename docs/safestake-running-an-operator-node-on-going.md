@@ -104,7 +104,7 @@ git clone --recurse-submodules https://github.com/ParaState/SafeStakeOperator.gi
 ```
 
 #### 8. Running Geth/Nethermind/Besu/Erigon & Lighthouse Service
-NOTE: This step is to provide a quick way to setup and run the execution client and consensus client of goerli testnet. If you already have a node running execution client and consensus client, you can skip this step.
+NOTE: This step is to provide a quick way to setup and run the execution client and consensus client. If you already have a node running execution client and consensus client, you can skip this step.
 
 ```bash
 cd dvf
@@ -194,12 +194,12 @@ dvf-dvf_key_tool-1 exited with code 0
 ```
 Save the public key, which will be used later. Or you can find the public key in the "name" field of the file `/data/operator/v1/holesky/node_key.json`
 
-#### 11. Go to [SafeStake website](https://testnet.safestake.xyz/):
+#### 11. Go to [SafeStake website](https://holesky.safestake.xyz/):
 * Click "Join As Operator".
 
 <figure><img src="imgs/operatpr-setup1.png" alt=""><figcaption></figcaption></figure>
 
-* Select a wallet where you have enough goerli testnet token to pay minimum fee to sign a transaction.
+* Select a wallet where you have enough holesky testnet token to pay minimum fee to sign a transaction.
 <figure><img src="imgs/operatpr-setup2.png" alt=""><figcaption></figcaption></figure>
 
 
@@ -259,7 +259,7 @@ It is a good practice to back up your operator private key file
 
 **`Your SafeStake Operator Node is now configured`**
 
-then you may go to [SafeStake website](https://testnet.safestake.xyz/) to register a validator and then choose your operator.
+then you may go to [SafeStake website](https://holesky.safestake.xyz/) to register a validator and then choose your operator.
 
 ## Backup and Migration
 

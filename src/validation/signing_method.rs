@@ -319,7 +319,7 @@ impl SigningMethod {
                 // it is safe (from this operator's point of view) to sign it locally.
                 dvf_signer.local_sign_and_store(signing_root).await;
 
-                if !only_aggregator || (only_aggregator && dvf_signer.is_aggregator(signing_epoch.as_u64()).await) {
+                if !only_aggregator || (only_aggregator && dvf_signer.is_aggregator(signing_epoch.as_u64() + dvf_signer.operator_committee.validator_id()).await) {
                     log::info!("[Dvf {}/{}] Leader trying to achieve duty consensus and aggregate duty signatures",
                         dvf_signer.operator_id, 
                         dvf_signer.operator_committee.validator_id()

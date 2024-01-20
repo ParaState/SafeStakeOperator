@@ -2,7 +2,8 @@
 //! Lighthouse project.
 
 use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
-use crate::validation::operator_committee_definitions::{OPERATOR_COMMITTEE_DEFINITION_FILENAME};
+use crate::validation::operator_committee_definitions::OPERATOR_COMMITTEE_DEFINITION_FILENAME;
+use crate::validation::validator_dir::share_builder::VOTING_KEYSTORE_SHARE_FILE;
 use eth2_keystore::Keystore;
 use eth2_wallet::{
     bip39::{Language, Mnemonic, MnemonicType},
@@ -14,8 +15,7 @@ use std::fs::{self, File};
 use std::io;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
-use types::{PublicKey};
-use crate::validation::validator_dir::share_builder::{VOTING_KEYSTORE_SHARE_FILE};
+use types::PublicKey;
 
 pub mod validator_definitions;
 
@@ -31,6 +31,8 @@ pub const MINIMUM_PASSWORD_LEN: usize = 12;
 /// 62**48 is greater than 255**32, therefore this password has more bits of entropy than a byte
 /// array of length 32.
 const DEFAULT_PASSWORD_LEN: usize = 48;
+
+pub const MNEMONIC_PROMPT: &str = "Enter the mnemonic phrase:";
 
 /// Returns the "default" path where a wallet should store its password file.
 pub fn default_wallet_password_path<P: AsRef<Path>>(wallet_name: &str, secrets_dir: P) -> PathBuf {
@@ -61,9 +63,10 @@ pub fn default_keystore_share_password_path<P: AsRef<Path>>(
     keystore_share: &KeystoreShare,
     secrets_dir: P,
 ) -> PathBuf {
-    secrets_dir
-        .as_ref()
-        .join(format!("{}_{}", &keystore_share.master_public_key, keystore_share.share_id))
+    secrets_dir.as_ref().join(format!(
+        "{}_{}",
+        &keystore_share.master_public_key, keystore_share.share_id
+    ))
 }
 
 pub fn default_keystore_share_dir<P: AsRef<Path>>(
@@ -98,6 +101,18 @@ pub fn default_operator_committee_definition_path<P: AsRef<Path>>(
 /// Reads a password file into a Zeroize-ing `PlainText` struct, with new-lines removed.
 pub fn read_password<P: AsRef<Path>>(path: P) -> Result<PlainText, io::Error> {
     fs::read(path).map(strip_off_newlines).map(Into::into)
+}
+
+/// Reads a password file into a `ZeroizeString` struct, with new-lines removed.
+pub fn read_password_string<P: AsRef<Path>>(path: P) -> Result<ZeroizeString, String> {
+    fs::read(path)
+        .map_err(|e| format!("Error opening file: {:?}", e))
+        .map(strip_off_newlines)
+        .and_then(|bytes| {
+            String::from_utf8(bytes)
+                .map_err(|e| format!("Error decoding utf8: {:?}", e))
+                .map(Into::into)
+        })
 }
 
 /// Write a file atomically by using a temporary file as an intermediate.
@@ -229,7 +244,7 @@ pub fn mnemonic_from_phrase(phrase: &str) -> Result<Mnemonic, String> {
     Mnemonic::from_phrase(phrase, Language::English).map_err(|e| e.to_string())
 }
 
-pub type ZeroizeString = account_utils::ZeroizeString; 
+pub type ZeroizeString = account_utils::ZeroizeString;
 
 #[cfg(test)]
 mod test {
@@ -335,4 +350,3 @@ mod test {
         );
     }
 }
-

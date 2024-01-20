@@ -1,23 +1,24 @@
-//! Reference: lighthouse/validator_client/preparation_service.rs 
+//! Reference: lighthouse/validator_client/preparation_service.rs
 
-use crate::validation::beacon_node_fallback::{BeaconNodeFallback, RequireSynced, OfflineOnFailure};
-use crate::validation::{
-    validator_store::{DoppelgangerStatus, ValidatorStore},
+use crate::validation::beacon_node_fallback::{
+    ApiTopic, BeaconNodeFallback, OfflineOnFailure, RequireSynced,
 };
+use crate::validation::validator_store::{DoppelgangerStatus, ValidatorStore};
+use bls::PublicKeyBytes;
 use environment::RuntimeContext;
+use futures::future::join_all;
 use slog::{debug, error, info, warn};
 use slot_clock::SlotClock;
+use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
-use types::{Address, ChainSpec, EthSpec, ProposerPreparationData, SignedValidatorRegistrationData,
-    ValidatorRegistrationData
+use types::{
+    Address, ChainSpec, EthSpec, ProposerPreparationData, SignedValidatorRegistrationData,
+    ValidatorRegistrationData,
 };
-use futures::future::join_all;
-use tokio::sync::{RwLock};
-use std::collections::HashMap;
-use bls::PublicKeyBytes;
 
 /// Number of epochs before the Bellatrix hard fork to begin posting proposer preparations.
 const PROPOSER_PREPARATION_LOOKAHEAD_EPOCHS: u64 = 2;
@@ -283,7 +284,8 @@ impl<T: SlotClock + 'static, E: EthSpec> PreparationService<T, E> {
                 }
                 None
             }
-        }).await
+        })
+        .await
     }
 
     async fn collect_validator_registration_keys(&self) -> Vec<ValidatorRegistrationKey> {
@@ -302,7 +304,8 @@ impl<T: SlotClock + 'static, E: EthSpec> PreparationService<T, E> {
                         pubkey,
                     })
             })
-        }).await
+        })
+        .await
     }
 
     async fn collect_proposal_data<G, U>(&self, map_fn: G) -> Vec<U>
@@ -315,12 +318,10 @@ impl<T: SlotClock + 'static, E: EthSpec> PreparationService<T, E> {
             .await;
 
         let map_fn_ref = &map_fn;
-        let futs = all_pubkeys
-            .into_iter()
-            .map(|pubkey| async move {
-                let proposal_data = self.validator_store.proposal_data(&pubkey).await?;
-                map_fn_ref(pubkey, proposal_data)
-            });
+        let futs = all_pubkeys.into_iter().map(|pubkey| async move {
+            let proposal_data = self.validator_store.proposal_data(&pubkey).await?;
+            map_fn_ref(pubkey, proposal_data)
+        });
         join_all(futs)
             .await
             .into_iter()
@@ -339,9 +340,10 @@ impl<T: SlotClock + 'static, E: EthSpec> PreparationService<T, E> {
         let preparation_entries = preparation_data.as_slice();
         match self
             .beacon_nodes
-            .run(
+            .request(
                 RequireSynced::Yes,
                 OfflineOnFailure::Yes,
+                ApiTopic::Subscriptions,
                 |beacon_node| async move {
                     beacon_node
                         .post_validator_prepare_beacon_proposer(preparation_entries)
@@ -406,8 +408,12 @@ impl<T: SlotClock + 'static, E: EthSpec> PreparationService<T, E> {
         let mut signed = Vec::with_capacity(registration_data_len);
 
         for key in registration_keys {
-            let cached_registration_opt =
-                self.validator_registration_cache.read().await.get(&key).cloned();
+            let cached_registration_opt = self
+                .validator_registration_cache
+                .read()
+                .await
+                .get(&key)
+                .cloned();
 
             let signed_data = if let Some(signed_data) = cached_registration_opt {
                 signed_data

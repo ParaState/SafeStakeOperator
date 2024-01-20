@@ -22,11 +22,11 @@ use task_executor::TaskExecutor;
 use types::{
     attestation::Error as AttestationError, graffiti::GraffitiString, AbstractExecPayload, Address, AggregateAndProof,
     Attestation, BeaconBlock, BlindedPayload, ChainSpec, ContributionAndProof, Domain, Epoch,
-    EthSpec, Fork, Graffiti, Hash256, Keypair, PublicKeyBytes, PublicKey, SelectionProof,
+    EthSpec, Fork, ForkName, Graffiti, Hash256, Keypair, PublicKeyBytes, PublicKey, SelectionProof,
     Signature, SignedAggregateAndProof, SignedBeaconBlock, SignedContributionAndProof, SignedRoot, 
-    SignedValidatorRegistrationData, Slot,
+    SignedValidatorRegistrationData, SignedVoluntaryExit, Slot,
     SyncAggregatorSelectionData, SyncCommitteeContribution, SyncCommitteeMessage,
-    SyncSelectionProof, SyncSubnetId, ValidatorRegistrationData, 
+    SyncSelectionProof, SyncSubnetId, ValidatorRegistrationData, VoluntaryExit
 };
 use validator_dir::ValidatorDir;
 use crate::validation::preparation_service::ProposalData;
@@ -99,6 +99,7 @@ pub struct ValidatorStore<T, E: EthSpec> {
     fee_recipient_process: Option<Address>,
     gas_limit: Option<u64>,
     builder_proposals: bool,
+    produce_block_v3: bool,
     task_executor: TaskExecutor,
     _phantom: PhantomData<E>,
 }
@@ -130,6 +131,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
             fee_recipient_process: config.fee_recipient,
             gas_limit: config.gas_limit,
             builder_proposals: config.builder_proposals,
+            produce_block_v3: config.produce_block_v3,
             task_executor,
             _phantom: PhantomData,
         }
@@ -365,6 +367,10 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         self.spec.fork_at_epoch(epoch)
     }
 
+    pub fn produce_block_v3(&self) -> bool {
+        self.produce_block_v3
+    }
+
     /// Returns a `SigningMethod` for `validator_pubkey` *only if* that validator is considered safe
     /// by doppelganger protection.
     async fn doppelganger_checked_signing_method(
@@ -400,11 +406,35 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
     }
 
     fn signing_context(&self, domain: Domain, signing_epoch: Epoch) -> SigningContext {
-        SigningContext {
-            domain,
-            epoch: signing_epoch,
-            fork: self.fork(signing_epoch),
-            genesis_validators_root: self.genesis_validators_root,
+        if domain == Domain::VoluntaryExit {
+            match self.spec.fork_name_at_epoch(signing_epoch) {
+                ForkName::Base | ForkName::Altair | ForkName::Merge | ForkName::Capella => {
+                    SigningContext {
+                        domain,
+                        epoch: signing_epoch,
+                        fork: self.fork(signing_epoch),
+                        genesis_validators_root: self.genesis_validators_root,
+                    }
+                }
+                // EIP-7044
+                ForkName::Deneb => SigningContext {
+                    domain,
+                    epoch: signing_epoch,
+                    fork: Fork {
+                        previous_version: self.spec.capella_fork_version,
+                        current_version: self.spec.capella_fork_version,
+                        epoch: signing_epoch,
+                    },
+                    genesis_validators_root: self.genesis_validators_root,
+                },
+            }
+        } else {
+            SigningContext {
+                domain,
+                epoch: signing_epoch,
+                fork: self.fork(signing_epoch),
+                genesis_validators_root: self.genesis_validators_root,
+            }
         }
     }
 
@@ -432,6 +462,16 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         self.validators.read().await.graffiti(validator_pubkey)
     }
 
+    /// Returns the fee recipient for the given public key. The priority order for fetching
+    /// the fee recipient is:
+    /// 1. validator_definitions.yml
+    /// 2. process level fee recipient
+    pub async fn get_fee_recipient(&self, validator_pubkey: &PublicKeyBytes) -> Option<Address> {
+        // If there is a `suggested_fee_recipient` in the validator definitions yaml
+        // file, use that value.
+        self.get_fee_recipient_defaulting(self.suggested_fee_recipient(validator_pubkey).await)
+    }
+
     pub fn get_fee_recipient_defaulting(&self, fee_recipient: Option<Address>) -> Option<Address> {
         // If there's nothing in the file, try the process-level default value.
         fee_recipient.or(self.fee_recipient_process)
@@ -444,6 +484,16 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
             .suggested_fee_recipient(validator_pubkey)
     }
 
+    /// Returns the gas limit for the given public key. The priority order for fetching
+    /// the gas limit is:
+    ///
+    /// 1. validator_definitions.yml
+    /// 2. process level gas limit
+    /// 3. `DEFAULT_GAS_LIMIT`
+    pub async fn get_gas_limit(&self, validator_pubkey: &PublicKeyBytes) -> u64 {
+        self.get_gas_limit_defaulting(self.validators.read().await.gas_limit(validator_pubkey))
+    }
+
     fn get_gas_limit_defaulting(&self, gas_limit: Option<u64>) -> u64 {
         // If there is a `gas_limit` in the validator definitions yaml
         // file, use that value.
@@ -453,6 +503,20 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
             // If there's no process-level default, use the `DEFAULT_GAS_LIMIT`.
             .unwrap_or(DEFAULT_GAS_LIMIT)
     }
+
+    /// Returns a `bool` for the given public key that denotes whther this validator should use the
+    /// builder API. The priority order for fetching this value is:
+    ///
+    /// 1. validator_definitions.yml
+    /// 2. process level flag
+    pub async fn get_builder_proposals(&self, validator_pubkey: &PublicKeyBytes) -> bool {
+        // If there is a `suggested_fee_recipient` in the validator definitions yaml
+        // file, use that value.
+        self.get_builder_proposals_defaulting(
+            self.validators.read().await.builder_proposals(validator_pubkey),
+        )
+    }
+
 
     fn get_builder_proposals_defaulting(&self, builder_proposals: Option<bool>) -> bool {
         builder_proposals
@@ -620,6 +684,32 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
                 Err(Error::Slashable(e))
             }
         }
+    }
+
+    pub async fn sign_voluntary_exit(
+        &self,
+        validator_pubkey: PublicKeyBytes,
+        voluntary_exit: VoluntaryExit,
+    ) -> Result<SignedVoluntaryExit, Error> {
+        let signing_epoch = voluntary_exit.epoch;
+        let signing_context = self.signing_context(Domain::VoluntaryExit, signing_epoch);
+        let signing_method = self.doppelganger_bypassed_signing_method(validator_pubkey).await?;
+
+        let signature = signing_method
+            .get_signature::<E, BlindedPayload<E>>(
+                SignableMessage::VoluntaryExit(&voluntary_exit),
+                signing_context,
+                &self.spec,
+                &self.task_executor,
+            )
+            .await?;
+
+        metrics::inc_counter_vec(&metrics::SIGNED_VOLUNTARY_EXITS_TOTAL, &[metrics::SUCCESS]);
+
+        Ok(SignedVoluntaryExit {
+            message: voluntary_exit,
+            signature,
+        })
     }
 
     pub async fn sign_validator_registration_data(

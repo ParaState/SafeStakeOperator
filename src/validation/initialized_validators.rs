@@ -17,7 +17,7 @@ use crate::validation::account_utils::{
     ZeroizeString,
 };
 use crate::validation::operator_committee_definitions::{self, OperatorCommitteeDefinition};
-use crate::validation::eth2_keystore_share::keystore_share::{KeystoreShare};
+use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
 use eth2::lighthouse_vc::std_types::DeleteKeystoreStatus;
 use eth2_keystore::Keystore;
 use lighthouse_metrics::set_gauge;
@@ -31,23 +31,15 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use types::{Address, Graffiti, Keypair, PublicKey, PublicKeyBytes, EthSpec};
-use url::{ParseError, Url};
 use validator_dir::Builder as ValidatorDirBuilder;
 
 use crate::validation::key_cache;
 use crate::validation::key_cache::KeyCache;
 
-use tokio::sync::{RwLock};
+use tokio::sync::RwLock;
 use crate::node::node::Node;
 use crate::node::dvfcore::DvfSigner;
 use crate::validation::validator_dir::share_builder::ShareBuilder;
-
-
-/// Default timeout for a request to a remote signer for a signature.
-///
-/// Set to 12 seconds since that's the duration of a slot. A remote signer that cannot sign within
-/// that time is outside the synchronous assumptions of Eth2.
-// const DEFAULT_REMOTE_SIGNER_REQUEST_TIMEOUT: Duration = Duration::from_secs(12);
 
 // Use TTY instead of stdin to capture passwords from users.
 const USE_STDIN: bool = false;
@@ -98,7 +90,19 @@ pub enum Error {
     /// Unable to read the root certificate file for the remote signer.
     InvalidWeb3SignerRootCertificateFile(io::Error),
     InvalidWeb3SignerRootCertificate(ReqwestError),
+    /// Unable to read the client certificate for the remote signer.
+    MissingWeb3SignerClientIdentityCertificateFile,
+    MissingWeb3SignerClientIdentityPassword,
+    InvalidWeb3SignerClientIdentityCertificateFile(io::Error),
+    InvalidWeb3SignerClientIdentityCertificate(ReqwestError),
     UnableToBuildWeb3SignerClient(ReqwestError),
+    /// Unable to apply an action to a validator.
+    InvalidActionOnValidator,
+    UnableToReadValidatorPassword(String),
+    UnableToReadKeystoreFile(eth2_keystore::Error),
+    UnableToSaveKeyCache(key_cache::Error),
+    UnableToDecryptKeyCache(key_cache::Error),
+    UnableToDeletePasswordFile(PathBuf, io::Error),
 
     NoCommitteeDefinition,
     UnableToParseCommitteeDefinition(operator_committee_definitions::Error),
@@ -116,7 +120,6 @@ impl From<LockfileError> for Error {
 }
 
 /// A validator that is ready to sign messages.
-
 pub struct InitializedValidator {
     signing_method: Arc<SigningMethod>,
     graffiti: Option<Graffiti>,
@@ -166,6 +169,10 @@ impl InitializedValidator {
     pub fn get_index(&self) -> Option<u64> {
         self.index
     }
+
+    pub fn get_graffiti(&self) -> Option<Graffiti> {
+        self.graffiti
+    }
 }
 
 fn open_keystore(path: &Path) -> Result<Keystore, Error> {
@@ -198,7 +205,6 @@ impl InitializedValidator {
         def: ValidatorDefinition,
         key_cache: &mut KeyCache,
         key_stores: &mut HashMap<PathBuf, Keystore>,
-        //committee_cache: &mut HashMap<u64, Arc<RwLock<OperatorCommittee>>>,
         node: Option<Arc<RwLock<Node<T>>>>,
     ) -> Result<Self, Error> {
         if !def.enabled {
@@ -411,10 +417,6 @@ pub fn load_pem_certificate<P: AsRef<Path>>(pem_path: P) -> Result<Certificate, 
         .read_to_end(&mut buf)
         .map_err(Error::InvalidWeb3SignerRootCertificateFile)?;
     Certificate::from_pem(&buf).map_err(Error::InvalidWeb3SignerRootCertificate)
-}
-
-fn _build_web3_signer_url(base_url: &str, voting_public_key: &PublicKey) -> Result<Url, ParseError> {
-    Url::parse(base_url)?.join(&format!("api/v1/eth2/sign/{}", voting_public_key))
 }
 
 /// Try to unlock `keystore` at `keystore_path` by prompting the user via `stdin`.

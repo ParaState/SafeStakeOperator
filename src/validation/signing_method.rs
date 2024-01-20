@@ -58,6 +58,7 @@ pub enum SignableMessage<'a, T: EthSpec, Payload: AbstractExecPayload<T> = FullP
     },
     SignedContributionAndProof(&'a ContributionAndProof<T>),
     ValidatorRegistration(&'a ValidatorRegistrationData),
+    VoluntaryExit(&'a VoluntaryExit),
 }
 
 impl<'a, T: EthSpec, Payload: AbstractExecPayload<T>> SignableMessage<'a, T, Payload> {
@@ -78,6 +79,7 @@ impl<'a, T: EthSpec, Payload: AbstractExecPayload<T>> SignableMessage<'a, T, Pay
             } => beacon_block_root.signing_root(domain),
             SignableMessage::SignedContributionAndProof(c) => c.signing_root(domain),
             SignableMessage::ValidatorRegistration(v) => v.signing_root(domain),
+            SignableMessage::VoluntaryExit(exit) => exit.signing_root(domain),
         }
     }
 }
@@ -167,7 +169,7 @@ impl SigningMethod {
         signing_root: Hash256,
         executor: &TaskExecutor,
         fork_info: Option<ForkInfo>,
-        mut signing_epoch: Epoch,
+        signing_epoch: Epoch,
         spec: &ChainSpec,
     ) -> Result<Signature, Error> {
 
@@ -226,6 +228,7 @@ impl SigningMethod {
                     SignableMessage::ValidatorRegistration(v) => {
                         Web3SignerObject::ValidatorRegistration(v)
                     }
+                    SignableMessage::VoluntaryExit(e) => Web3SignerObject::VoluntaryExit(e),
                 };
 
                 // Determine the Web3Signer message type.
@@ -300,9 +303,10 @@ impl SigningMethod {
                         (Slot::new(0 as u64), "CONTRIB", true)
                     }
                     SignableMessage::ValidatorRegistration(_) => {  
-                        let op_pos = dvf_signer.operator_committee.get_op_pos(dvf_signer.operator_id).await;
-                        signing_epoch = Epoch::new(op_pos as u64);
-                        (Slot::new(0 as u64), "VA_REG", true)
+                        (Slot::new(0 as u64), "VA_REG", false)
+                    },
+                    SignableMessage::VoluntaryExit(e) => {
+                        (e.epoch.start_slot(T::slots_per_epoch()), "VA_EXIT", true)
                     }
                 };
 

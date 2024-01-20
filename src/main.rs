@@ -1,27 +1,25 @@
 #![recursion_limit = "256"]
+mod metrics;
 
-use std::path::PathBuf;
-use std::process::exit;
-
-use beacon_node::ProductionBeaconNode;
+use chrono::Local;
 use clap::{App, Arg, ArgMatches};
 use clap_utils::{flags::DISABLE_MALLOC_TUNING_FLAG, get_eth2_network_config};
 use directory::{parse_path_or_default, DEFAULT_BEACON_NODE_DIR, DEFAULT_VALIDATOR_DIR};
-use dvf_directory::get_default_base_dir;
-use env_logger::{Env};
-use environment::{EnvironmentBuilder, LoggerConfig};
-use ethereum_hashing::have_sha_extensions;
-use eth2_network_config::{Eth2NetworkConfig, DEFAULT_HARDCODED_NETWORK, HARDCODED_NET_NAMES};
-use lighthouse_version::VERSION;
-use malloc_utils::configure_memory_allocator;
-use task_executor::ShutdownReason;
-use log::{error, info, warn};
-use types::{EthSpec, EthSpecId};
-use std::io::Write;
-use chrono::Local;
 use dvf::validation::ProductionValidatorClient;
-
-mod metrics;
+use dvf_directory::get_default_base_dir;
+use env_logger::Env;
+use environment::{EnvironmentBuilder, LoggerConfig};
+use eth2_network_config::{Eth2NetworkConfig, DEFAULT_HARDCODED_NETWORK, HARDCODED_NET_NAMES};
+use ethereum_hashing::have_sha_extensions;
+use futures::TryFutureExt;
+use lighthouse_version::VERSION;
+use log::{error, info};
+use malloc_utils::configure_memory_allocator;
+use std::io::Write;
+use std::path::PathBuf;
+use std::process::exit;
+use task_executor::ShutdownReason;
+use types::{EthSpec, EthSpecId};
 
 fn bls_library_name() -> &'static str {
     if cfg!(feature = "portable") {
@@ -35,9 +33,26 @@ fn bls_library_name() -> &'static str {
     }
 }
 
-fn main() {
-    // tracing_subscriber::fmt().json().init();
+fn allocator_name() -> &'static str {
+    if cfg!(feature = "jemalloc") {
+        "jemalloc"
+    } else {
+        "system"
+    }
+}
 
+fn build_profile_name() -> String {
+    // Nice hack from https://stackoverflow.com/questions/73595435/how-to-get-profile-from-cargo-toml-in-build-rs-or-at-runtime
+    // The profile name is always the 3rd last part of the path (with 1 based indexing).
+    // e.g. /code/core/target/cli/build/my-build-info-9f91ba6f99d7a061/out
+    std::env!("OUT_DIR")
+        .split(std::path::MAIN_SEPARATOR)
+        .nth_back(3)
+        .unwrap_or_else(|| "unknown")
+        .to_string()
+}
+
+fn main() {
     // Enable backtraces unless a RUST_BACKTRACE value has already been explicitly provided.
     if std::env::var("RUST_BACKTRACE").is_err() {
         std::env::set_var("RUST_BACKTRACE", "1");
@@ -57,23 +72,17 @@ fn main() {
                 "{}\n\
                  BLS library: {}\n\
                  SHA256 hardware acceleration: {}\n\
+                 Allocator: {}\n\
+                 Profile: {}\n\
                  Specs: mainnet (true), minimal ({}), gnosis ({})",
-                VERSION.replace("Lighthouse/", ""),
-                bls_library_name(),
-                have_sha_extensions(),
-                cfg!(feature = "spec-minimal"),
-                cfg!(feature = "gnosis"),
+                 VERSION.replace("Lighthouse/", ""),
+                 bls_library_name(),
+                 have_sha_extensions(),
+                 allocator_name(),
+                 build_profile_name(),
+                 cfg!(feature = "spec-minimal"),
+                 cfg!(feature = "gnosis"),
             ).as_str()
-        )
-        .arg(
-            Arg::with_name("spec")
-                .short("s")
-                .long("spec")
-                .value_name("DEPRECATED")
-                .help("This flag is deprecated, it will be disallowed in a future release. This \
-                    value is now derived from the --network or --testnet-dir flags.")
-                .takes_value(true)
-                .global(true)
         )
         .arg(
             Arg::with_name("env_log")
@@ -106,6 +115,15 @@ fn main() {
                 .global(true),
         )
         .arg(
+            Arg::with_name("logfile-format")
+                .long("logfile-format")
+                .value_name("FORMAT")
+                .help("Specifies the log format used when emitting logs to the logfile.")
+                .possible_values(&["DEFAULT", "JSON"])
+                .takes_value(true)
+                .global(true)
+        )
+        .arg(
             Arg::with_name("logfile-max-size")
                 .long("logfile-max-size")
                 .value_name("SIZE")
@@ -136,6 +154,16 @@ fn main() {
                 .global(true),
         )
         .arg(
+            Arg::with_name("logfile-no-restricted-perms")
+                .long("logfile-no-restricted-perms")
+                .help(
+                    "If present, log files will be generated as world-readable meaning they can be read by \
+                    any user on the machine. Note that logs can often contain sensitive information \
+                    about your validator and so this flag should be used with caution. For Windows users, \
+                    the log file permissions will be inherited from the parent folder.")
+                .global(true),
+        )
+        .arg(
             Arg::with_name("log-format")
                 .long("log-format")
                 .value_name("FORMAT")
@@ -143,6 +171,19 @@ fn main() {
                 .possible_values(&["JSON"])
                 .takes_value(true)
                 .global(true),
+        )
+        .arg(
+            Arg::with_name("log-color")
+                .long("log-color")
+                .alias("log-colour")
+                .help("Force outputting colors when emitting logs to the terminal.")
+                .global(true),
+        )
+        .arg(
+            Arg::with_name("disable-log-timestamp")
+            .long("disable-log-timestamp")
+            .help("If present, do not include timestamps in logging output.")
+            .global(true),
         )
         .arg(
             Arg::with_name("debug-level")
@@ -188,6 +229,7 @@ fn main() {
                 .conflicts_with("testnet-dir")
                 .takes_value(true)
                 .global(true)
+
         )
         .arg(
             Arg::with_name("dump-config")
@@ -276,6 +318,30 @@ fn main() {
                 .takes_value(true)
                 .global(true)
         )
+        .arg(
+            Arg::with_name("genesis-state-url")
+                .long("genesis-state-url")
+                .value_name("URL")
+                .help(
+                    "A URL of a beacon-API compatible server from which to download the genesis state. \
+                    Checkpoint sync server URLs can generally be used with this flag. \
+                    If not supplied, a default URL or the --checkpoint-sync-url may be used. \
+                    If the genesis state is already included in this binary then this value will be ignored.",
+                )
+                .takes_value(true)
+                .global(true),
+        )
+        .arg(
+            Arg::with_name("genesis-state-url-timeout")
+                .long("genesis-state-url-timeout")
+                .value_name("SECONDS")
+                .help(
+                    "The timeout in seconds for the request to --genesis-state-url.",
+                )
+                .takes_value(true)
+                .default_value("180")
+                .global(true),
+        )
         .subcommand(beacon_node::cli_app())
         .subcommand(boot_node::cli_app())
         .subcommand(dvf::validation::cli_app())
@@ -304,8 +370,6 @@ fn main() {
     // if matches.is_present("env_log") {
     //     Builder::from_env(Env::default()).init();
     // }
-
-    info!("------dvf main------");
 
     let result = get_eth2_network_config(&matches).and_then(|eth2_network_config| {
         let eth_spec_id = eth2_network_config.eth_spec_id()?;
@@ -377,25 +441,29 @@ fn run<E: EthSpec>(
         .value_of("debug-level")
         .ok_or("Expected --debug-level flag")?;
 
-    let _logger = env_logger::Builder::from_env(Env::default().default_filter_or(debug_level)).format(|buf, record| {
-        let level = { buf.default_styled_level(record.level()) };
-        writeln!(
-            buf,
-            "{} {} [{}:{}] {}",
-            Local::now().format("%Y-%m-%d %H:%M:%S%.3f"),
-            format_args!("{:>5}", level),
-            record.module_path().unwrap_or("<unnamed>"),
-            record.line().unwrap_or(0),
-            &record.args()
-        )
-    }).init();   
+    let _logger = env_logger::Builder::from_env(Env::default().default_filter_or(debug_level))
+        .format(|buf, record| {
+            let level = { buf.default_styled_level(record.level()) };
+            writeln!(
+                buf,
+                "{} {} [{}:{}] {}",
+                Local::now().format("%Y-%m-%d %H:%M:%S%.3f"),
+                format_args!("{:>5}", level),
+                record.module_path().unwrap_or("<unnamed>"),
+                record.line().unwrap_or(0),
+                &record.args()
+            )
+        })
+        .init();
 
     let debug_level = matches
         .value_of("debug-level")
         .ok_or("Expected --debug-level flag")?;
 
     let log_format = matches.value_of("log-format");
+
     let log_color = matches.is_present("log-color");
+
     let disable_log_timestamp = matches.is_present("disable-log-timestamp");
 
     let logfile_debug_level = matches
@@ -465,7 +533,7 @@ fn run<E: EthSpec>(
         max_log_number: logfile_max_number,
         compression: logfile_compress,
         is_restricted: logfile_restricted,
-        sse_logging
+        sse_logging,
     };
 
     let builder = environment_builder.initialize_logger(logger_config)?;
@@ -480,10 +548,6 @@ fn run<E: EthSpec>(
 
     // Allow Prometheus access to the version and commit of the Lighthouse build.
     metrics::expose_lighthouse_version();
-
-    if matches.is_present("spec") {
-        warn!("The --spec flag is deprecated and will be removed in a future release");
-    }
 
     #[cfg(all(feature = "modern", target_arch = "x86_64"))]
     if !std::is_x86_feature_detected!("adx") {
@@ -513,53 +577,10 @@ fn run<E: EthSpec>(
         (Some(_), Some(_)) => panic!("CLI prevents both --network and --testnet-dir"),
     };
 
-    if let Some(sub_matches) = matches.subcommand_matches("account_manager") {
-        info!("Running account manager for {} network", network_name);
-        // Pass the entire `environment` to the account manager so it can run blocking operations.
-        account_manager::run(sub_matches, environment)?;
-
-        // Exit as soon as account manager returns control.
-        return Ok(());
-    }
-
-    if let Some(sub_matches) = matches.subcommand_matches(database_manager::CMD) {
-        info!("Running database manager for {} network", network_name);
-        // Pass the entire `environment` to the database manager so it can run blocking operations.
-        database_manager::run(sub_matches, environment)?;
-
-        // Exit as soon as database manager returns control.
-        return Ok(());
-    }
-
     info!("Lighthouse started,version {}", VERSION);
     info!("Configured for network,name {}", &network_name);
 
     match matches.subcommand() {
-        ("beacon_node", Some(matches)) => {
-            let context = environment.core_context();
-            let executor = context.executor.clone();
-            let config = beacon_node::get_config::<E>(matches, &context)?;
-            let shutdown_flag = matches.is_present("immediate-shutdown");
-            // Dump configs if `dump-config` or `dump-chain-config` flags are set
-            clap_utils::check_dump_configs::<_, E>(matches, &config, &context.eth2_config.spec)?;
-            executor.clone().spawn(
-                async move {
-                    if let Err(e) = ProductionBeaconNode::new(context.clone(), config).await {
-                        error!("Failed to start beacon node,reason:{}", e);
-                        // Ignore the error since it always occurs during normal operation when
-                        // shutting down.
-                        let _ = executor
-                            .shutdown_sender()
-                            .try_send(ShutdownReason::Failure("Failed to start beacon node"));
-                    } else if shutdown_flag {
-                        let _ = executor.shutdown_sender().try_send(ShutdownReason::Success(
-                            "Beacon node immediate shutdown triggered.",
-                        ));
-                    }
-                },
-                "beacon_node",
-            );
-        }
         ("validator_client", Some(matches)) => {
             let context = environment.core_context();
             let executor = context.executor.clone();
@@ -572,8 +593,8 @@ fn run<E: EthSpec>(
                 executor.clone().spawn(
                     async move {
                         if let Err(e) = ProductionValidatorClient::new(context, config)
+                            .and_then(|mut vc| async move { vc.start_service().await })
                             .await
-                            .and_then(|mut vc| vc.start_service())
                         {
                             error!("Failed to start validator client,reason:{}", e);
                             // Ignore the error since it always occurs during normal operation when

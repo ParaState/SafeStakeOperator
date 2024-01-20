@@ -1,7 +1,6 @@
 use lighthouse_network::discv5::{
-    self,
     enr::{CombinedKey, Enr, EnrPublicKey, NodeId},
-    Discv5, Discv5ConfigBuilder, Discv5Event, ListenConfig
+    Discv5, ConfigBuilder, Event, ListenConfig
 };
 use hsconfig::Secret;
 use std::{
@@ -73,7 +72,7 @@ impl Discovery {
         let enr_key = CombinedKey::secp256k1_from_bytes(&mut secret_key[..]).unwrap();
 
         let local_enr = {
-            let mut builder = discv5::enr::EnrBuilder::new("v4");
+            let mut builder = Enr::builder();
             builder.ip(ip);
             builder.udp4(udp_port);
             builder.seq(seq);
@@ -86,7 +85,7 @@ impl Discovery {
         info!("Node ENR: {:?}", local_enr.to_base64());
         
         // default configuration without packet filtering
-        let config = Discv5ConfigBuilder::new(ListenConfig::Ipv4 { ip: "0.0.0.0".parse().unwrap(), port: udp_port }).build();
+        let config = ConfigBuilder::new(ListenConfig::Ipv4 { ip: "0.0.0.0".parse().unwrap(), port: udp_port }).build();
 
         // construct the discv5 server
         let mut discv5: Discv5 = Discv5::new(local_enr.clone(), enr_key, config).unwrap();
@@ -130,19 +129,19 @@ impl Discovery {
                     }
                     Some(event) = event_stream.recv() => {
                         match event {
-                            Discv5Event::Discovered(enr) => {
+                            Event::Discovered(enr) => {
                                 if let Some(ip) = enr.ip4() {
                                     // update public key ip
                                     store.write(enr.public_key().encode(), ip.octets().to_vec()).await;
                                 };
                             },
-                            Discv5Event::SessionEstablished(enr, _addr) => {
+                            Event::SessionEstablished(enr, _addr) => {
                                 if let Some(ip) = enr.ip4() {
                                     // update public key ip
                                     store.write(enr.public_key().encode(), ip.octets().to_vec()).await;
                                 };
                             },
-                            Discv5Event::SocketUpdated(addr) => {
+                            Event::SocketUpdated(addr) => {
                                 info!("Discv5Event::SocketUpdated: local ENR IP address has been updated, addr:{}", addr);
                                 match addr {
                                     V4(v4addr) => {
@@ -152,9 +151,9 @@ impl Discovery {
                                 }
                                 // zico: Is there any way to broadcast this news?
                             },
-                            Discv5Event::EnrAdded { .. } 
-                            | Discv5Event::NodeInserted { .. } 
-                            | Discv5Event::TalkRequest(_) => {}, // Ignore all other discv5 server events
+                            Event::EnrAdded { .. } 
+                            | Event::NodeInserted { .. } 
+                            | Event::TalkRequest(_) => {}, // Ignore all other discv5 server events
                         };
                     }
                 }

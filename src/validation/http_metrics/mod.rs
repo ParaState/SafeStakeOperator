@@ -56,6 +56,7 @@ pub struct Config {
     pub listen_addr: IpAddr,
     pub listen_port: u16,
     pub allow_origin: Option<String>,
+    pub allocator_metrics_enabled: bool,
 }
 
 impl Default for Config {
@@ -65,6 +66,7 @@ impl Default for Config {
             listen_addr: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
             listen_port: 5064,
             allow_origin: None,
+            allocator_metrics_enabled: true,
         }
     }
 }
@@ -118,8 +120,15 @@ pub fn serve<T: EthSpec>(
         .map(move || inner_ctx.clone())
         .and_then(|ctx: Arc<Context<T>>| async move {
             Ok::<_, warp::Rejection>(
-                metrics::gather_prometheus_metrics(&ctx).await
-                    .map(|body| Response::builder().status(200).body(body).unwrap())
+                metrics::gather_prometheus_metrics(&ctx)
+                    .await
+                    .map(|body| {
+                        Response::builder()
+                            .status(200)
+                            .header("Content-Type", "text/plain")
+                            .body(body)
+                            .unwrap()
+                    })
                     .unwrap_or_else(|e| {
                         Response::builder()
                             .status(500)
@@ -148,4 +157,3 @@ pub fn serve<T: EthSpec>(
 
     Ok((listening_socket, server))
 }
-

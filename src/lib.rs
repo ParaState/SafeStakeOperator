@@ -4,7 +4,7 @@ extern crate downcast_rs;
 pub mod crypto;
 pub mod math;
 pub mod utils;
-pub mod simulator;
+// pub mod simulator;
 pub mod validation;
 pub mod node;
 pub mod test_utils;

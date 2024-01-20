@@ -1,6 +1,6 @@
-use crate::validation::fee_recipient_file::FeeRecipientFile;
 use crate::validation::graffiti_file::GraffitiFile;
 use crate::validation::{http_api, http_metrics};
+use crate::validation::beacon_node_fallback::ApiTopic;
 use clap::ArgMatches;
 use clap_utils::{parse_optional, parse_required};
 use directory::{
@@ -33,6 +33,8 @@ pub struct Config {
     ///
     /// Should be similar to `["http://localhost:8080"]`
     pub beacon_nodes: Vec<SensitiveUrl>,
+    /// An optional beacon node used for block proposals only.
+    pub proposer_nodes: Vec<SensitiveUrl>,
     /// If true, the validator client will still poll for duties and produce blocks even if the
     /// beacon node is not synced at startup.
     pub allow_unsynced_beacon_node: bool,
@@ -48,8 +50,6 @@ pub struct Config {
     pub graffiti_file: Option<GraffitiFile>,
     /// Fallback fallback address.
     pub fee_recipient: Option<Address>,
-    /// Fee recipient file to load per validator suggested-fee-recipients.
-    pub fee_recipient_file: Option<FeeRecipientFile>,
     /// Configuration for the HTTP REST API.
     pub http_api: http_api::Config,
     /// Configuration for the HTTP REST API.
@@ -59,7 +59,11 @@ pub struct Config {
     /// If true, enable functionality that monitors the network for attestations or proposals from
     /// any of the validators managed by this client before starting up.
     pub enable_doppelganger_protection: bool,
-    pub private_tx_proposals: bool,
+    /// If true, then we publish validator specific metrics (e.g next attestation duty slot)
+    /// for all our managed validators.
+    /// Note: We publish validator specific metrics for low validator counts without this flag
+    /// (<= 64 validators)
+    pub enable_high_validator_count_metrics: bool,
     /// Enable use of the blinded block endpoints during proposals.
     pub builder_proposals: bool,
     /// Overrides the timestamp field in builder api ValidatorRegistrationV1
@@ -69,11 +73,15 @@ pub struct Config {
     /// A list of custom certificates that the validator client will additionally use when
     /// connecting to a beacon node over SSL/TLS.
     pub beacon_nodes_tls_certs: Option<Vec<PathBuf>>,
-
-    /// Disables publishing http api requests to all beacon nodes for select api calls.
-    pub disable_run_on_all: bool,
-
-    /// Used for 
+    /// Enables broadcasting of various requests (by topic) to all beacon nodes.
+    pub broadcast_topics: Vec<ApiTopic>,
+    /// Enables a service which attempts to measure latency between the VC and BNs.
+    pub enable_latency_measurement_service: bool,
+    /// Defines the number of validators per `validator/register_validator` request sent to the BN.
+    pub validator_registration_batch_size: usize,
+    /// Enables block production via the block v3 endpoint. This configuration option can be removed post deneb.
+    pub produce_block_v3: bool,
+    /// Used for Dvf
     pub dvf_node_config: NodeConfig,
 }
 
@@ -95,6 +103,7 @@ impl Default for Config {
             validator_dir,
             secrets_dir,
             beacon_nodes,
+            proposer_nodes: Vec::new(),
             allow_unsynced_beacon_node: false,
             disable_auto_discover: false,
             init_slashing_protection: false,
@@ -102,18 +111,19 @@ impl Default for Config {
             graffiti: None,
             graffiti_file: None,
             fee_recipient: None,
-            fee_recipient_file: None,
             http_api: <_>::default(),
             http_metrics: <_>::default(),
             monitoring_api: None,
             enable_doppelganger_protection: false,
+            enable_high_validator_count_metrics: false,
             beacon_nodes_tls_certs: None,
-            private_tx_proposals: false,
             builder_proposals: false,
             builder_registration_timestamp_override: None,
             gas_limit: None,
-            disable_run_on_all: false,
-            
+            broadcast_topics: vec![ApiTopic::Subscriptions],
+            enable_latency_measurement_service: true,
+            validator_registration_batch_size: 500,
+            produce_block_v3: false,
             dvf_node_config: NodeConfig::default(), 
         }
     }
@@ -241,33 +251,6 @@ impl Config {
                 .collect::<Result<_, _>>()
                 .map_err(|e| format!("Unable to parse beacon node URL: {:?}", e))?;
         }
-        // To be deprecated.
-        else if let Some(beacon_node) = parse_optional::<String>(cli_args, "beacon-node")? {
-            warn!(
-                log,
-                "The --beacon-node flag is deprecated";
-                "msg" => "please use --beacon-nodes instead"
-            );
-            config.beacon_nodes = vec![SensitiveUrl::parse(&beacon_node)
-                .map_err(|e| format!("Unable to parse beacon node URL: {:?}", e))?];
-        }
-        // To be deprecated.
-        else if let Some(server) = parse_optional::<String>(cli_args, "server")? {
-            warn!(
-                log,
-                "The --server flag is deprecated";
-                "msg" => "please use --beacon-nodes instead"
-            );
-            config.beacon_nodes = vec![SensitiveUrl::parse(&server)
-                .map_err(|e| format!("Unable to parse beacon node URL: {:?}", e))?];
-        } else {
-            error!(
-                log,
-                "beacon-nodes is not configured";
-                "msg" => "please use --beacon--nodes arg"
-            );
-            panic!("beacon-nodes is none");
-        }
         config.dvf_node_config = config.dvf_node_config.set_beacon_nodes(config.beacon_nodes.clone());
 
         if cli_args.is_present("delete-lockfiles") {
@@ -279,7 +262,14 @@ impl Config {
         }
 
         config.allow_unsynced_beacon_node = cli_args.is_present("allow-unsynced");
-        config.disable_run_on_all = cli_args.is_present("disable-run-on-all");
+        if let Some(proposer_nodes) = parse_optional::<String>(cli_args, "proposer_nodes")? {
+            config.proposer_nodes = proposer_nodes
+                .split(',')
+                .map(SensitiveUrl::parse)
+                .collect::<Result<_, _>>()
+                .map_err(|e| format!("Unable to parse proposer node URL: {:?}", e))?;
+        }
+
         config.disable_auto_discover = cli_args.is_present("disable-auto-discover");
         config.init_slashing_protection = cli_args.is_present("init-slashing-protection");
         config.use_long_timeouts = cli_args.is_present("use-long-timeouts");
@@ -312,19 +302,6 @@ impl Config {
             }
         }
 
-        if let Some(fee_recipient_file_path) = cli_args.value_of("suggested-fee-recipient-file") {
-            let mut fee_recipient_file = FeeRecipientFile::new(fee_recipient_file_path.into());
-            fee_recipient_file
-                .read_fee_recipient_file()
-                .map_err(|e| format!("Error reading suggested-fee-recipient file: {:?}", e))?;
-            config.fee_recipient_file = Some(fee_recipient_file);
-            info!(
-                log,
-                "Successfully loaded suggested-fee-recipient file";
-                "path" => fee_recipient_file_path
-            );
-        }
-
         if let Some(input_fee_recipient) =
             parse_optional::<Address>(cli_args, "suggested-fee-recipient")?
         {
@@ -333,6 +310,26 @@ impl Config {
 
         if let Some(tls_certs) = parse_optional::<String>(cli_args, "beacon-nodes-tls-certs")? {
             config.beacon_nodes_tls_certs = Some(tls_certs.split(',').map(PathBuf::from).collect());
+        }
+
+        if cli_args.is_present("disable-run-on-all") {
+            warn!(
+                log,
+                "The --disable-run-on-all flag is deprecated";
+                "msg" => "please use --broadcast instead"
+            );
+            config.broadcast_topics = vec![];
+        }
+        if let Some(broadcast_topics) = cli_args.value_of("broadcast") {
+            config.broadcast_topics = broadcast_topics
+                .split(',')
+                .filter(|t| *t != "none")
+                .map(|t| {
+                    t.trim()
+                        .parse::<ApiTopic>()
+                        .map_err(|_| format!("Unknown API topic to broadcast: {t}"))
+                })
+                .collect::<Result<_, _>>()?;
         }
 
         /*
@@ -379,6 +376,10 @@ impl Config {
             config.http_metrics.enabled = true;
         }
 
+        if cli_args.is_present("enable-high-validator-count-metrics") {
+            config.enable_high_validator_count_metrics = true;
+        }
+
         if let Some(address) = cli_args.value_of("metrics-address") {
             config.http_metrics.listen_addr = address
                 .parse::<IpAddr>()
@@ -421,9 +422,8 @@ impl Config {
             config.builder_proposals = true;
         }
 
-
-        if cli_args.is_present("private-tx-proposals") {
-            config.private_tx_proposals = true;
+        if cli_args.is_present("produce-block-v3") {
+            config.produce_block_v3 = true;
         }
 
         config.gas_limit = cli_args
@@ -443,6 +443,15 @@ impl Config {
                     .parse::<u64>()
                     .map_err(|_| "builder-registration-timestamp-override is not a valid u64.")?,
             );
+        }
+
+        config.enable_latency_measurement_service =
+            parse_optional(cli_args, "latency-measurement-service")?.unwrap_or(true);
+
+        config.validator_registration_batch_size =
+            parse_required(cli_args, "validator-registration-batch-size")?;
+        if config.validator_registration_batch_size == 0 {
+            return Err("validator-registration-batch-size cannot be 0".to_string());
         }
 
         Ok(config)

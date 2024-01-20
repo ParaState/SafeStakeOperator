@@ -5,10 +5,10 @@ mod check_synced;
 mod cli;
 mod config;
 mod duties_service;
-mod fee_recipient_file;
 mod graffiti_file;
 mod http_metrics;
 mod key_cache;
+mod latency;
 mod notifier;
 mod preparation_service;
 mod signing_method;
@@ -22,25 +22,25 @@ pub mod account_utils;
 pub mod validator_dir;
 pub mod eth2_keystore_share;
 pub use crate::validation::cli::cli_app;
-
-//pub use cli::cli_app;
 pub use config::Config;
 use initialized_validators::InitializedValidators;
 use lighthouse_metrics::set_gauge;
 use monitoring_api::{MonitoringHttpClient, ProcessType};
+use sensitive_url::SensitiveUrl;
 pub use slashing_protection::{SlashingDatabase, SLASHING_PROTECTION_FILENAME};
 
 use crate::validation::beacon_node_fallback::{
     start_fallback_updater_service, BeaconNodeFallback, CandidateBeaconNode, OfflineOnFailure, RequireSynced,
 };
 use crate::validation::doppelganger_service::DoppelgangerService;
+use crate::validation::graffiti_file::GraffitiFile;
 use crate::validation::account_utils::validator_definitions::ValidatorDefinitions;
 use attestation_service::{AttestationService, AttestationServiceBuilder};
 use block_service::{BlockService, BlockServiceBuilder};
 use clap::ArgMatches;
 use duties_service::DutiesService;
 use environment::RuntimeContext;
-use eth2::{reqwest::ClientBuilder, BeaconNodeHttpClient, StatusCode, Timeouts};
+use eth2::{reqwest::ClientBuilder, types::Graffiti, BeaconNodeHttpClient, StatusCode, Timeouts};
 use http_api::ApiSecret;
 use notifier::spawn_notifier;
 use parking_lot::RwLock;
@@ -61,10 +61,10 @@ use tokio::{
     sync::mpsc,
     time::{sleep, Duration},
 };
-use types::{EthSpec, Hash256};
+use types::{EthSpec, Hash256, PublicKeyBytes};
 use validator_store::ValidatorStore;
 use crate::node::node::Node;
-use dvf_version::{VERSION};
+use dvf_version::VERSION;
 
 /// The interval between attempts to contact the beacon node during startup.
 const RETRY_DELAY: Duration = Duration::from_secs(2);
@@ -84,7 +84,7 @@ const HTTP_SYNC_DUTIES_TIMEOUT_QUOTIENT: u32 = 4;
 const HTTP_GET_BEACON_BLOCK_SSZ_TIMEOUT_QUOTIENT: u32 = 4;
 const HTTP_GET_DEBUG_BEACON_STATE_QUOTIENT: u32 = 4;
 const HTTP_GET_DEPOSIT_SNAPSHOT_QUOTIENT: u32 = 4;
-const HTTP_GET_VALIDATOR_BLOCK_SSZ_TIMEOUT_QUOTIENT: u32 = 4;
+const HTTP_GET_VALIDATOR_BLOCK_TIMEOUT_QUOTIENT: u32 = 4;
 
 const DOPPELGANGER_SERVICE_NAME: &str = "doppelganger";
 
@@ -157,6 +157,8 @@ pub struct ProductionValidatorClient<T: EthSpec> {
     validator_store: Arc<ValidatorStore<SystemTimeSlotClock, T>>,
     http_api_listen_addr: Option<SocketAddr>,
     config: Config,
+    beacon_nodes: Arc<BeaconNodeFallback<SystemTimeSlotClock, T>>,
+    genesis_time: u64,
 }
 
 impl<T: EthSpec> ProductionValidatorClient<T> {
@@ -206,7 +208,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             context
                 .clone()
                 .executor
-                .spawn_without_exit(async move { server.await }, "metrics-api");
+                .spawn_without_exit(server, "metrics-api");
 
             Some(ctx)
         } else {
@@ -224,121 +226,6 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
                 vec![ProcessType::Validator, ProcessType::System],
             );
         };
-
-
-        let last_beacon_node_index = config
-        .beacon_nodes
-        .len()
-        .checked_sub(1)
-        .ok_or_else(|| "No beacon nodes defined.".to_string())?;
-
-        let beacon_nodes: Vec<BeaconNodeHttpClient> = config
-        .beacon_nodes
-        .iter()
-        .enumerate()
-        .map(|(i, url)| {
-            let slot_duration = Duration::from_secs(context.eth2_config.spec.seconds_per_slot);
-
-            let mut beacon_node_http_client_builder = ClientBuilder::new();
-
-            // Add new custom root certificates if specified.
-            if let Some(certificates) = &config.beacon_nodes_tls_certs {
-                for cert in certificates {
-                    beacon_node_http_client_builder = beacon_node_http_client_builder
-                        .add_root_certificate(load_pem_certificate(cert)?);
-                }
-            }
-
-            let beacon_node_http_client = beacon_node_http_client_builder
-                // Set default timeout to be the full slot duration.
-                .timeout(slot_duration)
-                .build()
-                .map_err(|e| format!("Unable to build HTTP client: {:?}", e))?;
-
-            // Use quicker timeouts if a fallback beacon node exists.
-            let timeouts = if i < last_beacon_node_index && !config.use_long_timeouts {
-                info!(
-                    log,
-                    "Fallback endpoints are available, using optimized timeouts.";
-                );
-                Timeouts {
-                    attestation: slot_duration / HTTP_ATTESTATION_TIMEOUT_QUOTIENT,
-                    attester_duties: slot_duration / HTTP_ATTESTER_DUTIES_TIMEOUT_QUOTIENT,
-                    liveness: slot_duration / HTTP_LIVENESS_TIMEOUT_QUOTIENT,
-                    proposal: slot_duration / HTTP_PROPOSAL_TIMEOUT_QUOTIENT,
-                    proposer_duties: slot_duration / HTTP_PROPOSER_DUTIES_TIMEOUT_QUOTIENT,
-                    sync_committee_contribution: slot_duration
-                        / HTTP_SYNC_COMMITTEE_CONTRIBUTION_TIMEOUT_QUOTIENT,
-                    sync_duties: slot_duration / HTTP_SYNC_DUTIES_TIMEOUT_QUOTIENT,
-                    get_beacon_blocks_ssz: slot_duration
-                            / HTTP_GET_BEACON_BLOCK_SSZ_TIMEOUT_QUOTIENT,
-                    get_debug_beacon_states: slot_duration
-                        / HTTP_GET_DEBUG_BEACON_STATE_QUOTIENT,
-                    get_deposit_snapshot: slot_duration / HTTP_GET_DEPOSIT_SNAPSHOT_QUOTIENT,
-                    get_validator_block_ssz: slot_duration
-                    / HTTP_GET_VALIDATOR_BLOCK_SSZ_TIMEOUT_QUOTIENT,
-                }
-            } else {
-                Timeouts::set_all(slot_duration)
-            };
-
-            Ok(BeaconNodeHttpClient::from_components(
-                url.clone(),
-                beacon_node_http_client,
-                timeouts,
-            ))
-        })
-        .collect::<Result<Vec<BeaconNodeHttpClient>, String>>()?;
-
-        let num_nodes = beacon_nodes.len();
-        let candidates = beacon_nodes
-            .into_iter()
-            .map(CandidateBeaconNode::new)
-            .collect();
-
-        // Set the count for beacon node fallbacks excluding the primary beacon node.
-        set_gauge(
-            &http_metrics::metrics::ETH2_FALLBACK_CONFIGURED,
-            num_nodes.saturating_sub(1) as i64,
-        );
-        // Initialize the number of connected, synced fallbacks to 0.
-        set_gauge(&http_metrics::metrics::ETH2_FALLBACK_CONNECTED, 0);
-        let mut beacon_nodes: BeaconNodeFallback<_, T> = BeaconNodeFallback::new(
-            candidates, 
-            config.disable_run_on_all,
-            context.eth2_config.spec.clone(), 
-            log.clone()
-        );
-
-        // Perform some potentially long-running initialization tasks.
-        let (genesis_time, genesis_validators_root) = tokio::select! {
-            tuple = init_from_beacon_node(&beacon_nodes, &context) => tuple?,
-            () = context.executor.exit() => return Err("Shutting down".to_string())
-        };
-
-        // Update the metrics server.
-        if let Some(ctx) = &http_metrics_ctx {
-            ctx.shared.write().genesis_time = Some(genesis_time);
-        }
-
-        let slot_clock = SystemTimeSlotClock::new(
-            context.eth2_config.spec.genesis_slot,
-            Duration::from_secs(genesis_time),
-            Duration::from_secs(context.eth2_config.spec.seconds_per_slot),
-        );
-
-        beacon_nodes.set_slot_clock(slot_clock.clone());
-        let beacon_nodes = Arc::new(beacon_nodes);
-        start_fallback_updater_service(context.clone(), beacon_nodes.clone())?;
-
-        loop {
-            if !check_synced(beacon_nodes.clone(), log.clone()).await {
-                sleep(Duration::from_secs(60)).await;
-            }
-            else {
-                break;
-            }
-        }
 
         let mut validator_defs = ValidatorDefinitions::open_or_create(&config.validator_dir)
             .map_err(|e| format!("Unable to open or create validator definitions: {:?}", e))?;
@@ -432,8 +319,148 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
                 })?;
         }
 
+        let last_beacon_node_index = config
+            .beacon_nodes
+            .len()
+            .checked_sub(1)
+            .ok_or_else(|| "No beacon nodes defined.".to_string())?;
 
+        let beacon_node_setup = |x: (usize, &SensitiveUrl)| {
+            let i = x.0;
+            let url = x.1;
+            let slot_duration = Duration::from_secs(context.eth2_config.spec.seconds_per_slot);
 
+            let mut beacon_node_http_client_builder = ClientBuilder::new();
+
+            // Add new custom root certificates if specified.
+            if let Some(certificates) = &config.beacon_nodes_tls_certs {
+                for cert in certificates {
+                    beacon_node_http_client_builder = beacon_node_http_client_builder
+                        .add_root_certificate(load_pem_certificate(cert)?);
+                }
+            }
+
+            let beacon_node_http_client = beacon_node_http_client_builder
+                // Set default timeout to be the full slot duration.
+                .timeout(slot_duration)
+                .build()
+                .map_err(|e| format!("Unable to build HTTP client: {:?}", e))?;
+
+            // Use quicker timeouts if a fallback beacon node exists.
+            let timeouts = if i < last_beacon_node_index && !config.use_long_timeouts {
+                info!(
+                    log,
+                    "Fallback endpoints are available, using optimized timeouts.";
+                );
+                Timeouts {
+                    attestation: slot_duration / HTTP_ATTESTATION_TIMEOUT_QUOTIENT,
+                    attester_duties: slot_duration / HTTP_ATTESTER_DUTIES_TIMEOUT_QUOTIENT,
+                    liveness: slot_duration / HTTP_LIVENESS_TIMEOUT_QUOTIENT,
+                    proposal: slot_duration / HTTP_PROPOSAL_TIMEOUT_QUOTIENT,
+                    proposer_duties: slot_duration / HTTP_PROPOSER_DUTIES_TIMEOUT_QUOTIENT,
+                    sync_committee_contribution: slot_duration
+                        / HTTP_SYNC_COMMITTEE_CONTRIBUTION_TIMEOUT_QUOTIENT,
+                    sync_duties: slot_duration / HTTP_SYNC_DUTIES_TIMEOUT_QUOTIENT,
+                    get_beacon_blocks_ssz: slot_duration
+                        / HTTP_GET_BEACON_BLOCK_SSZ_TIMEOUT_QUOTIENT,
+                    get_debug_beacon_states: slot_duration / HTTP_GET_DEBUG_BEACON_STATE_QUOTIENT,
+                    get_deposit_snapshot: slot_duration / HTTP_GET_DEPOSIT_SNAPSHOT_QUOTIENT,
+                    get_validator_block: slot_duration / HTTP_GET_VALIDATOR_BLOCK_TIMEOUT_QUOTIENT,
+                }
+            } else {
+                Timeouts::set_all(slot_duration)
+            };
+
+            Ok(BeaconNodeHttpClient::from_components(
+                url.clone(),
+                beacon_node_http_client,
+                timeouts,
+            ))
+        };
+
+        let beacon_nodes: Vec<BeaconNodeHttpClient> = config
+            .beacon_nodes
+            .iter()
+            .enumerate()
+            .map(beacon_node_setup)
+            .collect::<Result<Vec<BeaconNodeHttpClient>, String>>()?;
+
+        let proposer_nodes: Vec<BeaconNodeHttpClient> = config
+            .proposer_nodes
+            .iter()
+            .enumerate()
+            .map(beacon_node_setup)
+            .collect::<Result<Vec<BeaconNodeHttpClient>, String>>()?;
+
+        let num_nodes = beacon_nodes.len();
+        let candidates = beacon_nodes
+            .into_iter()
+            .map(CandidateBeaconNode::new)
+            .collect();
+
+        let proposer_nodes_num = proposer_nodes.len();
+        let proposer_candidates = proposer_nodes
+            .into_iter()
+            .map(CandidateBeaconNode::new)
+            .collect();
+    
+
+        // Set the count for beacon node fallbacks excluding the primary beacon node.
+        set_gauge(
+            &http_metrics::metrics::ETH2_FALLBACK_CONFIGURED,
+            num_nodes.saturating_sub(1) as i64,
+        );
+        // Initialize the number of connected, synced fallbacks to 0.
+        set_gauge(&http_metrics::metrics::ETH2_FALLBACK_CONNECTED, 0);
+
+        let mut beacon_nodes: BeaconNodeFallback<_, T> = BeaconNodeFallback::new(
+            candidates, 
+            config.broadcast_topics.clone(),
+            context.eth2_config.spec.clone(), 
+            log.clone()
+        );
+
+        let mut proposer_nodes: BeaconNodeFallback<_, T> = BeaconNodeFallback::new(
+            proposer_candidates,
+            config.broadcast_topics.clone(),
+            context.eth2_config.spec.clone(),
+            log.clone(),
+        );
+
+        // Perform some potentially long-running initialization tasks.
+        let (genesis_time, genesis_validators_root) = tokio::select! {
+            tuple = init_from_beacon_node(&beacon_nodes, &proposer_nodes, &context) => tuple?,
+            () = context.executor.exit() => return Err("Shutting down".to_string())
+        };
+
+        // Update the metrics server.
+        if let Some(ctx) = &http_metrics_ctx {
+            ctx.shared.write().genesis_time = Some(genesis_time);
+        }
+
+        let slot_clock = SystemTimeSlotClock::new(
+            context.eth2_config.spec.genesis_slot,
+            Duration::from_secs(genesis_time),
+            Duration::from_secs(context.eth2_config.spec.seconds_per_slot),
+        );
+
+        beacon_nodes.set_slot_clock(slot_clock.clone());
+        proposer_nodes.set_slot_clock(slot_clock.clone());
+
+        let beacon_nodes = Arc::new(beacon_nodes);
+        start_fallback_updater_service(context.clone(), beacon_nodes.clone())?;
+
+        let proposer_nodes = Arc::new(proposer_nodes);
+        start_fallback_updater_service(context.clone(), proposer_nodes.clone())?;
+
+        loop {
+            if !check_synced(beacon_nodes.clone(), log.clone()).await {
+                sleep(Duration::from_secs(60)).await;
+            }
+            else {
+                break;
+            }
+        }
 
         let doppelganger_service = if config.enable_doppelganger_protection {
             Some(Arc::new(DoppelgangerService::new(
@@ -490,13 +517,9 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             slot_clock: slot_clock.clone(),
             beacon_nodes: beacon_nodes.clone(),
             validator_store: validator_store.clone(),
-            require_synced: if config.allow_unsynced_beacon_node {
-                RequireSynced::Yes
-            } else {
-                RequireSynced::No
-            },
             spec: context.eth2_config.spec.clone(),
             context: duties_context,
+            enable_high_validator_count_metrics: config.enable_high_validator_count_metrics,
         });
 
         // Update the metrics server.
@@ -505,15 +528,19 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             ctx.shared.write().duties_service = Some(duties_service.clone());
         }
 
-        let block_service = BlockServiceBuilder::new()
+        let mut block_service_builder = BlockServiceBuilder::new()
             .slot_clock(slot_clock.clone())
             .validator_store(validator_store.clone())
             .beacon_nodes(beacon_nodes.clone())
             .runtime_context(context.service_context("block".into()))
             .graffiti(config.graffiti)
-            .graffiti_file(config.graffiti_file.clone())
-            .private_tx_proposals(config.private_tx_proposals)
-            .build()?;
+            .graffiti_file(config.graffiti_file.clone());
+        // If we have proposer nodes, add them to the block service builder.
+        if proposer_nodes_num > 0 {
+            block_service_builder = block_service_builder.proposer_nodes(proposer_nodes.clone());
+        }
+
+        let block_service = block_service_builder.build()?;
 
         let attestation_service = AttestationServiceBuilder::new()
             .duties_service(duties_service.clone())
@@ -556,16 +583,51 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             validator_store,
             config,
             http_api_listen_addr: None,
+            genesis_time,
+            beacon_nodes,
         })
     }
 
-    pub fn start_service(&mut self) -> Result<(), String> {
+    pub async fn start_service(&mut self) -> Result<(), String> {
         // We use `SLOTS_PER_EPOCH` as the capacity of the block notification channel, because
         // we don't except notifications to be delayed by more than a single slot, let alone a
         // whole epoch!
         let channel_capacity = T::slots_per_epoch() as usize;
         let (block_service_tx, block_service_rx) = mpsc::channel(channel_capacity);
         let log = self.context.log();
+
+        let api_secret = ApiSecret::create_or_open(&self.config.validator_dir)?;
+
+        self.http_api_listen_addr = if self.config.http_api.enabled {
+            let ctx = Arc::new(http_api::Context {
+                task_executor: self.context.executor.clone(),
+                api_secret,
+                validator_store: Some(self.validator_store.clone()),
+                validator_dir: Some(self.config.validator_dir.clone()),
+                spec: self.context.eth2_config.spec.clone(),
+                config: self.config.http_api.clone(),
+                log: log.clone(),
+                _phantom: PhantomData,
+            });
+
+            let exit = self.context.executor.exit();
+
+            let (listen_addr, server) = http_api::serve(ctx, exit)
+                .map_err(|e| format!("Unable to start HTTP API server: {:?}", e))?;
+
+            self.context
+                .clone()
+                .executor
+                .spawn_without_exit(async move { server.await }, "http-api");
+
+            Some(listen_addr)
+        } else {
+            info!(log, "HTTP API server is disabled");
+            None
+        };
+
+        // Wait until genesis has occurred.
+        wait_for_genesis(&self.beacon_nodes, self.genesis_time, &self.context).await?;
 
         duties_service::start_update_service(self.duties_service.clone(), block_service_tx);
 
@@ -605,35 +667,13 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
 
         spawn_notifier(self).map_err(|e| format!("Failed to start notifier: {}", e))?;
 
-        let api_secret = ApiSecret::create_or_open(&self.config.validator_dir)?;
-
-        self.http_api_listen_addr = if self.config.http_api.enabled {
-            let ctx = Arc::new(http_api::Context {
-                task_executor: self.context.executor.clone(),
-                api_secret,
-                validator_store: Some(self.validator_store.clone()),
-                validator_dir: Some(self.config.validator_dir.clone()),
-                spec: self.context.eth2_config.spec.clone(),
-                config: self.config.http_api.clone(),
-                log: log.clone(),
-                _phantom: PhantomData,
-            });
-
-            let exit = self.context.executor.exit();
-
-            let (listen_addr, server) = http_api::serve(ctx, exit)
-                .map_err(|e| format!("Unable to start HTTP API server: {:?}", e))?;
-
-            self.context
-                .clone()
-                .executor
-                .spawn_without_exit(async move { server.await }, "http-api");
-
-            Some(listen_addr)
-        } else {
-            info!(log, "HTTP API server is disabled");
-            None
-        };
+        if self.config.enable_latency_measurement_service {
+            latency::start_latency_service(
+                self.context.clone(),
+                self.duties_service.slot_clock.clone(),
+                self.duties_service.beacon_nodes.clone(),
+            );
+        }
 
         Ok(())
     }
@@ -641,12 +681,31 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
 
 async fn init_from_beacon_node<E: EthSpec>(
     beacon_nodes: &BeaconNodeFallback<SystemTimeSlotClock, E>,
+    proposer_nodes: &BeaconNodeFallback<SystemTimeSlotClock, E>,
     context: &RuntimeContext<E>,
 ) -> Result<(u64, Hash256), String> {
     loop {
-        beacon_nodes.update_unready_candidates().await;
+        beacon_nodes.update_all_candidates().await;
+        proposer_nodes.update_all_candidates().await;
+
         let num_available = beacon_nodes.num_available().await;
         let num_total = beacon_nodes.num_total();
+
+        let proposer_available = proposer_nodes.num_available().await;
+        let proposer_total = proposer_nodes.num_total();
+
+        if proposer_total > 0 && proposer_available == 0 {
+            warn!(
+                context.log(),
+                "Unable to connect to a proposer node";
+                "retry in" => format!("{} seconds", RETRY_DELAY.as_secs()),
+                "total_proposers" => proposer_total,
+                "available_proposers" => proposer_available,
+                "total_beacon_nodes" => num_total,
+                "available_beacon_nodes" => num_available,
+            );
+        }
+
         if num_available > 0 {
             info!(
                 context.log(),
@@ -811,6 +870,28 @@ pub fn load_pem_certificate<P: AsRef<Path>>(pem_path: P) -> Result<Certificate, 
         .map_err(|e| format!("Unable to read certificate file: {}", e))?;
     Certificate::from_pem(&buf).map_err(|e| format!("Unable to parse certificate: {}", e))
 }
+
+// Given the various graffiti control methods, determine the graffiti that will be used for
+// the next block produced by the validator with the given public key.
+pub fn determine_graffiti(
+    validator_pubkey: &PublicKeyBytes,
+    log: &Logger,
+    graffiti_file: Option<GraffitiFile>,
+    validator_definition_graffiti: Option<Graffiti>,
+    graffiti_flag: Option<Graffiti>,
+) -> Option<Graffiti> {
+    graffiti_file
+        .and_then(|mut g| match g.load_graffiti(validator_pubkey) {
+            Ok(g) => g,
+            Err(e) => {
+                warn!(log, "Failed to read graffiti file"; "error" => ?e);
+                None
+            }
+        })
+        .or(validator_definition_graffiti)
+        .or(graffiti_flag)
+}
+
 
 // DVF
 pub mod operator;

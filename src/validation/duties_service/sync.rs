@@ -1,8 +1,10 @@
+use crate::validation::beacon_node_fallback::{OfflineOnFailure, RequireSynced};
 use crate::validation::{
     doppelganger_service::DoppelgangerStatus,
     duties_service::{DutiesService, Error},
+    http_metrics::metrics,
+    validator_store::Error as ValidatorStoreError,
 };
-use crate::validation::beacon_node_fallback::OfflineOnFailure;
 use futures::future::join_all;
 use itertools::Itertools;
 use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -422,11 +424,19 @@ pub async fn poll_sync_committee_duties_for_period<T: SlotClock + 'static, E: Et
 
     let duties_response = duties_service
         .beacon_nodes
-        .first_success(duties_service.require_synced, OfflineOnFailure::Yes, |beacon_node| async move {
-            beacon_node
-                .post_validator_duties_sync(period_start_epoch, local_indices)
-                .await
-        })
+        .first_success(
+            RequireSynced::No,
+            OfflineOnFailure::Yes,
+            |beacon_node| async move {
+                let _timer = metrics::start_timer_vec(
+                    &metrics::DUTIES_SERVICE_TIMES,
+                    &[metrics::VALIDATOR_DUTIES_SYNC_HTTP_POST],
+                );
+                beacon_node
+                    .post_validator_duties_sync(period_start_epoch, local_indices)
+                    .await
+            },
+        )
         .await;
 
     let duties = match duties_response {
@@ -536,6 +546,18 @@ pub async fn fill_in_aggregation_proofs<T: SlotClock + 'static, E: EthSpec>(
                         .await
                     {
                         Ok(proof) => proof,
+                        Err(ValidatorStoreError::UnknownPubkey(pubkey)) => {
+                            // A pubkey can be missing when a validator was recently
+                            // removed via the API.
+                            debug!(
+                                log,
+                                "Missing pubkey for sync selection proof";
+                                "pubkey" => ?pubkey,
+                                "pubkey" => ?duty.pubkey,
+                                "slot" => slot,
+                            );
+                            return None;
+                        }
                         Err(e) => {
                             warn!(
                                 log,
@@ -621,4 +643,3 @@ pub async fn fill_in_aggregation_proofs<T: SlotClock + 'static, E: EthSpec>(
         }
     }
 }
-

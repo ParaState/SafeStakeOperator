@@ -4,10 +4,9 @@
 //! attempt) to load into the `crate::intialized_validators::InitializedValidators` struct.
 
 use crate::validation::account_utils::{
-    default_keystore_password_path, 
-    default_keystore_share_password_path, 
-    default_operator_committee_definition_path,
-    write_file_via_temporary, ZeroizeString};
+    default_keystore_password_path, default_keystore_share_password_path,
+    default_operator_committee_definition_path, write_file_via_temporary, ZeroizeString,
+};
 use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
 use crate::validation::validator_dir::share_builder::VOTING_KEYSTORE_SHARE_FILE;
 use directory::ensure_dir_exists;
@@ -98,7 +97,7 @@ pub enum SigningDefinition {
         #[serde(skip_serializing_if = "Option::is_none")]
         voting_keystore_share_password: Option<ZeroizeString>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        operator_committee_definition_path: Option<PathBuf>, 
+        operator_committee_definition_path: Option<PathBuf>,
         operator_committee_index: u64,
         operator_id: u64,
     },
@@ -191,26 +190,34 @@ impl ValidatorDefinition {
         builder_proposals: Option<bool>,
         operator_committee_definition_path: P,
         operator_committee_index: u64,
-        operator_id: u64
+        operator_id: u64,
     ) -> Result<Self, Error> {
         let voting_keystore_share_path = voting_keystore_share_path.as_ref().into();
-        let keystore_share =
-            KeystoreShare::from_json_file(&voting_keystore_share_path).map_err(Error::UnableToOpenKeystore)?;
+        let keystore_share = KeystoreShare::from_json_file(&voting_keystore_share_path)
+            .map_err(Error::UnableToOpenKeystore)?;
         let voting_public_key = keystore_share.master_public_key;
 
         Ok(ValidatorDefinition {
             enabled: true,
             voting_public_key,
-            description: keystore_share.keystore.description().unwrap_or("").to_string(),
+            description: keystore_share
+                .keystore
+                .description()
+                .unwrap_or("")
+                .to_string(),
             graffiti,
             suggested_fee_recipient,
             gas_limit,
             builder_proposals,
             signing_definition: SigningDefinition::DistributedKeystore {
                 voting_keystore_share_path,
-                voting_keystore_share_password_path: Some(voting_keystore_share_password_path.as_ref().into()),
+                voting_keystore_share_password_path: Some(
+                    voting_keystore_share_password_path.as_ref().into(),
+                ),
                 voting_keystore_share_password: None,
-                operator_committee_definition_path: Some(operator_committee_definition_path.as_ref().into()), 
+                operator_committee_definition_path: Some(
+                    operator_committee_definition_path.as_ref().into(),
+                ),
                 operator_committee_index,
                 operator_id,
             },
@@ -404,7 +411,7 @@ impl ValidatorDefinitions {
                 SigningDefinition::LocalKeystore { .. } => None,
                 SigningDefinition::Web3Signer { .. } => None,
                 // [Zico]TODO: to be revised
-                SigningDefinition::DistributedKeystore { 
+                SigningDefinition::DistributedKeystore {
                     voting_keystore_share_path,
                     ..
                 } => Some(voting_keystore_share_path),
@@ -446,17 +453,17 @@ impl ValidatorDefinitions {
                     }
                 };
 
-                let voting_keystore_share_password_path = Some(default_keystore_share_password_path(
-                    &keystore_share,
-                    secrets_dir.as_ref(),
-                ))
+                let voting_keystore_share_password_path = Some(
+                    default_keystore_share_password_path(&keystore_share, secrets_dir.as_ref()),
+                )
                 .filter(|path| path.exists());
 
-                let operator_committee_definition_path = Some(default_operator_committee_definition_path(
-                    &keystore_share.master_public_key,
-                    validators_dir.as_ref(),
-                ))
-                .filter(|path| path.exists());
+                let operator_committee_definition_path =
+                    Some(default_operator_committee_definition_path(
+                        &keystore_share.master_public_key,
+                        validators_dir.as_ref(),
+                    ))
+                    .filter(|path| path.exists());
 
                 // Extract validator (operator committee) index
                 let operator_committee_index = keystore_share.master_id;
@@ -473,7 +480,11 @@ impl ValidatorDefinitions {
                 Some(ValidatorDefinition {
                     enabled: true,
                     voting_public_key,
-                    description: keystore_share.keystore.description().unwrap_or("").to_string(),
+                    description: keystore_share
+                        .keystore
+                        .description()
+                        .unwrap_or("")
+                        .to_string(),
                     graffiti: None,
                     suggested_fee_recipient: None,
                     gas_limit: None,
@@ -484,7 +495,7 @@ impl ValidatorDefinitions {
                         voting_keystore_share_password: None,
                         operator_committee_definition_path,
                         operator_committee_index,
-                        operator_id, 
+                        operator_id,
                     },
                 })
             })
@@ -630,14 +641,13 @@ pub fn is_voting_keystore(file_name: &str) -> bool {
     false
 }
 
-
 /// Returns `true` if we should consider the `file_name` to represent a voting keystore share.
 pub fn is_voting_keystore_share(file_name: &str) -> bool {
     //if Regex::new(VOTING_KEYSTORE_SHARE_FILE)
-        //.expect("regex is valid")
-        //.is_match(file_name)
+    //.expect("regex is valid")
+    //.is_match(file_name)
     //{
-        //return true;
+    //return true;
     //}
 
     // The format used by SafeStake.
@@ -783,15 +793,20 @@ mod tests {
         "#;
         let def: ValidatorDefinition = serde_yaml::from_str(dk_str).unwrap();
         match &def.signing_definition {
-            SigningDefinition::DistributedKeystore {operator_committee_index, operator_id, ..} => {
+            SigningDefinition::DistributedKeystore {
+                operator_committee_index,
+                operator_id,
+                ..
+            } => {
                 assert_eq!(*operator_committee_index, 3 as u64);
                 assert_eq!(*operator_id, 5 as u64);
             }
-            SigningDefinition::LocalKeystore{..} => {panic!("Deserialization wrong");}
-            SigningDefinition::Web3Signer{..} => {panic!("Deserialization wrong");}
-
+            SigningDefinition::LocalKeystore { .. } => {
+                panic!("Deserialization wrong");
+            }
+            SigningDefinition::Web3Signer { .. } => {
+                panic!("Deserialization wrong");
+            }
         };
-
     }
 }
-

@@ -1149,7 +1149,7 @@ pub async fn query_operator_from_contract(
         .unwrap();
     let raw_json: Value = serde_json::from_str(&raw_abi).unwrap();
     let abi = raw_json["abi"].to_string();
-    let address = Address::from_slice(&hex::decode(REGISTRY_CONTRACT.get().unwrap() ).unwrap());
+    let address = Address::from_slice(&hex::decode(REGISTRY_CONTRACT.get().unwrap()).unwrap());
     let contract = EthContract::from_json(web3.eth(), address, abi.as_bytes())
         .or_else(|e| {
             error!("Can't create contract from json {}", e);
@@ -1189,7 +1189,7 @@ pub async fn check_account(
         .unwrap();
     let raw_json: Value = serde_json::from_str(&raw_abi).unwrap();
     let abi = raw_json["abi"].to_string();
-    let address = Address::from_slice(&hex::decode(NETWORK_CONTRACT.get().unwrap() ).unwrap());
+    let address = Address::from_slice(&hex::decode(NETWORK_CONTRACT.get().unwrap()).unwrap());
     let contract = EthContract::from_json(web3.eth(), address, abi.as_bytes())
         .or_else(|e| {
             error!("Can't create contract from json {}", e);

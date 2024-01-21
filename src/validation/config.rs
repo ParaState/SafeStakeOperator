@@ -15,7 +15,7 @@ use dvf_directory::get_default_base_dir;
 use eth2::types::Graffiti;
 use sensitive_url::SensitiveUrl;
 use serde_derive::{Deserialize, Serialize};
-use slog::{error, info, warn, Logger};
+use slog::{info, warn, Logger};
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
@@ -140,81 +140,42 @@ impl Config {
 
         let (validator_dir, secrets_dir) = (None, None);
 
-        if cli_args.values_of("registry-contract").is_some() {
-            let registry_contract: String = parse_required(cli_args, "registry-contract")?;
-            info!(log, "read registry contract"; "registry-contract" => &registry_contract);
-            REGISTRY_CONTRACT.set(registry_contract).unwrap();
-        } else {
-            warn!(
-                log,
-                "can't read registry-contract, use old value, may be wrong"
+        let registry_contract: String = parse_required(cli_args, "registry-contract")?;
+        info!(log, "read registry contract"; "registry-contract" => &registry_contract);
+        REGISTRY_CONTRACT.set(registry_contract).unwrap();
+
+        let network_contract: String = parse_required(cli_args, "network-contract")?;
+        info!(log, "read network contract"; "network-contract" => &network_contract);
+        NETWORK_CONTRACT.set(network_contract).unwrap();
+
+        let self_ip: Ipv4Addr = parse_required(cli_args, "ip")?;
+        info!(log, "read node ip"; "ip" => &self_ip.to_string());
+        config
+            .dvf_node_config
+            .base_address
+            .set_ip(IpAddr::V4(self_ip));
+
+        let base_port: u16 = parse_required(cli_args, "base-port")?;
+        config.dvf_node_config.base_address.set_port(base_port);
+        info!(log, "read base port"; "base-port" => base_port);
+
+        let api_str: String = parse_required(cli_args, "api")?;
+        info!(log, "read api address"; "api" => &api_str);
+        API_ADDRESS.set(api_str).unwrap();
+
+        let ws_transport_url_str: String = parse_required(cli_args, "ws-url")?;
+        info!(log, "read ws-url"; "ws-url" => &ws_transport_url_str);
+        DEFAULT_TRANSPORT_URL.set(ws_transport_url_str).unwrap();
+
+        let operator_id: u32 = parse_required(cli_args, "id")?;
+        if operator_id == 0 {
+            return Err(
+                "operator id should not be 0, please get your operator id from web first!"
+                    .to_string(),
             );
         }
-
-        if cli_args.values_of("network-contract").is_some() {
-            let network_contract: String = parse_required(cli_args, "network-contract")?;
-            info!(log, "read network contract"; "network-contract" => &network_contract);
-            NETWORK_CONTRACT.set(network_contract).unwrap();
-        } else {
-            warn!(
-                log,
-                "can't read network-contract, use old value, may be wrong"
-            );
-        }
-
-        let mut self_ip: Option<String> = None;
-        if cli_args.value_of("ip").is_some() {
-            self_ip = Some(parse_required(cli_args, "ip")?);
-        }
-
-        match self_ip {
-            Some(ip) => {
-                info!(log, "read node ip"; "ip" => &ip);
-                config
-                    .dvf_node_config
-                    .base_address
-                    .set_ip(IpAddr::V4(ip.parse::<Ipv4Addr>().unwrap()));
-            }
-            None => {
-                panic!("ip is none");
-            }
-        }
-
-        let mut base_port: Option<u16> = None;
-        if cli_args.value_of("base-port").is_some() {
-            let base_port_str: String = parse_required(cli_args, "base-port")?;
-            base_port = Some(base_port_str.parse::<u16>().unwrap());
-            info!(log, "read base port"; "base-port" => base_port.unwrap());
-        }
-
-        if cli_args.value_of("api").is_some() {
-            let api_str: String = parse_required(cli_args, "api")?;
-            info!(log, "read api address"; "api" => &api_str);
-            API_ADDRESS.set(api_str).unwrap();
-        }
-
-        if cli_args.value_of("ws-url").is_some() {
-            let ws_transport_url_str: String = parse_required(cli_args, "ws-url")?;
-            info!(log, "read ws-url"; "ws-url" => &ws_transport_url_str);
-            DEFAULT_TRANSPORT_URL.set(ws_transport_url_str).unwrap();
-        }
-
-        if cli_args.value_of("id").is_some() {
-            let operator_id: u32 = parse_required(cli_args, "id")?;
-            if operator_id == 0 {
-                error!(log, "operator id should not be 0, please get your operator id from web first!"; );
-                panic!("operator id is 0");
-            }
-            info!(log, "read operator id"; "operator id" => &operator_id);
-            SELF_OPERATOR_ID.set(operator_id).unwrap();
-        }
-
-        match base_port {
-            Some(base_port) => {
-                config.dvf_node_config = config.dvf_node_config.set_base_port(base_port);
-            }
-            _ => {}
-        }
+        info!(log, "read operator id"; "operator id" => &operator_id);
+        SELF_OPERATOR_ID.set(operator_id).unwrap();
 
         config.validator_dir =
             validator_dir.unwrap_or_else(|| default_base_dir.join(DEFAULT_VALIDATOR_DIR));

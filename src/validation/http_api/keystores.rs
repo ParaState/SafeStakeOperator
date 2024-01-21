@@ -1,12 +1,16 @@
 //! Implementation of the standard keystore management API.
-use crate::validation::{initialized_validators::Error, signing_method::SigningMethod, InitializedValidators, ValidatorStore};
 use crate::validation::account_utils::ZeroizeString;
+use crate::validation::{
+    initialized_validators::Error, signing_method::SigningMethod, InitializedValidators,
+    ValidatorStore,
+};
 use eth2::lighthouse_vc::std_types::{
     DeleteKeystoreStatus, DeleteKeystoresRequest, DeleteKeystoresResponse, ImportKeystoreStatus,
     ImportKeystoresRequest, ImportKeystoresResponse, InterchangeJsonStr, KeystoreJsonStr,
     ListKeystoresResponse, SingleKeystoreResponse, Status,
 };
 use eth2_keystore::Keystore;
+use futures::executor::block_on;
 use slog::{info, warn, Logger};
 use slot_clock::SlotClock;
 use std::path::PathBuf;
@@ -17,7 +21,6 @@ use types::{EthSpec, PublicKeyBytes};
 use validator_dir::Builder as ValidatorDirBuilder;
 use warp::Rejection;
 use warp_utils::reject::{custom_bad_request, custom_server_error};
-use futures::executor::block_on;
 
 pub fn list<T: SlotClock + 'static, E: EthSpec>(
     validator_store: Arc<ValidatorStore<T, E>>,
@@ -165,7 +168,8 @@ fn import_single_keystore<T: SlotClock + 'static, E: EthSpec>(
     let pubkey = keystore
         .public_key()
         .ok_or_else(|| format!("invalid pubkey: {}", keystore.pubkey()))?;
-    if let Some(def) = handle.block_on(validator_store.initialized_validators().read())
+    if let Some(def) = handle
+        .block_on(validator_store.initialized_validators().read())
         .validator_definitions()
         .iter()
         .find(|def| def.voting_public_key == pubkey)
@@ -288,8 +292,7 @@ fn delete_single_keystore<T: EthSpec>(
             .decompress()
             .map_err(|e| format!("invalid pubkey, {:?}: {:?}", pubkey_bytes, e))?;
 
-        match handle.block_on(initialized_validators.delete_definition_and_keystore(&pubkey))
-        {
+        match handle.block_on(initialized_validators.delete_definition_and_keystore(&pubkey)) {
             Ok(_) => Ok(DeleteKeystoreStatus::Deleted),
             Err(e) => match e {
                 Error::ValidatorNotInitialized(_) => Ok(DeleteKeystoreStatus::NotFound),

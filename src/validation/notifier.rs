@@ -118,4 +118,3 @@ async fn notify<T: SlotClock + 'static, E: EthSpec>(
         error!(log, "Unable to read slot clock");
     }
 }
-

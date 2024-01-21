@@ -2,12 +2,12 @@
 //!
 //! Provides a JSON keystore share for a BLS keypair
 
-use std::path::Path;
+use bls::PublicKey;
+use eth2_keystore::{Keystore, Uuid};
+use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{Read, Write};
-use serde::{Deserialize, Serialize};
-use eth2_keystore::{Keystore, Uuid};
-use bls::PublicKey;
+use std::path::Path;
 
 use eth2_keystore::Error as KeyStoreError;
 
@@ -24,8 +24,12 @@ pub struct KeystoreShare {
 }
 
 impl KeystoreShare {
-
-    pub fn new(keystore: Keystore, master_public_key: PublicKey, master_id: u64, share_id: u64) -> Self {
+    pub fn new(
+        keystore: Keystore,
+        master_public_key: PublicKey,
+        master_id: u64,
+        share_id: u64,
+    ) -> Self {
         Self {
             keystore,
             master_public_key,
@@ -70,4 +74,3 @@ impl KeystoreShare {
             .and_then(Self::from_json_reader)
     }
 }
-

@@ -1,13 +1,13 @@
-use rand::{Rng, SeedableRng};
-use rand::rngs::StdRng;
-use rand::distributions::Uniform;
 use num_bigint::{BigInt, RandBigInt};
 use num_traits::Zero;
+use rand::distributions::Uniform;
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 
 pub trait Sample<T> {
-    fn sample(&mut self, modulus: &T) -> T; 
+    fn sample(&mut self, modulus: &T) -> T;
     fn sample_range(&mut self, low: &T, high: &T) -> T;
-    fn sample_vec(&mut self, len: usize, modulus: &T) -> Vec<T>; 
+    fn sample_vec(&mut self, len: usize, modulus: &T) -> Vec<T>;
     fn sample_range_vec(&mut self, len: usize, low: &T, high: &T) -> Vec<T>;
     fn sample_array<const L: usize>(&mut self, modulus: &T) -> [T; L];
     fn sample_range_array<const L: usize>(&mut self, low: &T, high: &T) -> [T; L];
@@ -15,16 +15,15 @@ pub trait Sample<T> {
 
 trait RandUtils {
     type Kernel;
-    
+
     fn get_rng() -> Self::Kernel;
     fn get_seeded_rng(seed: &[u8; 32]) -> Self::Kernel;
 }
 
-
 #[derive(Debug)]
 pub struct RandUtilsRng {
-    // Keep an internal RNG member to avoid having to initiate a new one in every functionality call 
-    pub rng: StdRng 
+    // Keep an internal RNG member to avoid having to initiate a new one in every functionality call
+    pub rng: StdRng,
 }
 
 impl Default for RandUtilsRng {
@@ -36,13 +35,13 @@ impl Default for RandUtilsRng {
 impl RandUtilsRng {
     pub fn new() -> Self {
         Self {
-            rng: Self::get_rng()
+            rng: Self::get_rng(),
         }
     }
 
     pub fn from_seed(seed: &[u8; 32]) -> Self {
         Self {
-            rng: Self::get_seeded_rng(seed)
+            rng: Self::get_seeded_rng(seed),
         }
     }
 }
@@ -57,7 +56,6 @@ impl RandUtils for RandUtilsRng {
     fn get_seeded_rng(seed: &[u8; 32]) -> Self::Kernel {
         StdRng::from_seed(*seed)
     }
-
 }
 
 impl Sample<BigInt> for RandUtilsRng {
@@ -96,4 +94,3 @@ impl Sample<BigInt> for RandUtilsRng {
         array_init::array_init(|_| self.sample_range(low, high))
     }
 }
-

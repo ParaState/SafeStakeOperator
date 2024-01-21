@@ -14,13 +14,13 @@ mod preparation_service;
 mod signing_method;
 mod sync_committee_service;
 
+pub mod account_utils;
 mod doppelganger_service;
+pub mod eth2_keystore_share;
 pub mod http_api;
 pub mod initialized_validators;
-pub mod validator_store;
-pub mod account_utils;
 pub mod validator_dir;
-pub mod eth2_keystore_share;
+pub mod validator_store;
 pub use crate::validation::cli::cli_app;
 pub use config::Config;
 use initialized_validators::InitializedValidators;
@@ -29,16 +29,19 @@ use monitoring_api::{MonitoringHttpClient, ProcessType};
 use sensitive_url::SensitiveUrl;
 pub use slashing_protection::{SlashingDatabase, SLASHING_PROTECTION_FILENAME};
 
+use crate::node::node::Node;
+use crate::validation::account_utils::validator_definitions::ValidatorDefinitions;
 use crate::validation::beacon_node_fallback::{
-    start_fallback_updater_service, BeaconNodeFallback, CandidateBeaconNode, OfflineOnFailure, RequireSynced,
+    start_fallback_updater_service, BeaconNodeFallback, CandidateBeaconNode, OfflineOnFailure,
+    RequireSynced,
 };
 use crate::validation::doppelganger_service::DoppelgangerService;
 use crate::validation::graffiti_file::GraffitiFile;
-use crate::validation::account_utils::validator_definitions::ValidatorDefinitions;
 use attestation_service::{AttestationService, AttestationServiceBuilder};
 use block_service::{BlockService, BlockServiceBuilder};
 use clap::ArgMatches;
 use duties_service::DutiesService;
+use dvf_version::VERSION;
 use environment::RuntimeContext;
 use eth2::{reqwest::ClientBuilder, types::Graffiti, BeaconNodeHttpClient, StatusCode, Timeouts};
 use http_api::ApiSecret;
@@ -63,8 +66,6 @@ use tokio::{
 };
 use types::{EthSpec, Hash256, PublicKeyBytes};
 use validator_store::ValidatorStore;
-use crate::node::node::Node;
-use dvf_version::VERSION;
 
 /// The interval between attempts to contact the beacon node during startup.
 const RETRY_DELAY: Duration = Duration::from_secs(2);
@@ -88,51 +89,54 @@ const HTTP_GET_VALIDATOR_BLOCK_TIMEOUT_QUOTIENT: u32 = 4;
 
 const DOPPELGANGER_SERVICE_NAME: &str = "doppelganger";
 
-async fn check_synced<T: SlotClock, E: EthSpec>(beacon_nodes: Arc<BeaconNodeFallback<T, E>>, log: Logger) -> bool {
+async fn check_synced<T: SlotClock, E: EthSpec>(
+    beacon_nodes: Arc<BeaconNodeFallback<T, E>>,
+    log: Logger,
+) -> bool {
     if beacon_nodes.num_synced().await == 0 {
-        warn!(log, 
+        warn!(log,
             "beancon node unsynced";
             "action" => "Automatically re-check after 1 minute. You can safely close this program and re-run it after making sure your beacon node instance is synced."
         );
         return false;
-    }
-    else {
-        info!(log, 
+    } else {
+        info!(log,
             "beacon node is synced";
             "action" => "Moving on to check execution engine."
         );
     }
 
     match beacon_nodes
-        .first_success(RequireSynced::Yes, OfflineOnFailure::Yes, |beacon_node| async move {
-            if let Ok(response) = beacon_node.get_node_syncing().await {
-                if let Some(is_optimistic) = response.data.is_optimistic {
-                    // "Optimistic" means the execution engine is not yet synced
-                    // https://github.com/sigp/lighthouse/blob/38514c07f222ff7783834c48cf5c0a6ee7f346d0/beacon_node/client/src/notifier.rs#L268
-                    if is_optimistic {
-                        Err("unsynced")
+        .first_success(
+            RequireSynced::Yes,
+            OfflineOnFailure::Yes,
+            |beacon_node| async move {
+                if let Ok(response) = beacon_node.get_node_syncing().await {
+                    if let Some(is_optimistic) = response.data.is_optimistic {
+                        // "Optimistic" means the execution engine is not yet synced
+                        // https://github.com/sigp/lighthouse/blob/38514c07f222ff7783834c48cf5c0a6ee7f346d0/beacon_node/client/src/notifier.rs#L268
+                        if is_optimistic {
+                            Err("unsynced")
+                        } else {
+                            Ok(())
+                        }
+                    } else {
+                        Err("unknown")
                     }
-                    else {
-                        Ok(())
-                    }
-                }
-                else {
+                } else {
                     Err("unknown")
                 }
-            }
-            else {
-                Err("unknown")
-            }
-        })
+            },
+        )
         .await
     {
         Ok(()) => {
-            info!(log, 
+            info!(log,
                 "execution engine is synced";
                 "action" => "Moving on to start of validator client."
             );
             return true;
-        },
+        }
         Err(e) => {
             warn!(
                 log,
@@ -141,7 +145,7 @@ async fn check_synced<T: SlotClock, E: EthSpec>(beacon_nodes: Arc<BeaconNodeFall
                 "action" => "Automatically re-check after 1 minute. You can safely close this program and re-run it after making sure your execution engine is synced.",
             );
             return false;
-        },
+        }
     }
 }
 
@@ -236,7 +240,12 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
                 .map_err(|e| format!("Unable to discover local validator keystores: {:?}", e))?;
             let new_distributed_validators = validator_defs
                 .discover_distributed_keystores(&config.validator_dir, &config.secrets_dir, &log)
-                .map_err(|e| format!("Unable to discover distributed validator keystores: {:?}", e))?;
+                .map_err(|e| {
+                    format!(
+                        "Unable to discover distributed validator keystores: {:?}",
+                        e
+                    )
+                })?;
             validator_defs
                 .save(&config.validator_dir)
                 .map_err(|e| format!("Unable to update validator definitions: {:?}", e))?;
@@ -403,7 +412,6 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             .into_iter()
             .map(CandidateBeaconNode::new)
             .collect();
-    
 
         // Set the count for beacon node fallbacks excluding the primary beacon node.
         set_gauge(
@@ -414,10 +422,10 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         set_gauge(&http_metrics::metrics::ETH2_FALLBACK_CONNECTED, 0);
 
         let mut beacon_nodes: BeaconNodeFallback<_, T> = BeaconNodeFallback::new(
-            candidates, 
+            candidates,
             config.broadcast_topics.clone(),
-            context.eth2_config.spec.clone(), 
-            log.clone()
+            context.eth2_config.spec.clone(),
+            log.clone(),
         );
 
         let mut proposer_nodes: BeaconNodeFallback<_, T> = BeaconNodeFallback::new(
@@ -456,8 +464,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         loop {
             if !check_synced(beacon_nodes.clone(), log.clone()).await {
                 sleep(Duration::from_secs(60)).await;
-            }
-            else {
+            } else {
                 break;
             }
         }
@@ -486,7 +493,9 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         ));
 
         // Ensure all validators are registered in doppelganger protection.
-        validator_store.register_all_in_doppelganger_protection_if_enabled().await?;
+        validator_store
+            .register_all_in_doppelganger_protection_if_enabled()
+            .await?;
         match node {
             Some(n) => {
                 let mut node = n.write().await;
@@ -494,7 +503,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             }
             _ => {}
         }
-        
+
         let num_voting_validators = validator_store.num_voting_validators().await;
         info!(
             log,
@@ -506,7 +515,9 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         // oversized from having not been pruned (by a prior version) we don't want to prune
         // concurrently, as it will hog the lock and cause the attestation service to spew CRITs.
         if let Some(slot) = slot_clock.now() {
-            validator_store.prune_slashing_protection_db(slot.epoch(T::slots_per_epoch()), true).await;
+            validator_store
+                .prune_slashing_protection_db(slot.epoch(T::slots_per_epoch()), true)
+                .await;
         }
 
         let duties_context = context.service_context("duties".into());
@@ -729,7 +740,7 @@ async fn init_from_beacon_node<E: EthSpec>(
     let genesis = loop {
         match beacon_nodes
             .first_success(
-                RequireSynced::No, 
+                RequireSynced::No,
                 OfflineOnFailure::Yes,
                 |node| async move { node.get_beacon_genesis().await },
             )
@@ -819,9 +830,11 @@ async fn poll_whilst_waiting_for_genesis<E: EthSpec>(
 ) -> Result<(), String> {
     loop {
         match beacon_nodes
-            .first_success(RequireSynced::No, OfflineOnFailure::Yes, |beacon_node| async move {
-                beacon_node.get_lighthouse_staking().await
-            })
+            .first_success(
+                RequireSynced::No,
+                OfflineOnFailure::Yes,
+                |beacon_node| async move { beacon_node.get_lighthouse_staking().await },
+            )
             .await
         {
             Ok(is_staking) => {
@@ -892,11 +905,10 @@ pub fn determine_graffiti(
         .or(graffiti_flag)
 }
 
-
 // DVF
-pub mod operator;
 pub mod generic_operator_committee;
 pub mod impls;
+pub mod operator;
 pub mod operator_committee_definitions;
 pub mod operator_committees;
 
@@ -907,9 +919,8 @@ macro_rules! define_mod {
 
             use crate::validation::generic_operator_committee::*;
 
-            pub type OperatorCommittee = GenericOperatorCommittee<
-                committee_variant::OperatorCommittee,
-            >;
+            pub type OperatorCommittee =
+                GenericOperatorCommittee<committee_variant::OperatorCommittee>;
         }
     };
 }
@@ -921,7 +932,10 @@ macro_rules! define_mod {
 // pub use fake_committee_implementations::*;
 
 #[cfg(feature = "hotstuff_committee")]
-define_mod!(hotstuff_committee_implementations, crate::validation::impls::hotstuff::types);
+define_mod!(
+    hotstuff_committee_implementations,
+    crate::validation::impls::hotstuff::types
+);
 
 #[cfg(feature = "hotstuff_committee")]
 pub use hotstuff_committee_implementations::*;

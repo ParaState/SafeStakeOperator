@@ -6,25 +6,25 @@
 //! - Via a remote signer (Web3Signer)
 //! - Via a distributed operator committee
 
+use crate::node::config::{API_ADDRESS, COLLECT_PERFORMANCE_URL};
+use crate::node::dvfcore::DvfSigner;
+use crate::node::utils::{request_to_web_server, DvfPerformanceRequest, SignDigest};
+use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
 use crate::validation::http_metrics::metrics;
+use chrono::prelude::*;
 use eth2_keystore::Keystore;
 use lockfile::Lockfile;
 use parking_lot::Mutex;
 use reqwest::Client;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use task_executor::TaskExecutor;
+use tokio::time::sleep;
 use types::*;
 use url::Url;
-use web3signer::{ForkInfo, SigningRequest, SigningResponse};
-use crate::node::dvfcore::DvfSigner;
-use crate::node::config::{API_ADDRESS, COLLECT_PERFORMANCE_URL};
-use crate::node::utils::{request_to_web_server, DvfPerformanceRequest, SignDigest};
 pub use web3signer::Web3SignerObject;
-use chrono::prelude::*;
-use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
-use std::time::Duration;
-use tokio::time::sleep;
+use web3signer::{ForkInfo, SigningRequest, SigningResponse};
 mod web3signer;
 
 #[derive(Debug, PartialEq)]
@@ -133,7 +133,6 @@ impl SigningContext {
 }
 
 impl SigningMethod {
-
     /// Return the signature of `signable_message`, with respect to the `signing_context`.
     pub async fn get_signature<T: EthSpec, Payload: AbstractExecPayload<T>>(
         &self,
@@ -157,10 +156,16 @@ impl SigningMethod {
             genesis_validators_root,
         });
 
-        self.get_signature_from_root(signable_message, signing_root, executor, fork_info, epoch, spec)
-            .await
+        self.get_signature_from_root(
+            signable_message,
+            signing_root,
+            executor,
+            fork_info,
+            epoch,
+            spec,
+        )
+        .await
     }
-
 
     /// Return the signature of `signable_message`, with respect to the `signing_context`.
     pub async fn get_signature_from_root<T: EthSpec, Payload: AbstractExecPayload<T>>(
@@ -172,7 +177,6 @@ impl SigningMethod {
         signing_epoch: Epoch,
         spec: &ChainSpec,
     ) -> Result<Signature, Error> {
-
         match self {
             SigningMethod::LocalKeystore { voting_keypair, .. } => {
                 let _timer =
@@ -270,19 +274,15 @@ impl SigningMethod {
 
                 let (slot, duty, only_aggregator) = match signable_message {
                     SignableMessage::RandaoReveal(_) => {
-                        // Every operator should be able to get randao signature, 
+                        // Every operator should be able to get randao signature,
                         // otherwise if, e.g, only 2 out of 4 gets the randao signature,
                         // then the committee wouldn't be able to get enough partial signatuers for
-                        // aggregation, because the other 2 operations who don't get the randao 
+                        // aggregation, because the other 2 operations who don't get the randao
                         // will NOT enter the next phase of signing block.
                         (Slot::new(0 as u64), "RANDAO", false)
                     }
-                    SignableMessage::AttestationData(a) => {
-                        (a.slot, "ATTESTER", true)
-                    },
-                    SignableMessage::BeaconBlock(b) => {
-                        (b.slot(), "PROPOSER", true)
-                    },
+                    SignableMessage::AttestationData(a) => (a.slot, "ATTESTER", true),
+                    SignableMessage::BeaconBlock(b) => (b.slot(), "PROPOSER", true),
                     SignableMessage::SignedAggregateAndProof(x) => {
                         (x.aggregate.data.slot, "AGGREGATE", true)
                     }
@@ -296,22 +296,23 @@ impl SigningMethod {
                     SignableMessage::SyncSelectionProof(_) => {
                         (Slot::new(0 as u64), "SYNC_SELECT", false)
                     }
-                    SignableMessage::SyncCommitteeSignature{..} => {
+                    SignableMessage::SyncCommitteeSignature { .. } => {
                         (Slot::new(0 as u64), "SYNC_COMMITTEE", true)
                     }
                     SignableMessage::SignedContributionAndProof(_) => {
                         (Slot::new(0 as u64), "CONTRIB", true)
                     }
-                    SignableMessage::ValidatorRegistration(_) => {  
+                    SignableMessage::ValidatorRegistration(_) => {
                         (Slot::new(0 as u64), "VA_REG", false)
-                    },
+                    }
                     SignableMessage::VoluntaryExit(e) => {
                         (e.epoch.start_slot(T::slots_per_epoch()), "VA_EXIT", true)
                     }
                 };
 
-                log::info!("[Dvf {}/{}] Signing\t-\tSlot: {}.\tEpoch: {}.\tType: {}.\tRoot: {:?}.", 
-                    dvf_signer.operator_id, 
+                log::info!(
+                    "[Dvf {}/{}] Signing\t-\tSlot: {}.\tEpoch: {}.\tType: {}.\tRoot: {:?}.",
+                    dvf_signer.operator_id,
                     dvf_signer.operator_committee.validator_id(),
                     slot,
                     signing_epoch.as_u64(),
@@ -323,9 +324,17 @@ impl SigningMethod {
                 // it is safe (from this operator's point of view) to sign it locally.
                 dvf_signer.local_sign_and_store(signing_root).await;
 
-                if !only_aggregator || (only_aggregator && dvf_signer.is_aggregator(signing_epoch.as_u64() + dvf_signer.operator_committee.validator_id()).await) {
+                if !only_aggregator
+                    || (only_aggregator
+                        && dvf_signer
+                            .is_aggregator(
+                                signing_epoch.as_u64()
+                                    + dvf_signer.operator_committee.validator_id(),
+                            )
+                            .await)
+                {
                     log::info!("[Dvf {}/{}] Leader trying to achieve duty consensus and aggregate duty signatures",
-                        dvf_signer.operator_id, 
+                        dvf_signer.operator_id,
                         dvf_signer.operator_committee.validator_id()
                     );
                     // Should NOT take more than a slot duration for two reasons:
@@ -336,8 +345,8 @@ impl SigningMethod {
                     let task_timeout = Duration::from_secs(spec.seconds_per_slot * 2);
                     let timeout = sleep(task_timeout);
                     let work = dvf_signer.threshold_sign(signing_root);
-                    let dt : DateTime<Utc> = Utc::now();
-                    tokio::select!{
+                    let dt: DateTime<Utc> = Utc::now();
+                    tokio::select! {
                         result = work => {
                             match result {
                                 Ok((signature, ids)) => {
@@ -354,8 +363,7 @@ impl SigningMethod {
                             Err(Error::CommitteeSignFailed(format!("Timeout")))
                         }
                     }
-                }
-                else {
+                } else {
                     Err(Error::NotLeader)
                 }
             }
@@ -364,35 +372,39 @@ impl SigningMethod {
 
     async fn dvf_report<E: EthSpec>(
         slot: Slot,
-        duty: &str, 
-        validator_pk: String, 
-        operator_id: u64, 
+        duty: &str,
+        validator_pk: String,
+        operator_id: u64,
         ids: Vec<u64>,
         dt: DateTime<Utc>,
-        secret: &hscrypto::SecretKey
+        secret: &hscrypto::SecretKey,
     ) -> Result<(), Error> {
-        
         let signing_epoch = slot.epoch(E::slots_per_epoch());
 
-        if duty ==  "ATTESTER" || duty == "PROPOSER" {
+        if duty == "ATTESTER" || duty == "PROPOSER" {
             let mut request_body = DvfPerformanceRequest {
                 validator_pk,
                 operator_id,
-                operators: ids, 
+                operators: ids,
                 slot: slot.as_u64(),
                 epoch: signing_epoch.as_u64(),
                 duty: duty.to_string(),
                 time: Utc::now().signed_duration_since(dt).num_milliseconds(),
-                sign_hex: None
+                sign_hex: None,
             };
-            request_body.sign_hex = Some(request_body.sign_digest(secret).map_err(|e| { Error::SignDigestFailed(e)})?);
+            request_body.sign_hex = Some(
+                request_body
+                    .sign_digest(secret)
+                    .map_err(|e| Error::SignDigestFailed(e))?,
+            );
             log::info!("[Dvf Request] Body: {:?}", &request_body);
             let url_str = API_ADDRESS.get().unwrap().to_owned() + COLLECT_PERFORMANCE_URL;
-            tokio::spawn( async move {
-                _ = request_to_web_server(request_body, &url_str).await.map_err(|e| Error::Web3SignerRequestFailed(e));
+            tokio::spawn(async move {
+                _ = request_to_web_server(request_body, &url_str)
+                    .await
+                    .map_err(|e| Error::Web3SignerRequestFailed(e));
             });
         }
         Ok(())
     }
 }
-

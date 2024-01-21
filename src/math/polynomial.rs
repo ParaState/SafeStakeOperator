@@ -1,23 +1,21 @@
-use num_traits::Zero;
-use std::ops::{MulAssign, AddAssign, Index};
+use bls::PUBLIC_KEY_BYTES_LEN;
+use blst::{blst_p1, blst_p1_affine, blst_scalar};
 use num_bigint::BigInt;
-use blst::{blst_p1, blst_scalar, blst_p1_affine};
-use bls::{PUBLIC_KEY_BYTES_LEN};
-use serde::{Serialize, Serializer, Deserialize, Deserializer};
+use num_traits::Zero;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::ops::{AddAssign, Index, MulAssign};
 
 pub const BLST_SCALAR_LEN: usize = 32;
 
 /// A simple polynomial implementation by referring to: polynomial-ring (https://lib.rs/crates/polynomial-ring)
 /// Their implementation requires trait 'Sized' for the coefficient type, which is not good for BigInt.
 pub struct Polynomial<T: Zero> {
-    coeffs: Vec<T>
+    coeffs: Vec<T>,
 }
 
-impl <T: Zero> Polynomial<T> {
+impl<T: Zero> Polynomial<T> {
     pub fn new(coeffs: Vec<T>) -> Self {
-        Self {
-            coeffs
-        }
+        Self { coeffs }
     }
 
     pub fn len(&self) -> usize {
@@ -36,8 +34,9 @@ impl <T: Zero> Polynomial<T> {
         self.deg().map(|d| &self.coeffs[d])
     }
 
-    pub fn eval<'a>(&self, x: &'a T) -> T 
-        where T: Zero + Clone + for<'x> AddAssign<&'x T> + MulAssign<&'a T> 
+    pub fn eval<'a>(&self, x: &'a T) -> T
+    where
+        T: Zero + Clone + for<'x> AddAssign<&'x T> + MulAssign<&'a T>,
     {
         if self.coeffs.is_empty() {
             return T::zero();
@@ -50,7 +49,6 @@ impl <T: Zero> Polynomial<T> {
         sum
     }
 }
-
 
 impl<T: Zero> Index<usize> for Polynomial<T> {
     type Output = T;
@@ -85,7 +83,7 @@ impl CommittedPoly {
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut ser_cms : Vec<u8> = (self.commitments.len() as u32).to_be_bytes().into();
+        let mut ser_cms: Vec<u8> = (self.commitments.len() as u32).to_be_bytes().into();
         for cm in self.commitments.iter() {
             let mut ser_cm: [u8; PUBLIC_KEY_BYTES_LEN] = [0; PUBLIC_KEY_BYTES_LEN];
             unsafe {
@@ -102,7 +100,7 @@ impl CommittedPoly {
         let size = u32::from_be_bytes(size_bytes.try_into().unwrap());
         let mut commitments = Vec::with_capacity(size as usize);
         for _i in 0..size {
-            let ser_cm = &bytes[index..index+PUBLIC_KEY_BYTES_LEN];
+            let ser_cm = &bytes[index..index + PUBLIC_KEY_BYTES_LEN];
             let mut cm = blst_p1::default();
             unsafe {
                 let mut cm_affine = blst_p1_affine::default();
@@ -112,9 +110,7 @@ impl CommittedPoly {
             commitments.push(cm);
             index += PUBLIC_KEY_BYTES_LEN;
         }
-        Self {
-            commitments,
-        }
+        Self { commitments }
     }
 }
 
@@ -132,9 +128,9 @@ impl<'de> Deserialize<'de> for CommittedPoly {
     where
         D: Deserializer<'de>,
     {
-        Ok(
-            CommittedPoly::from_bytes(Vec::<u8>::deserialize(deserializer)?.as_slice())
-        )
+        Ok(CommittedPoly::from_bytes(
+            Vec::<u8>::deserialize(deserializer)?.as_slice(),
+        ))
     }
 }
 
@@ -149,7 +145,7 @@ impl Commitable<CommittedPoly, blst_p1> for Polynomial<BigInt> {
             let coeff = &self[i];
             let (_, mut coeff_bytes) = coeff.to_bytes_le();
             if coeff_bytes.len() < BLST_SCALAR_LEN {
-                (0..BLST_SCALAR_LEN-coeff_bytes.len()).for_each(|_| coeff_bytes.push(0));
+                (0..BLST_SCALAR_LEN - coeff_bytes.len()).for_each(|_| coeff_bytes.push(0));
             }
             let mut cm = blst_p1::default();
             unsafe {
@@ -157,18 +153,17 @@ impl Commitable<CommittedPoly, blst_p1> for Polynomial<BigInt> {
             }
             commitments.push(cm);
         }
-        CommittedPoly {
-            commitments,
-        }
+        CommittedPoly { commitments }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::blst_utils::{u64_to_blst_scalar, bigint_to_blst_scalar, 
-        fixed_p1_generator, blst_p1_mult, blst_scalar_to_bigint,
-        random_blst_scalar};
+    use crate::utils::blst_utils::{
+        bigint_to_blst_scalar, blst_p1_mult, blst_scalar_to_bigint, fixed_p1_generator,
+        random_blst_scalar, u64_to_blst_scalar,
+    };
 
     #[test]
     fn test_commit() {
@@ -180,7 +175,10 @@ mod tests {
         let ser = committed_poly.to_bytes();
         let committed_poly_ = CommittedPoly::from_bytes(&ser);
 
-        assert_eq!(committed_poly, committed_poly_, "Serialization/Deserialization error");
+        assert_eq!(
+            committed_poly, committed_poly_,
+            "Serialization/Deserialization error"
+        );
 
         let x = u64_to_blst_scalar(7);
         let y = committed_poly_.eval(&x);
@@ -196,17 +194,21 @@ mod tests {
     fn test_commit2() {
         let g = fixed_p1_generator();
         let coeffs: Vec<BigInt> = vec![
-            blst_scalar_to_bigint(&random_blst_scalar()), 
-            blst_scalar_to_bigint(&random_blst_scalar()), 
-            blst_scalar_to_bigint(&random_blst_scalar()), 
-            blst_scalar_to_bigint(&random_blst_scalar())];
+            blst_scalar_to_bigint(&random_blst_scalar()),
+            blst_scalar_to_bigint(&random_blst_scalar()),
+            blst_scalar_to_bigint(&random_blst_scalar()),
+            blst_scalar_to_bigint(&random_blst_scalar()),
+        ];
         let poly = Polynomial::new(coeffs);
         let committed_poly = poly.commit(&g);
 
         let ser = committed_poly.to_bytes();
         let committed_poly_ = CommittedPoly::from_bytes(&ser);
 
-        assert_eq!(committed_poly, committed_poly_, "Serialization/Deserialization error");
+        assert_eq!(
+            committed_poly, committed_poly_,
+            "Serialization/Deserialization error"
+        );
 
         let x = random_blst_scalar();
         let y = committed_poly_.eval(&x);

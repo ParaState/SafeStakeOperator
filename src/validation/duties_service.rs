@@ -18,14 +18,16 @@ use crate::validation::{
     validator_store::{DoppelgangerStatus, Error as ValidatorStoreError, ValidatorStore},
 };
 use environment::RuntimeContext;
-use eth2::types::{AttesterData, BeaconCommitteeSubscription, DutiesResponse, ProposerData, StateId, ValidatorId};
+use eth2::types::{
+    AttesterData, BeaconCommitteeSubscription, DutiesResponse, ProposerData, StateId, ValidatorId,
+};
 use futures::{stream, StreamExt};
 use parking_lot::RwLock;
 use safe_arith::{ArithError, SafeArith};
 use slog::{debug, error, info, warn, Logger};
 use slot_clock::SlotClock;
 use std::cmp::min;
-use std::collections::{hash_map, HashMap, HashSet, BTreeMap};
+use std::collections::{hash_map, BTreeMap, HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -517,7 +519,8 @@ async fn poll_validator_indices<T: SlotClock + 'static, E: EthSpec>(
 
             let fee_recipient = duties_service
                 .validator_store
-                .get_fee_recipient(&pubkey).await
+                .get_fee_recipient(&pubkey)
+                .await
                 .map(|fr| fr.to_string())
                 .unwrap_or_else(|| {
                     "Fee recipient for validator not set in validator_definitions.yml \
@@ -829,9 +832,10 @@ async fn poll_beacon_attesters_for_epoch<T: SlotClock + 'static, E: EthSpec>(
         .iter()
         .filter(|&&&pubkey| !initial_duties.iter().any(|duty| duty.pubkey == pubkey))
         .collect::<Vec<_>>();
-    let indices_to_request: Vec<u64> = stream::iter(indices_to_request).filter_map(|pubkey| async {
-        duties_service.validator_store.validator_index(pubkey).await
-    }).collect::<Vec<u64>>().await;
+    let indices_to_request: Vec<u64> = stream::iter(indices_to_request)
+        .filter_map(|pubkey| async { duties_service.validator_store.validator_index(pubkey).await })
+        .collect::<Vec<u64>>()
+        .await;
     let new_duties = if !indices_to_request.is_empty() {
         post_validator_duties_attester(duties_service, epoch, indices_to_request.as_slice())
             .await?
@@ -967,8 +971,9 @@ async fn get_uninitialized_validators<T: SlotClock + 'static, E: EthSpec>(
         })
         .collect::<Vec<_>>();
     stream::iter(pubkeys)
-        .filter_map(|pubkey| async { duties_service.validator_store.validator_index(pubkey).await } )
-        .collect::<Vec<_>>().await
+        .filter_map(|pubkey| async { duties_service.validator_store.validator_index(pubkey).await })
+        .collect::<Vec<_>>()
+        .await
 }
 
 async fn update_per_validator_duty_metrics<T: SlotClock + 'static, E: EthSpec>(
@@ -1435,4 +1440,3 @@ mod test {
         }
     }
 }
-

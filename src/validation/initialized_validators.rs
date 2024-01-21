@@ -1,4 +1,4 @@
-//! Reference: lighthouse/validator_client/initialized_validators.rs 
+//! Reference: lighthouse/validator_client/initialized_validators.rs
 //!
 //! Provides management of "initialized" validators.
 //!
@@ -8,7 +8,6 @@
 //! The `InitializedValidators` struct in this file serves as the source-of-truth of which
 //! validators are managed by this validator client.
 
-use crate::validation::signing_method::SigningMethod;
 use crate::validation::account_utils::{
     read_password, read_password_from_user,
     validator_definitions::{
@@ -16,8 +15,9 @@ use crate::validation::account_utils::{
     },
     ZeroizeString,
 };
-use crate::validation::operator_committee_definitions::{self, OperatorCommitteeDefinition};
 use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
+use crate::validation::operator_committee_definitions::{self, OperatorCommitteeDefinition};
+use crate::validation::signing_method::SigningMethod;
 use eth2::lighthouse_vc::std_types::DeleteKeystoreStatus;
 use eth2_keystore::Keystore;
 use lighthouse_metrics::set_gauge;
@@ -30,16 +30,16 @@ use std::fs::{self, File};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use types::{Address, Graffiti, Keypair, PublicKey, PublicKeyBytes, EthSpec};
+use types::{Address, EthSpec, Graffiti, Keypair, PublicKey, PublicKeyBytes};
 use validator_dir::Builder as ValidatorDirBuilder;
 
 use crate::validation::key_cache;
 use crate::validation::key_cache::KeyCache;
 
-use tokio::sync::RwLock;
-use crate::node::node::Node;
 use crate::node::dvfcore::DvfSigner;
+use crate::node::node::Node;
 use crate::validation::validator_dir::share_builder::ShareBuilder;
+use tokio::sync::RwLock;
 
 // Use TTY instead of stdin to capture passwords from users.
 const USE_STDIN: bool = false;
@@ -144,7 +144,7 @@ impl InitializedValidator {
             // Web3Signer validators do not have any lockfiles.
             SigningMethod::Web3Signer { .. } => None,
             // [Zico]TODO: Should distributed validator have any lockfile?
-            SigningMethod::DistributedKeystore { 
+            SigningMethod::DistributedKeystore {
                 ref voting_keystore_share_lockfile,
                 ..
             } => MutexGuard::try_map(voting_keystore_share_lockfile.lock(), |option_lockfile| {
@@ -291,14 +291,16 @@ impl InitializedValidator {
                 }
             }
 
-            SigningDefinition::Web3Signer {..} => return Err(Error::InvalidActionOnRemoteValidator), 
+            SigningDefinition::Web3Signer { .. } => {
+                return Err(Error::InvalidActionOnRemoteValidator)
+            }
 
-            // [Zico]TODO: To be revised 
+            // [Zico]TODO: To be revised
             SigningDefinition::DistributedKeystore {
                 voting_keystore_share_path,
                 voting_keystore_share_password_path,
                 voting_keystore_share_password,
-                operator_committee_definition_path, 
+                operator_committee_definition_path,
                 operator_committee_index: _,
                 operator_id: _,
             } => {
@@ -320,7 +322,10 @@ impl InitializedValidator {
                     // interrupting the potentially long-running task during shut down.
                     let (password, keypair) = tokio::task::spawn_blocking(move || {
                         Result::<_, Error>::Ok(
-                            match (voting_keystore_share_password_path, voting_keystore_share_password) {
+                            match (
+                                voting_keystore_share_password_path,
+                                voting_keystore_share_password,
+                            ) {
                                 // If the password is supplied, use it and ignore the path
                                 // (if supplied).
                                 (_, Some(password)) => (
@@ -356,29 +361,31 @@ impl InitializedValidator {
                 };
                 // [TODO] Zico: revisit this check, because def.voting_public_key is the master public key, while voting_keypair is a share.
                 //if voting_keypair.pk != def.voting_public_key {
-                    //return Err(Error::VotingPublicKeyMismatch {
-                        //definition: Box::new(def.voting_public_key),
-                        //keystore: Box::new(voting_keypair.pk),
-                    //});
+                //return Err(Error::VotingPublicKeyMismatch {
+                //definition: Box::new(def.voting_public_key),
+                //keystore: Box::new(voting_keypair.pk),
+                //});
                 //}
 
                 // Append a `.lock` suffix to the voting keystore.
-                let lockfile_path = get_lockfile_path(&voting_keystore_share_path)
-                    .ok_or_else(|| Error::BadVotingKeystorePath(voting_keystore_share_path.clone()))?;
-                let voting_keystore_share_lockfile = Mutex::new(Some(Lockfile::new(lockfile_path)?));
+                let lockfile_path =
+                    get_lockfile_path(&voting_keystore_share_path).ok_or_else(|| {
+                        Error::BadVotingKeystorePath(voting_keystore_share_path.clone())
+                    })?;
+                let voting_keystore_share_lockfile =
+                    Mutex::new(Some(Lockfile::new(lockfile_path)?));
                 // [TODO] Zico: End copying from LocalKeystore. Find a way to reuse.
-                let committee_def_path = operator_committee_definition_path.ok_or(Error::NoCommitteeDefinition)?;
-                let committee_def = OperatorCommitteeDefinition::from_file(committee_def_path).map_err(Error::UnableToParseCommitteeDefinition)?; 
+                let committee_def_path =
+                    operator_committee_definition_path.ok_or(Error::NoCommitteeDefinition)?;
+                let committee_def = OperatorCommitteeDefinition::from_file(committee_def_path)
+                    .map_err(Error::UnableToParseCommitteeDefinition)?;
                 let validator_public_key = committee_def.validator_public_key.clone();
-                let signer = DvfSigner::spawn(
-                    node.unwrap(),
-                    voting_keypair,
-                    committee_def)
+                let signer = DvfSigner::spawn(node.unwrap(), voting_keypair, committee_def)
                     .await
                     .map_err(|e| Error::DvfError(format!("{:?}", e)))?;
 
                 SigningMethod::DistributedKeystore {
-                    voting_keystore_share_path, 
+                    voting_keystore_share_path,
                     voting_keystore_share_lockfile,
                     voting_keystore_share,
                     voting_public_key: validator_public_key,
@@ -405,7 +412,9 @@ impl InitializedValidator {
                 voting_public_key, ..
             } => voting_public_key,
             // [Zico]TODO: To be revised
-            SigningMethod::DistributedKeystore { voting_public_key, ..} => voting_public_key,
+            SigningMethod::DistributedKeystore {
+                voting_public_key, ..
+            } => voting_public_key,
         }
     }
 }
@@ -462,7 +471,7 @@ fn unlock_keystore_via_stdin_password(
 /// `ValidatorDefinition`. The `ValidatorDefinition` file is maintained as `self` is modified.
 ///
 /// Forms the fundamental list of validators that are managed by this validator client instance.
-/// 
+///
 pub struct InitializedValidators<T: EthSpec> {
     /// A list of validator definitions which can be stored on-disk.
     definitions: ValidatorDefinitions,
@@ -580,7 +589,9 @@ impl<T: EthSpec> InitializedValidators<T> {
             .find(|def| &def.voting_public_key == pubkey)
         {
             // [Zico]TODO: to be revised
-            if def.signing_definition.is_local_keystore() || def.signing_definition.is_distributed_keystore() {
+            if def.signing_definition.is_local_keystore()
+                || def.signing_definition.is_distributed_keystore()
+            {
                 def.enabled = false;
                 self.definitions
                     .save(&self.validators_dir)
@@ -618,7 +629,10 @@ impl<T: EthSpec> InitializedValidators<T> {
             } = *initialized_validator.signing_method
             {
                 drop(voting_keystore_share_lockfile.lock().take());
-                self.delete_keystore_share_or_validator_dir(voting_keystore_share_path, voting_keystore_share)?;
+                self.delete_keystore_share_or_validator_dir(
+                    voting_keystore_share_path,
+                    voting_keystore_share,
+                )?;
             }
         }
 
@@ -633,19 +647,17 @@ impl<T: EthSpec> InitializedValidators<T> {
     }
 
     // enable a keystore
-    pub async fn enable_keystore(
-        &mut self,
-        pubkey: &PublicKey
-    ) ->  Result<(), Error> {
-        self.set_validator_definition_fields(pubkey, Some(true), None, None).await?;
+    pub async fn enable_keystore(&mut self, pubkey: &PublicKey) -> Result<(), Error> {
+        self.set_validator_definition_fields(pubkey, Some(true), None, None)
+            .await?;
         Ok(())
     }
 
-    // remove keystore but preserve definition 
+    // remove keystore but preserve definition
     pub async fn disable_keystore(
         &mut self,
-        pubkey: &PublicKey
-    ) ->  Result<DeleteKeystoreStatus, Error> {
+        pubkey: &PublicKey,
+    ) -> Result<DeleteKeystoreStatus, Error> {
         // 1. Disable the validator definition.
         //
         // We disable before removing so that in case of a crash the auto-discovery mechanism
@@ -657,7 +669,9 @@ impl<T: EthSpec> InitializedValidators<T> {
             .find(|def| &def.voting_public_key == pubkey)
         {
             // [Zico]TODO: to be revised
-            if def.signing_definition.is_local_keystore() || def.signing_definition.is_distributed_keystore() {
+            if def.signing_definition.is_local_keystore()
+                || def.signing_definition.is_distributed_keystore()
+            {
                 def.enabled = false;
                 self.definitions
                     .save(&self.validators_dir)
@@ -1228,11 +1242,11 @@ impl<T: EthSpec> InitializedValidators<T> {
                         }
                     }
                     // [Zico]TODO: to be revised
-                    SigningDefinition::DistributedKeystore { 
-                        voting_keystore_share_path, 
+                    SigningDefinition::DistributedKeystore {
+                        voting_keystore_share_path,
                         operator_committee_index,
                         operator_id,
-                        .. 
+                        ..
                     } => {
                         let pubkey_bytes = def.voting_public_key.compress();
 
@@ -1377,4 +1391,3 @@ impl<T: EthSpec> InitializedValidators<T> {
         }
     }
 }
-

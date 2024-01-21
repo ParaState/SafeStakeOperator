@@ -2,15 +2,18 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::node::config::{
+    base_to_consensus_addr, base_to_mempool_addr, base_to_signature_addr, base_to_transaction_addr,
+    is_addr_invalid,
+};
+use crate::utils::error::DvfError;
 use async_trait::async_trait;
 use bytes::Bytes;
 use downcast_rs::DowncastSync;
-use network::{DvfMessage, ReliableSender, SimpleSender, VERSION};
-use tokio::time::{Instant, sleep_until, timeout};
 use log::{info, warn};
+use network::{DvfMessage, ReliableSender, SimpleSender, VERSION};
+use tokio::time::{sleep_until, timeout, Instant};
 use types::{Hash256, Keypair, PublicKey, Signature};
-use crate::node::config::{is_addr_invalid, base_to_transaction_addr, base_to_mempool_addr, base_to_consensus_addr, base_to_signature_addr};
-use crate::utils::error::DvfError;
 
 pub enum OperatorMessage {}
 
@@ -54,9 +57,21 @@ impl TOperator for LocalOperator {
     }
 
     async fn propose(&self, msg: Hash256) {
-        info!("[Dvf {}/{}] Proposing msg {}", self.operator_id, self.validator_id, msg);
-        let dvf_message = DvfMessage { version: VERSION, validator_id: self.validator_id, message: msg.to_fixed_bytes().to_vec() };
-        self.network.send(self.transaction_address(), Bytes::from(bincode::serialize(&dvf_message).unwrap())).await;
+        info!(
+            "[Dvf {}/{}] Proposing msg {}",
+            self.operator_id, self.validator_id, msg
+        );
+        let dvf_message = DvfMessage {
+            version: VERSION,
+            validator_id: self.validator_id,
+            message: msg.to_fixed_bytes().to_vec(),
+        };
+        self.network
+            .send(
+                self.transaction_address(),
+                Bytes::from(bincode::serialize(&dvf_message).unwrap()),
+            )
+            .await;
     }
 
     fn base_address(&self) -> SocketAddr {
@@ -65,7 +80,12 @@ impl TOperator for LocalOperator {
 }
 
 impl LocalOperator {
-    pub fn new(validator_id: u64, operator_id: u64, operator_keypair: Arc<Keypair>, base_address: SocketAddr) -> Self {
+    pub fn new(
+        validator_id: u64,
+        operator_id: u64,
+        operator_keypair: Arc<Keypair>,
+        base_address: SocketAddr,
+    ) -> Self {
         Self {
             validator_id,
             operator_id,
@@ -92,43 +112,62 @@ impl TOperator for RemoteOperator {
         if is_addr_invalid(self.base_address()) {
             return Err(DvfError::SocketAddrUnknown);
         }
-        
+
         let n_try: u64 = 3;
         let timeout_mill: u64 = 600;
-        let dvf_message = DvfMessage { version: VERSION, validator_id: self.validator_id, message: msg.to_fixed_bytes().to_vec() };
+        let dvf_message = DvfMessage {
+            version: VERSION,
+            validator_id: self.validator_id,
+            message: msg.to_fixed_bytes().to_vec(),
+        };
         let serialize_msg = bincode::serialize(&dvf_message).unwrap();
         for i in 0..n_try {
             let next_try_instant = Instant::now() + Duration::from_millis(timeout_mill);
-            let receiver = self.network.send(self.signature_address(), Bytes::from(serialize_msg.clone())).await;
+            let receiver = self
+                .network
+                .send(self.signature_address(), Bytes::from(serialize_msg.clone()))
+                .await;
             let result = timeout(Duration::from_millis(timeout_mill), receiver).await;
             match result {
-                Ok(output) => {
-                    match output {
-                        Ok(data) => {
-                            match bincode::deserialize::<Signature>(&data) {
-                                Ok(bls_signature) => {
-                                    info!("Received a signature from operator {}/{} ({:?})", self.operator_id, self.validator_id, self.signature_address());
-                                    return Ok(bls_signature);
-                                }
-                                Err(_) => {
-                                    warn!("Deserialize failed from operator {}/{}, retry...", self.operator_id, self.validator_id);
-                                }
-                            }
+                Ok(output) => match output {
+                    Ok(data) => match bincode::deserialize::<Signature>(&data) {
+                        Ok(bls_signature) => {
+                            info!(
+                                "Received a signature from operator {}/{} ({:?})",
+                                self.operator_id,
+                                self.validator_id,
+                                self.signature_address()
+                            );
+                            return Ok(bls_signature);
                         }
                         Err(_) => {
-                            warn!("recv is interrupted.");
+                            warn!(
+                                "Deserialize failed from operator {}/{}, retry...",
+                                self.operator_id, self.validator_id
+                            );
                         }
+                    },
+                    Err(_) => {
+                        warn!("recv is interrupted.");
                     }
-                }
+                },
                 Err(e) => {
-                    warn!("Retry from operator {}/{}, error: {}", self.operator_id, self.validator_id, e);
+                    warn!(
+                        "Retry from operator {}/{}, error: {}",
+                        self.operator_id, self.validator_id, e
+                    );
                 }
             }
             if i < n_try - 1 {
                 sleep_until(next_try_instant).await;
             }
         }
-        warn!("Failed to receive a signature from operator {}/{} ({:?})", self.operator_id, self.validator_id, self.signature_address());
+        warn!(
+            "Failed to receive a signature from operator {}/{} ({:?})",
+            self.operator_id,
+            self.validator_id,
+            self.signature_address()
+        );
         Err(DvfError::Unknown)
     }
 
@@ -144,7 +183,12 @@ impl TOperator for RemoteOperator {
 }
 
 impl RemoteOperator {
-    pub fn new(validator_id: u64, operator_id: u64, operator_public_key: PublicKey, base_address: SocketAddr) -> Self {
+    pub fn new(
+        validator_id: u64,
+        operator_id: u64,
+        operator_public_key: PublicKey,
+        base_address: SocketAddr,
+    ) -> Self {
         Self {
             validator_id,
             operator_id,
@@ -154,4 +198,3 @@ impl RemoteOperator {
         }
     }
 }
-

@@ -1,24 +1,25 @@
+use crate::node::config::{NodeConfig, API_ADDRESS};
+use crate::node::contract::{
+    DEFAULT_TRANSPORT_URL, NETWORK_CONTRACT, REGISTRY_CONTRACT, SELF_OPERATOR_ID,
+};
+use crate::validation::beacon_node_fallback::ApiTopic;
 use crate::validation::graffiti_file::GraffitiFile;
 use crate::validation::{http_api, http_metrics};
-use crate::validation::beacon_node_fallback::ApiTopic;
 use clap::ArgMatches;
 use clap_utils::{parse_optional, parse_required};
-use directory::{
-    DEFAULT_HARDCODED_NETWORK, DEFAULT_ROOT_DIR, DEFAULT_SECRET_DIR,
-    DEFAULT_VALIDATOR_DIR,
-};
 use directory::ensure_dir_exists;
+use directory::{
+    DEFAULT_HARDCODED_NETWORK, DEFAULT_ROOT_DIR, DEFAULT_SECRET_DIR, DEFAULT_VALIDATOR_DIR,
+};
+use dvf_directory::get_default_base_dir;
 use eth2::types::Graffiti;
 use sensitive_url::SensitiveUrl;
 use serde_derive::{Deserialize, Serialize};
-use slog::{info, warn, Logger, error};
+use slog::{error, info, warn, Logger};
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use types::{Address, GRAFFITI_BYTES_LEN};
-use crate::node::config::{NodeConfig,API_ADDRESS};
-use crate::node::contract::{DEFAULT_TRANSPORT_URL, SELF_OPERATOR_ID, NETWORK_CONTRACT, REGISTRY_CONTRACT};
-use dvf_directory::get_default_base_dir;
 
 pub const DEFAULT_BEACON_NODE: &str = "http://localhost:5052/";
 
@@ -124,7 +125,7 @@ impl Default for Config {
             enable_latency_measurement_service: true,
             validator_registration_batch_size: 500,
             produce_block_v3: false,
-            dvf_node_config: NodeConfig::default(), 
+            dvf_node_config: NodeConfig::default(),
         }
     }
 }
@@ -140,37 +141,46 @@ impl Config {
         let (validator_dir, secrets_dir) = (None, None);
 
         if cli_args.values_of("registry-contract").is_some() {
-            let registry_contract: String= parse_required(cli_args, "registry-contract")?;
+            let registry_contract: String = parse_required(cli_args, "registry-contract")?;
             info!(log, "read registry contract"; "registry-contract" => &registry_contract);
             REGISTRY_CONTRACT.set(registry_contract).unwrap();
         } else {
-            warn!(log, "can't read registry-contract, use old value, may be wrong");
+            warn!(
+                log,
+                "can't read registry-contract, use old value, may be wrong"
+            );
         }
 
         if cli_args.values_of("network-contract").is_some() {
-            let network_contract: String= parse_required(cli_args, "network-contract")?;
+            let network_contract: String = parse_required(cli_args, "network-contract")?;
             info!(log, "read network contract"; "network-contract" => &network_contract);
             NETWORK_CONTRACT.set(network_contract).unwrap();
         } else {
-            warn!(log, "can't read network-contract, use old value, may be wrong");
+            warn!(
+                log,
+                "can't read network-contract, use old value, may be wrong"
+            );
         }
 
-        let mut self_ip : Option<String> = None;
+        let mut self_ip: Option<String> = None;
         if cli_args.value_of("ip").is_some() {
             self_ip = Some(parse_required(cli_args, "ip")?);
-        } 
+        }
 
         match self_ip {
             Some(ip) => {
                 info!(log, "read node ip"; "ip" => &ip);
-                config.dvf_node_config.base_address.set_ip(IpAddr::V4(ip.parse::<Ipv4Addr>().unwrap()));
-            },
+                config
+                    .dvf_node_config
+                    .base_address
+                    .set_ip(IpAddr::V4(ip.parse::<Ipv4Addr>().unwrap()));
+            }
             None => {
                 panic!("ip is none");
             }
         }
 
-        let mut base_port : Option<u16> = None;
+        let mut base_port: Option<u16> = None;
         if cli_args.value_of("base-port").is_some() {
             let base_port_str: String = parse_required(cli_args, "base-port")?;
             base_port = Some(base_port_str.parse::<u16>().unwrap());
@@ -190,7 +200,7 @@ impl Config {
         }
 
         if cli_args.value_of("id").is_some() {
-            let operator_id : u32 = parse_required(cli_args, "id")?;
+            let operator_id: u32 = parse_required(cli_args, "id")?;
             if operator_id == 0 {
                 error!(log, "operator id should not be 0, please get your operator id from web first!"; );
                 panic!("operator id is 0");
@@ -206,19 +216,20 @@ impl Config {
             _ => {}
         }
 
-        config.validator_dir = validator_dir.unwrap_or_else(|| {
-            default_base_dir
-                .join(DEFAULT_VALIDATOR_DIR)
-        });
+        config.validator_dir =
+            validator_dir.unwrap_or_else(|| default_base_dir.join(DEFAULT_VALIDATOR_DIR));
 
-        config.secrets_dir = secrets_dir.unwrap_or_else(|| {
-            default_base_dir
-                .join(DEFAULT_SECRET_DIR)
-        });
+        config.secrets_dir =
+            secrets_dir.unwrap_or_else(|| default_base_dir.join(DEFAULT_SECRET_DIR));
 
         ensure_dir_exists(&config.validator_dir)?;
         ensure_dir_exists(&config.secrets_dir)?;
-        config.dvf_node_config = config.dvf_node_config.set_secret_dir(config.secrets_dir.clone()).set_validator_dir(config.validator_dir.clone()).set_node_key_path(default_base_dir.clone()).set_store_path(default_base_dir);
+        config.dvf_node_config = config
+            .dvf_node_config
+            .set_secret_dir(config.secrets_dir.clone())
+            .set_validator_dir(config.validator_dir.clone())
+            .set_node_key_path(default_base_dir.clone())
+            .set_store_path(default_base_dir);
         if !config.validator_dir.exists() {
             fs::create_dir_all(&config.validator_dir)
                 .map_err(|e| format!("Failed to create {:?}: {:?}", config.validator_dir, e))?;
@@ -231,7 +242,9 @@ impl Config {
                 .collect::<Result<_, _>>()
                 .map_err(|e| format!("Unable to parse beacon node URL: {:?}", e))?;
         }
-        config.dvf_node_config = config.dvf_node_config.set_beacon_nodes(config.beacon_nodes.clone());
+        config.dvf_node_config = config
+            .dvf_node_config
+            .set_beacon_nodes(config.beacon_nodes.clone());
 
         if cli_args.is_present("delete-lockfiles") {
             warn!(
@@ -448,4 +461,3 @@ mod tests {
         Config::default();
     }
 }
-

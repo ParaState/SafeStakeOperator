@@ -1,12 +1,10 @@
-use bls::{Signature, PublicKey, Hash256};
-use crate::{
-    crypto::generic_threshold::{TThresholdSignature},
-};
-use bls::{INFINITY_SIGNATURE};
+use crate::crypto::generic_threshold::TThresholdSignature;
+use crate::utils::blst_utils::u64_to_blst_scalar;
 use crate::utils::error::{require, DvfError};
+use bls::INFINITY_SIGNATURE;
+use bls::{Hash256, PublicKey, Signature};
 pub use blst::min_pk as blst_core;
-use blst::{blst_scalar, blst_p2, blst_p2_affine};
-use crate::utils::blst_utils::{u64_to_blst_scalar};
+use blst::{blst_p2, blst_p2_affine, blst_scalar};
 
 pub const DST: &[u8] = b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
 pub const RAND_BITS: usize = 64;
@@ -23,8 +21,8 @@ fn lagrange_coeffs(coeffs: &mut [blst_scalar], x: &[u64]) {
         let mut p = u64_to_blst_scalar(1);
         let xi = u64_to_blst_scalar(x[i]);
         for j in 0..n {
-            if i!=j {
-                let xj = u64_to_blst_scalar(x[j]); 
+            if i != j {
+                let xj = u64_to_blst_scalar(x[j]);
                 let mut tmp = std::mem::MaybeUninit::<blst_scalar>::uninit();
                 unsafe {
                     blst::blst_sk_sub_n_check(tmp.as_mut_ptr(), &xj, &xi);
@@ -44,19 +42,18 @@ impl Clone for BlstThresholdSignature {
     fn clone(&self) -> Self {
         Self(
             blst_core::AggregateSignature::from_signature(&self.0.to_signature()),
-            self.1
+            self.1,
         )
     }
 }
 
-
 impl TThresholdSignature for BlstThresholdSignature {
     fn infinity(threshold: usize) -> Self {
-        Self ( 
+        Self(
             blst_core::Signature::from_bytes(&INFINITY_SIGNATURE)
                 .map(|sig| blst_core::AggregateSignature::from_signature(&sig))
                 .expect("should decode infinity signature"),
-            threshold
+            threshold,
         )
     }
 
@@ -72,7 +69,7 @@ impl TThresholdSignature for BlstThresholdSignature {
         for i in 0..self.threshold() {
             let mut sig_in: [u8; 192] = [0; 192];
             unsafe {
-                let mut d: blst_p2 = Default::default(); 
+                let mut d: blst_p2 = Default::default();
                 let mut tmp: blst_p2_affine = Default::default();
                 blst::blst_p2_deserialize(&mut tmp, sigs[i].serialize().as_ptr());
                 blst::blst_p2_from_affine(&mut d, &tmp);
@@ -86,7 +83,14 @@ impl TThresholdSignature for BlstThresholdSignature {
         Signature::deserialize(&agg.0.to_signature().to_bytes()).unwrap()
     }
 
-    fn threshold_aggregate(&self, _sigs: &[&Signature], _pks: &[&PublicKey], _msg: Hash256) -> Result<Signature, DvfError> {
-        Err(DvfError::UnexpectedCall(String::from("threshold_aggregate"))) 
+    fn threshold_aggregate(
+        &self,
+        _sigs: &[&Signature],
+        _pks: &[&PublicKey],
+        _msg: Hash256,
+    ) -> Result<Signature, DvfError> {
+        Err(DvfError::UnexpectedCall(String::from(
+            "threshold_aggregate",
+        )))
     }
 }

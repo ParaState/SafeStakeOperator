@@ -1,9 +1,9 @@
-use crate::validation::ValidatorStore;
-use crate::validation::account_utils::validator_definitions::{ValidatorDefinition};
+use crate::validation::account_utils::validator_definitions::ValidatorDefinition;
 use crate::validation::account_utils::{
     eth2_wallet::{bip39::Mnemonic, WalletBuilder},
     random_mnemonic, random_password, ZeroizeString,
 };
+use crate::validation::ValidatorStore;
 use eth2::lighthouse_vc::types::{self as api_types};
 use slot_clock::SlotClock;
 use std::path::Path;
@@ -185,4 +185,3 @@ pub async fn create_validators_web3signer<T: 'static + SlotClock, E: EthSpec>(
 
     Ok(())
 }
-

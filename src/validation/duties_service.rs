@@ -861,12 +861,6 @@ async fn poll_beacon_attesters_for_epoch<T: SlotClock + 'static, E: EthSpec>(
         "num_new_duties" => new_duties.len(),
     );
 
-    // Produce the `DutyAndProof` messages in parallel.
-    // let duty_and_proof_results = join_all(new_duties.into_iter().map(|duty| {
-    //     DutyAndProof::new(duty, &duties_service.validator_store, &duties_service.spec)
-    // }))
-    // .await;
-
     // Update the duties service with the new `DutyAndProof` messages.
     let mut attesters = duties_service.attesters.write();
     let mut already_warned = Some(());
@@ -904,55 +898,6 @@ async fn poll_beacon_attesters_for_epoch<T: SlotClock + 'static, E: EthSpec>(
     );
 
     Ok(())
-
-    // // Update the duties service with the new `DutyAndProof` messages.
-    // let mut attesters = duties_service.attesters.write();
-    // let mut already_warned = Some(());
-    // let mut count: u64 = 0;
-    // for result in duty_and_proof_results {
-    //     let duty_and_proof = match result {
-    //         Ok(duty_and_proof) => duty_and_proof,
-    //         Err(Error::Negligible) => {
-    //             continue;
-    //         }
-    //         Err(e) => {
-    //             error!(
-    //                 log,
-    //                 "Failed to produce duty and proof";
-    //                 "error" => ?e,
-    //                 "msg" => "may impair attestation duties"
-    //             );
-    //             // Do not abort the entire batch for a single failure.
-    //             continue;
-    //         }
-    //     };
-
-    //     let attester_map = attesters.entry(duty_and_proof.duty.pubkey).or_default();
-
-    //     if let Some((prior_dependent_root, _)) =
-    //         attester_map.insert(epoch, (dependent_root, duty_and_proof))
-    //     {
-    //         // Using `already_warned` avoids excessive logs.
-    //         if dependent_root != prior_dependent_root && already_warned.take().is_some() {
-    //             warn!(
-    //                 log,
-    //                 "Attester duties re-org";
-    //                 "prior_dependent_root" => %prior_dependent_root,
-    //                 "dependent_root" => %dependent_root,
-    //                 "msg" => "this may happen from time to time"
-    //             )
-    //         }
-    //     }
-    //     count = count + 1;
-    // }
-    // debug!(
-    //     log,
-    //     "Polled attester duties";
-    //     "epoch" => epoch.as_u64(),
-    //     "duty" => duties_len,
-    //     "duty_proof" => count
-    // );
-    // drop(attesters);
 }
 
 /// Get a filtered list of local validators for which we don't already know their duties for that epoch

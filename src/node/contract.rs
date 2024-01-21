@@ -39,6 +39,7 @@ pub static DEFAULT_TRANSPORT_URL: OnceCell<String> = OnceCell::const_new();
 pub static REGISTRY_CONTRACT: OnceCell<String> = OnceCell::const_new();
 pub static NETWORK_CONTRACT: OnceCell<String> = OnceCell::const_new();
 const QUERY_LOGS_INTERVAL: u64 = 60 * 3;
+const QUERY_BLOCK_INTERVAL: u64 = 10;
 #[derive(Debug)]
 pub enum ContractError {
     StoreError,
@@ -61,9 +62,9 @@ impl ContractError {
             ContractError::StoreError => format!("[ERROR!]: Can't interact with store."),
             ContractError::Web3Error(e) => format!("[ERROR]: Web3 error ({:?}).", e),
             ContractError::BlockNumberError(e) => {
-                format!("[ERROR]: Can't get blocknumber from infura ({:?}).", e)
+                format!("[ERROR]: Can't get blocknumber from rpc service ({:?}).", e)
             }
-            ContractError::LogError => format!("[ERROR]: Can't get logs from infura."),
+            ContractError::LogError => format!("[ERROR]: Can't get logs from rpc service."),
             ContractError::RecordFileError => format!("[ERROR]: Error happens with record file."),
             ContractError::LogParseError => format!("[ERROR]: Can't parse eth log."),
             ContractError::NoEnoughOperatorError => {
@@ -77,7 +78,7 @@ impl ContractError {
             ContractError::ContractParseError => {
                 format!("[ERROR]: Can't parse contract from abi json")
             }
-            ContractError::QueryError => format!("[ERROR]: Can't query from contract"),
+            ContractError::QueryError => format!("[ERROR]: Can't query from contract from rpc service"),
         }
     }
 }
@@ -547,11 +548,13 @@ impl Contract {
                 let va_filter = va_filter_builder
                     .clone()
                     .from_block(BlockNumber::Number(U64::from(record.block_num)))
+                    .to_block(BlockNumber::Number(U64::from(record.block_num + QUERY_BLOCK_INTERVAL)))
                     .limit(20)
                     .build();
                 let initiator_filter = initiator_filter_builder
                     .clone()
                     .from_block(BlockNumber::Number(U64::from(record.block_num)))
+                    .from_block(BlockNumber::Number(U64::from(record.block_num + QUERY_BLOCK_INTERVAL)))
                     .limit(20)
                     .build();
                 let mut all_logs: Vec<Log> = Vec::new();
@@ -582,14 +585,7 @@ impl Contract {
                     }
                 }
                 if all_logs.len() == 0 {
-                    match get_current_block(&web3).await {
-                        Ok(b) => record.block_num = b.as_u64(),
-                        Err(e) => {
-                            error!("get current block failed {:?}", e);
-                            // re construct web3
-                            re_connect_web3(&mut web3, transport_url).await;
-                        }
-                    }
+                    record.block_num += QUERY_BLOCK_INTERVAL + 1;
                 } else {
                     all_logs.sort_by(|a, b| a.block_number.unwrap().cmp(&b.block_number.unwrap()));
                     for log in all_logs {
@@ -618,23 +614,6 @@ impl Contract {
         });
     }
 }
-// async fn connect_web3(url: &String) -> Result<Web3<WebSocket>, ContractError> {
-//     let transport = WebSocket::new(url).await
-//         .map_err(ContractError::Web3Error)?;
-//     Ok(Web3::new(transport))
-// }
-
-// pub async fn get_block_number(record: &mut ContractRecord, web3: &Web3<WebSocket>) {
-//     match get_current_block().await {
-//         Ok(v) => {
-//             record.block_num = v.as_u64();
-//         }
-//         Err(e) => {
-//             // [zico] For errors, leave record number as it is
-//             error!("{}", e.to_string());
-//         }
-//     }
-// }
 
 pub async fn re_connect_web3(web3: &mut Web3<WebSocket>, transport_url: &String) {
     match WebSocket::new(transport_url).await {

@@ -15,16 +15,8 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 .help("Comma-separated addresses to one or more beacon node HTTP APIs. \
                        Default is http://localhost:5052."
                 )
-                .takes_value(true),
-        )
-        // This argument is deprecated, use `--beacon-nodes` instead.
-        .arg(
-            Arg::with_name("server")
-                .long("server")
-                .value_name("NETWORK_ADDRESS")
-                .help("Deprecated. Use --beacon-nodes.")
                 .takes_value(true)
-                .conflicts_with_all(&["beacon-node", "beacon-nodes"]),
+                .required(true)
         )
         .arg(
             Arg::with_name("proposer-nodes")
@@ -80,6 +72,7 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                     "This node's ip which is used for connections with other nodes"
                 )
                 .takes_value(true)
+                .required(true)
         )
         .arg(
             Arg::with_name("id")
@@ -89,6 +82,7 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 "This node's id in smart contract"
             )
             .takes_value(true)
+            .required(true)
         )
         .arg(
             Arg::with_name("api")
@@ -97,6 +91,7 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 .help(
                     "The api where the operator to send performance request"
                 ).takes_value(true)
+                .required(true)
         )
         .arg(
             Arg::with_name("base-port")
@@ -106,6 +101,7 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                     "This node's BASE_PORT"
                 )
                 .takes_value(true)
+                .required(true)
         )
         .arg(
             Arg::with_name("ws-url")
@@ -113,6 +109,7 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
             .value_name("WS_URL")
             .help("web socket url of infura to listen contract event")
             .takes_value(true)
+            .required(true)
         )
         .arg(
             Arg::with_name("registry-contract")
@@ -122,6 +119,7 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                     "This is the address of registry contract"
                 )
                 .takes_value(true)
+                .required(true)
         )
         .arg(
             Arg::with_name("network-contract")
@@ -131,6 +129,7 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                     "This is the address of network contract"
                 )
                 .takes_value(true)
+                .required(true)
         )
         .arg(
             Arg::with_name("delete-lockfiles")

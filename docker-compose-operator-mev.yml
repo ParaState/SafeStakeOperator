@@ -46,7 +46,7 @@ services:
       - "18550"
   lighthouse:
     network_mode: "host"
-    image: sigp/lighthouse:v4.5.0
+    image: sigp/lighthouse:v4.6.0-rc.0
     pull_policy: always
     restart: unless-stopped
     volumes:
@@ -55,12 +55,10 @@ services:
     command:
       [
         "lighthouse",
-        #lighthouse bn --builder https://mainnet-builder.test
         "bn",
         "--builder=http://${MEV_IP}:18550",
         "--network=${LIGHTHOUSE_NETWORK}",
         "--datadir=/data/lighthouse",
-        # "--jwt-secrets=/data/jwt/jwtsecret",
         "--execution-jwt=/data/jwt/jwtsecret",
         "--http",
         "--listen-address=0.0.0.0",
@@ -68,9 +66,7 @@ services:
         "--http-port=5052",
         "--staking",
         "--http-allow-sync-stalled",
-        "--merge",
         "--execution-endpoint=http://127.0.0.1:8551",
-        # "--eth1-endpoints=http://127.0.0.1:8545",
         "--metrics",
         "--metrics-address=0.0.0.0",
         "--subscribe-all-subnets",
@@ -90,13 +86,12 @@ services:
     image: parastate/dvf-operator:${IMAGE_TAG}
     pull_policy: always
     restart: unless-stopped
-    #such as : lighthouse vc --builder-proposals/private-tx-proposals
     command:
       - /bin/sh
       - -c
       - |
         node_ip=$$(curl -s ifconfig.me)
-        dvf validator_client --builder-proposals --debug-level=info --network=${OPERATOR_NETWORK} --beacon-nodes=${BEACON_NODE_ENDPOINT} --api=${API_SERVER} --ws-url=${WS_URL}  --ip=$$node_ip --id=${OPERATOR_ID} --registry-contract=${REGISTRY_CONTRACT_ADDRESS} --network-contract=${NETWORK_CONTRACT_ADDRESS} --suggested-fee-recipient=${FEE_RECEIPIENT} --base-port=26000 --builder-registration-timestamp-override=1703126082 2>&1
+        dvf validator_client --debug-level=info --network=${OPERATOR_NETWORK} --beacon-nodes=${BEACON_NODE_ENDPOINT} --api=${API_SERVER} --ws-url=${WS_URL}  --ip=$$node_ip --id=${OPERATOR_ID} --registry-contract=${REGISTRY_CONTRACT_ADDRESS} --network-contract=${NETWORK_CONTRACT_ADDRESS} --suggested-fee-recipient=${FEE_RECEIPIENT} --base-port=26000 2>&1
     expose:
       - "26000"
       - "26001"
@@ -171,7 +166,7 @@ services:
       - "8546"
       - "30303"
   erigon:
-    image: thorax/erigon:v2.48.1
+    image: thorax/erigon:v2.56.2
     pull_policy: always
     restart: unless-stopped
     network_mode: "host"

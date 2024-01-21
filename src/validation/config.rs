@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use types::{Address, GRAFFITI_BYTES_LEN};
 use crate::node::config::{NodeConfig,API_ADDRESS};
 use crate::node::contract::{DEFAULT_TRANSPORT_URL, SELF_OPERATOR_ID, NETWORK_CONTRACT, REGISTRY_CONTRACT};
-use dvf_directory::{get_default_base_dir};
+use dvf_directory::get_default_base_dir;
 
 pub const DEFAULT_BEACON_NODE: &str = "http://localhost:5052/";
 
@@ -137,23 +137,7 @@ impl Config {
 
         let default_base_dir = get_default_base_dir(cli_args);
 
-
-        // let default_root_dir = dirs::home_dir()
-        //     .map(|home| home.join(DEFAULT_ROOT_DIR))
-        //     .unwrap_or_else(|| PathBuf::from("."));
-
         let (validator_dir, secrets_dir) = (None, None);
-        // if cli_args.value_of("datadir").is_some() {
-        //     let base_dir: PathBuf = parse_required(cli_args, "datadir")?;
-        //     validator_dir = Some(base_dir.join(DEFAULT_VALIDATOR_DIR));
-        //     secrets_dir = Some(base_dir.join(DEFAULT_SECRET_DIR));
-        // }
-        // if cli_args.value_of("validators-dir").is_some() {
-        //     validator_dir = Some(parse_required(cli_args, "validators-dir")?);
-        // }
-        // if cli_args.value_of("secrets-dir").is_some() {
-        //     secrets_dir = Some(parse_required(cli_args, "secrets-dir")?);
-        // }
 
         if cli_args.values_of("registry-contract").is_some() {
             let registry_contract: String= parse_required(cli_args, "registry-contract")?;
@@ -234,10 +218,6 @@ impl Config {
 
         ensure_dir_exists(&config.validator_dir)?;
         ensure_dir_exists(&config.secrets_dir)?;
-        // let base_dir = dirs::home_dir()
-        //     .unwrap_or_else(|| PathBuf::from("."))
-        //     .join(DEFAULT_ROOT_DIR)
-        //     .join(get_network_dir(cli_args));
         config.dvf_node_config = config.dvf_node_config.set_secret_dir(config.secrets_dir.clone()).set_validator_dir(config.validator_dir.clone()).set_node_key_path(default_base_dir.clone()).set_store_path(default_base_dir);
         if !config.validator_dir.exists() {
             fs::create_dir_all(&config.validator_dir)

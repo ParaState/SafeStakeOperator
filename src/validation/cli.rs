@@ -27,6 +27,26 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 .conflicts_with_all(&["beacon-node", "beacon-nodes"]),
         )
         .arg(
+            Arg::with_name("proposer-nodes")
+                .long("proposer-nodes")
+                .value_name("NETWORK_ADDRESSES")
+                .help("Comma-separated addresses to one or more beacon node HTTP APIs. \
+                These specify nodes that are used to send beacon block proposals. A failure will revert back to the standard beacon nodes specified in --beacon-nodes."
+                )
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("broadcast")
+                .long("broadcast")
+                .value_name("API_TOPICS")
+                .help("Comma-separated list of beacon API topics to broadcast to all beacon nodes. \
+                       Possible values are: none, attestations, blocks, subscriptions, \
+                       sync-committee. Default (when flag is omitted) is to broadcast \
+                       subscriptions only."
+                )
+                .takes_value(true),
+        )
+        .arg(
             Arg::with_name("validators-dir")
                 .long("validators-dir")
                 .alias("validator-dir")
@@ -139,14 +159,6 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
             )
         )
         .arg(
-            Arg::with_name("allow-unsynced")
-                .long("allow-unsynced")
-                .help(
-                    "If present, the validator client will still poll for duties if the beacon
-                      node is not synced.",
-                ),
-        )
-        .arg(
             Arg::with_name("use-long-timeouts")
                 .long("use-long-timeouts")
                 .help("If present, the validator client will use longer timeouts for requests \
@@ -182,17 +194,10 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
         .arg(
             Arg::with_name("suggested-fee-recipient")
                 .long("suggested-fee-recipient")
-                .help("The fallback address provided to the BN if nothing suitable is found \
-                           in the validator definitions or fee recipient file.")
+                .help("Once the merge has happened, this address will receive transaction fees \
+                       from blocks proposed by this validator client. If a fee recipient is \
+                       configured in the validator definitions it takes priority over this value.")
                 .value_name("FEE-RECIPIENT")
-                .takes_value(true)
-        )
-        .arg(
-            Arg::with_name("suggested-fee-recipient-file")
-                .long("suggested-fee-recipient-file")
-                .help("The fallback address provided to the BN if nothing suitable is found \
-                           in the validator definitions.")
-                .value_name("FEE-RECIPIENT-FILE")
                 .takes_value(true)
         )
         /* REST API related arguments */
@@ -256,6 +261,7 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
         .arg(
             Arg::with_name("metrics-address")
                 .long("metrics-address")
+                .requires("metrics")
                 .value_name("ADDRESS")
                 .help("Set the listen address for the Prometheus metrics HTTP server.")
                 .default_value("127.0.0.1")
@@ -295,6 +301,15 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 .takes_value(true),
         )
         .arg(
+            Arg::with_name("monitoring-endpoint-period")
+                .long("monitoring-endpoint-period")
+                .value_name("SECONDS")
+                .help("Defines how many seconds to wait between each message sent to \
+                       the monitoring-endpoint. Default: 60s")
+                .requires("monitoring-endpoint")
+                .takes_value(true),
+        )
+        .arg(
             Arg::with_name("enable-doppelganger-protection")
                 .long("enable-doppelganger-protection")
                 .value_name("ENABLE_DOPPELGANGER_PROTECTION")
@@ -309,14 +324,6 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                     immediately.")
                 .takes_value(false),
         )
-        // .arg(
-        //     Arg::with_name("private-tx-proposals")
-        //         .long("private-tx-proposals")
-        //         .help("If this flag is set, Lighthouse will query the Beacon Node for only block \
-        //             headers during proposals and will sign over headers. Useful for outsourcing \
-        //             execution payload construction during proposals.")
-        //         .takes_value(false),
-        // )
         .arg(
             Arg::with_name("builder-proposals")
                 .long("builder-proposals")
@@ -325,15 +332,6 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                     headers during proposals and will sign over headers. Useful for outsourcing \
                     execution payload construction during proposals.")
                 .takes_value(false),
-        ).arg(
-        Arg::with_name("gas-limit")
-            .long("gas-limit")
-            .value_name("GAS_LIMIT_INTEGER")
-            .takes_value(true)
-            .help("The gas limit to be used in all builder proposals for all validators managed \
-                    by this validator client. Note this will not necessarily be used if the gas limit \
-                    set here moves too far from the previous block's gas limit. [default: 30,000,000]")
-            .requires("builder-proposals"),
         )
         .arg(
             Arg::with_name("builder-registration-timestamp-override")
@@ -341,6 +339,35 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 .alias("builder-registration-timestamp-override")
                 .help("This flag takes a unix timestamp value that will be used to override the \
                     timestamp used in the builder api registration")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("gas-limit")
+                .long("gas-limit")
+                .value_name("INTEGER")
+                .takes_value(true)
+                .help("The gas limit to be used in all builder proposals for all validators managed \
+                    by this validator client. Note this will not necessarily be used if the gas limit \
+                    set here moves too far from the previous block's gas limit. [default: 30,000,000]")
+                .requires("builder-proposals"),
+        )
+        .arg(
+            Arg::with_name("latency-measurement-service")
+                .long("latency-measurement-service")
+                .value_name("BOOLEAN")
+                .help("Set to 'true' to enable a service that periodically attempts to measure latency to BNs. \
+                    Set to 'false' to disable.")
+                .default_value("true")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("validator-registration-batch-size")
+                .long("validator-registration-batch-size")
+                .value_name("INTEGER")
+                .help("Defines the number of validators per \
+                    validator/register_validator request sent to the BN. This value \
+                    can be reduced to avoid timeouts from builders.")
+                .default_value("500")
                 .takes_value(true),
         )
 }

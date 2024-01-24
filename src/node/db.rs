@@ -1081,6 +1081,20 @@ fn query_initiator_store(
     }
 }
 
+pub fn query_validators_fee_recipient<P: AsRef<Path>>(path: P) -> DbResult<Vec<(String, Address)>> {
+    let conn = Connection::open(path)?;
+    let mut stmt = conn.prepare("select public_key, owner_address from validators")?;
+    let mut rows = stmt.query([]).unwrap();
+    let mut res = Vec::new();
+    while let Some(row) = rows.next()? {
+        let validator_publickey: String = row.get(0)?;
+        let address_str: String = row.get(1)?;
+        let address: Address = Address::from_slice(&hex::decode(&address_str).unwrap());
+        res.push((validator_publickey, address));
+    }
+    Ok(res)
+}
+
 #[tokio::test]
 async fn test_database() {
     use crate::crypto::ThresholdSignature;

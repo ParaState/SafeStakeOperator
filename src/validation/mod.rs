@@ -263,7 +263,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         let validators = InitializedValidators::from_definitions(
             validator_defs,
             config.validator_dir.clone(),
-            node.clone(),
+            Some(node.clone()),
             log.clone(),
         )
         .await
@@ -496,12 +496,12 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         validator_store
             .register_all_in_doppelganger_protection_if_enabled()
             .await?;
-        match node {
-            Some(n) => {
-                let mut node = n.write().await;
-                node.validator_store = Some(Arc::clone(&validator_store));
-            }
-            _ => {}
+        {
+            node.write().await.validator_store = Some(Arc::clone(&validator_store));
+        }
+
+        {
+            node.write().await.set_validators_fee_recipient().await?;
         }
 
         let num_voting_validators = validator_store.num_voting_validators().await;

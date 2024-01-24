@@ -158,10 +158,6 @@ impl NodeConfig {
 
     pub fn set_base_port(mut self, new_port: u16) -> Self {
         self.base_address.set_port(new_port);
-        // self.transaction_address.set_port(new_port + TRANSACTION_PORT_OFFSET);
-        // self.mempool_address.set_port(new_port + MEMPOOL_PORT_OFFSET);
-        // self.consensus_address.set_port(new_port + CONSENSUS_PORT_OFFSET);
-        // self.signature_address.set_port(new_port + SIGNATURE_PORT_OFFSET);
         self
     }
 

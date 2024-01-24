@@ -1107,4 +1107,25 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
         self.start_validator_keystore(pubkey).await;
     }
+
+    pub async fn set_fee_recipient_for_validator(
+        &self,
+        pubkey: &PublicKey,
+        fee_recipient: Address,
+    ) {
+        info!(self.log, "setting validator fee recipient";
+            "pubkey" => format!("{:?}", pubkey),
+            "fee recipient" => format!("{:?}", fee_recipient));
+        match self
+            .validators
+            .write()
+            .await
+            .set_validator_fee_recipient(pubkey, fee_recipient)
+        {
+            Ok(_) => {}
+            Err(e) => {
+                error!(self.log, "failed to set validator fee recipient"; "error" => format!("{:?}", e));
+            }
+        }
+    }
 }

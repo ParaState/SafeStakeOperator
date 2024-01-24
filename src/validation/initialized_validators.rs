@@ -7,7 +7,8 @@
 //!
 //! The `InitializedValidators` struct in this file serves as the source-of-truth of which
 //! validators are managed by this validator client.
-
+use crate::node::dvfcore::DvfSigner;
+use crate::node::node::Node;
 use crate::validation::account_utils::{
     read_password, read_password_from_user,
     validator_definitions::{
@@ -16,8 +17,11 @@ use crate::validation::account_utils::{
     ZeroizeString,
 };
 use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
+use crate::validation::key_cache;
+use crate::validation::key_cache::KeyCache;
 use crate::validation::operator_committee_definitions::{self, OperatorCommitteeDefinition};
 use crate::validation::signing_method::SigningMethod;
+use crate::validation::validator_dir::share_builder::ShareBuilder;
 use eth2::lighthouse_vc::std_types::DeleteKeystoreStatus;
 use eth2_keystore::Keystore;
 use lighthouse_metrics::set_gauge;
@@ -30,16 +34,9 @@ use std::fs::{self, File};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use types::{Address, EthSpec, Graffiti, Keypair, PublicKey, PublicKeyBytes};
 use validator_dir::Builder as ValidatorDirBuilder;
-
-use crate::validation::key_cache;
-use crate::validation::key_cache::KeyCache;
-
-use crate::node::dvfcore::DvfSigner;
-use crate::node::node::Node;
-use crate::validation::validator_dir::share_builder::ShareBuilder;
-use tokio::sync::RwLock;
 
 // Use TTY instead of stdin to capture passwords from users.
 const USE_STDIN: bool = false;

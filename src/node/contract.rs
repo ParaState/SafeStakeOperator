@@ -78,7 +78,9 @@ impl ContractError {
             ContractError::ContractParseError => {
                 format!("[ERROR]: Can't parse contract from abi json")
             }
-            ContractError::QueryError => format!("[ERROR]: Can't query from contract from rpc service"),
+            ContractError::QueryError => {
+                format!("[ERROR]: Can't query from contract from rpc service")
+            }
         }
     }
 }
@@ -548,13 +550,17 @@ impl Contract {
                 let va_filter = va_filter_builder
                     .clone()
                     .from_block(BlockNumber::Number(U64::from(record.block_num)))
-                    .to_block(BlockNumber::Number(U64::from(record.block_num + QUERY_BLOCK_INTERVAL)))
+                    .to_block(BlockNumber::Number(U64::from(
+                        record.block_num + QUERY_BLOCK_INTERVAL,
+                    )))
                     .limit(20)
                     .build();
                 let initiator_filter = initiator_filter_builder
                     .clone()
                     .from_block(BlockNumber::Number(U64::from(record.block_num)))
-                    .from_block(BlockNumber::Number(U64::from(record.block_num + QUERY_BLOCK_INTERVAL)))
+                    .from_block(BlockNumber::Number(U64::from(
+                        record.block_num + QUERY_BLOCK_INTERVAL,
+                    )))
                     .limit(20)
                     .build();
                 let mut all_logs: Vec<Log> = Vec::new();

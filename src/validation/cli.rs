@@ -190,15 +190,16 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 .takes_value(true)
                 .conflicts_with("graffiti")
         )
-        .arg(
-            Arg::with_name("suggested-fee-recipient")
-                .long("suggested-fee-recipient")
-                .help("Once the merge has happened, this address will receive transaction fees \
-                       from blocks proposed by this validator client. If a fee recipient is \
-                       configured in the validator definitions it takes priority over this value.")
-                .value_name("FEE-RECIPIENT")
-                .takes_value(true)
-        )
+        // abandon the suggested-fee-recipient parameter
+        // .arg(
+        //     Arg::with_name("suggested-fee-recipient")
+        //         .long("suggested-fee-recipient")
+        //         .help("Once the merge has happened, this address will receive transaction fees \
+        //                from blocks proposed by this validator client. If a fee recipient is \
+        //                configured in the validator definitions it takes priority over this value.")
+        //         .value_name("FEE-RECIPIENT")
+        //         .takes_value(true)
+        // )
         /* REST API related arguments */
         .arg(
             Arg::with_name("http")

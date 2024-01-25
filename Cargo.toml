@@ -58,7 +58,8 @@ tokio = { version = "1.26.0", features = ["time", "rt-multi-thread", "tracing"] 
 
 env_logger = "0.8.2"
 log = "0.4.0"
-
+tracing = "0.1"
+tracing-test = "0.2.4"
 tracing-appender = "0.2"
 tracing-core = "0.1"
 tracing-log = "0.2"

@@ -91,6 +91,7 @@ services:
       - "26003"
       - "26004"
       - "26005"
+      - "5054"
     deploy:
       resources:
         limits:

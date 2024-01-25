@@ -213,13 +213,14 @@ impl<T: EthSpec> Node<T> {
                             }
                             ContractCommand::RemoveValidator(validator) => {
                                 info!("RemoveValidator");
-                                let va_id = validator.id;
+                                let va_pubkey = hex::encode(validator.public_key.clone());
                                 match remove_validator(node.clone(), validator).await {
                                     Ok(_) => {
+                                        db.delete_validator(va_pubkey).await;
                                         db.delete_contract_command(id).await;
                                     }
                                     Err(e) => {
-                                        error!("Failed to remove validator:  {} {}", e, va_id);
+                                        error!("Failed to remove validator:  {} {}", e, va_pubkey);
                                         db.updatetime_contract_command(id).await;
                                     }
                                 }

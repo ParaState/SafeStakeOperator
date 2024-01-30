@@ -56,7 +56,7 @@ services:
       [
         "lighthouse",
         "bn",
-        "--builder=http://${MEV_IP}:18550",
+        "--builder=${MEV_ENDPOINT}",
         "--network=${LIGHTHOUSE_NETWORK}",
         "--datadir=/data/lighthouse",
         "--execution-jwt=/data/jwt/jwtsecret",

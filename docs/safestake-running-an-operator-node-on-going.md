@@ -169,6 +169,8 @@ OPERATOR_ID=<YOUR_OPERATOR_ID>
 ```bash
 WS_URL= #YOUR WS URL: ws://<geth/nethermind/besu node ip>:8546 or ws://<erigon node ip>:8545
 BEACON_NODE_ENDPOINT= # The beacon node endpoint. Depending on whether you are running single-node mode or multi-node mode, fill in the correct Lighthouse beacon node service url, e.g. http://127.0.0.1:5052 for a local node
+# public ipv4 ip of the server running your operator
+NODE_IP=<IP_ADDRESS>
 ```
 
 

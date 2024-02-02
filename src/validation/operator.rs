@@ -142,8 +142,8 @@ impl TOperator for RemoteOperator {
                         }
                         Err(_) => {
                             warn!(
-                                "Deserialize failed from operator {}/{}, retry..., received data: {:?}",
-                                self.operator_id, self.validator_id, std::str::from_utf8(&data)
+                                "Deserialize failed from operator {}/{}, retry..., msg: {:?} received data: {:?}",
+                                self.operator_id, self.validator_id, msg, std::str::from_utf8(&data)
                             );
                         }
                     },

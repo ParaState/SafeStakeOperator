@@ -50,7 +50,7 @@ impl MessageHandler for IpQueryReceiverHandler {
                 }
                 None => {
                     let _ = writer
-                        .send(Bytes::from("can't find signature, please wait"))
+                        .send(Bytes::from("can't find ip, please wait"))
                         .await;
                 }
             },

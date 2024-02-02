@@ -453,7 +453,7 @@ impl Contract {
         let web3 = Arc::clone(&self.web3);
         let url = DEFAULT_TRANSPORT_URL.get().unwrap();
         tokio::spawn(async move {
-            let mut query_interval = tokio::time::interval(Duration::from_secs(3600 * 6));
+            let mut query_interval = tokio::time::interval(Duration::from_secs(3600 * 1));
             loop {
                 query_interval.tick().await;
                 let mut web3 = web3.lock().await;

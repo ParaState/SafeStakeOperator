@@ -1,24 +1,25 @@
-use crate::validation::fee_recipient_file::FeeRecipientFile;
+use crate::node::config::{NodeConfig, API_ADDRESS};
+use crate::node::contract::{
+    DEFAULT_TRANSPORT_URL, NETWORK_CONTRACT, REGISTRY_CONTRACT, SELF_OPERATOR_ID,
+};
+use crate::validation::beacon_node_fallback::ApiTopic;
 use crate::validation::graffiti_file::GraffitiFile;
 use crate::validation::{http_api, http_metrics};
 use clap::ArgMatches;
 use clap_utils::{parse_optional, parse_required};
-use directory::{
-    DEFAULT_HARDCODED_NETWORK, DEFAULT_ROOT_DIR, DEFAULT_SECRET_DIR,
-    DEFAULT_VALIDATOR_DIR,
-};
 use directory::ensure_dir_exists;
+use directory::{
+    DEFAULT_HARDCODED_NETWORK, DEFAULT_ROOT_DIR, DEFAULT_SECRET_DIR, DEFAULT_VALIDATOR_DIR,
+};
+use dvf_directory::get_default_base_dir;
 use eth2::types::Graffiti;
 use sensitive_url::SensitiveUrl;
 use serde_derive::{Deserialize, Serialize};
-use slog::{info, warn, Logger, error};
+use slog::{info, warn, Logger};
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use types::{Address, GRAFFITI_BYTES_LEN};
-use crate::node::config::{NodeConfig,API_ADDRESS};
-use crate::node::contract::{DEFAULT_TRANSPORT_URL, SELF_OPERATOR_ID, NETWORK_CONTRACT, REGISTRY_CONTRACT};
-use dvf_directory::{get_default_base_dir};
 
 pub const DEFAULT_BEACON_NODE: &str = "http://localhost:5052/";
 
@@ -33,6 +34,8 @@ pub struct Config {
     ///
     /// Should be similar to `["http://localhost:8080"]`
     pub beacon_nodes: Vec<SensitiveUrl>,
+    /// An optional beacon node used for block proposals only.
+    pub proposer_nodes: Vec<SensitiveUrl>,
     /// If true, the validator client will still poll for duties and produce blocks even if the
     /// beacon node is not synced at startup.
     pub allow_unsynced_beacon_node: bool,
@@ -48,8 +51,6 @@ pub struct Config {
     pub graffiti_file: Option<GraffitiFile>,
     /// Fallback fallback address.
     pub fee_recipient: Option<Address>,
-    /// Fee recipient file to load per validator suggested-fee-recipients.
-    pub fee_recipient_file: Option<FeeRecipientFile>,
     /// Configuration for the HTTP REST API.
     pub http_api: http_api::Config,
     /// Configuration for the HTTP REST API.
@@ -59,7 +60,11 @@ pub struct Config {
     /// If true, enable functionality that monitors the network for attestations or proposals from
     /// any of the validators managed by this client before starting up.
     pub enable_doppelganger_protection: bool,
-    pub private_tx_proposals: bool,
+    /// If true, then we publish validator specific metrics (e.g next attestation duty slot)
+    /// for all our managed validators.
+    /// Note: We publish validator specific metrics for low validator counts without this flag
+    /// (<= 64 validators)
+    pub enable_high_validator_count_metrics: bool,
     /// Enable use of the blinded block endpoints during proposals.
     pub builder_proposals: bool,
     /// Overrides the timestamp field in builder api ValidatorRegistrationV1
@@ -69,11 +74,15 @@ pub struct Config {
     /// A list of custom certificates that the validator client will additionally use when
     /// connecting to a beacon node over SSL/TLS.
     pub beacon_nodes_tls_certs: Option<Vec<PathBuf>>,
-
-    /// Disables publishing http api requests to all beacon nodes for select api calls.
-    pub disable_run_on_all: bool,
-
-    /// Used for 
+    /// Enables broadcasting of various requests (by topic) to all beacon nodes.
+    pub broadcast_topics: Vec<ApiTopic>,
+    /// Enables a service which attempts to measure latency between the VC and BNs.
+    pub enable_latency_measurement_service: bool,
+    /// Defines the number of validators per `validator/register_validator` request sent to the BN.
+    pub validator_registration_batch_size: usize,
+    /// Enables block production via the block v3 endpoint. This configuration option can be removed post deneb.
+    pub produce_block_v3: bool,
+    /// Used for Dvf
     pub dvf_node_config: NodeConfig,
 }
 
@@ -95,6 +104,7 @@ impl Default for Config {
             validator_dir,
             secrets_dir,
             beacon_nodes,
+            proposer_nodes: Vec::new(),
             allow_unsynced_beacon_node: false,
             disable_auto_discover: false,
             init_slashing_protection: false,
@@ -102,19 +112,20 @@ impl Default for Config {
             graffiti: None,
             graffiti_file: None,
             fee_recipient: None,
-            fee_recipient_file: None,
             http_api: <_>::default(),
             http_metrics: <_>::default(),
             monitoring_api: None,
             enable_doppelganger_protection: false,
+            enable_high_validator_count_metrics: false,
             beacon_nodes_tls_certs: None,
-            private_tx_proposals: false,
             builder_proposals: false,
             builder_registration_timestamp_override: None,
             gas_limit: None,
-            disable_run_on_all: false,
-            
-            dvf_node_config: NodeConfig::default(), 
+            broadcast_topics: vec![ApiTopic::Subscriptions],
+            enable_latency_measurement_service: true,
+            validator_registration_batch_size: 500,
+            produce_block_v3: false,
+            dvf_node_config: NodeConfig::default(),
         }
     }
 }
@@ -127,108 +138,59 @@ impl Config {
 
         let default_base_dir = get_default_base_dir(cli_args);
 
-
-        // let default_root_dir = dirs::home_dir()
-        //     .map(|home| home.join(DEFAULT_ROOT_DIR))
-        //     .unwrap_or_else(|| PathBuf::from("."));
-
         let (validator_dir, secrets_dir) = (None, None);
-        // if cli_args.value_of("datadir").is_some() {
-        //     let base_dir: PathBuf = parse_required(cli_args, "datadir")?;
-        //     validator_dir = Some(base_dir.join(DEFAULT_VALIDATOR_DIR));
-        //     secrets_dir = Some(base_dir.join(DEFAULT_SECRET_DIR));
-        // }
-        // if cli_args.value_of("validators-dir").is_some() {
-        //     validator_dir = Some(parse_required(cli_args, "validators-dir")?);
-        // }
-        // if cli_args.value_of("secrets-dir").is_some() {
-        //     secrets_dir = Some(parse_required(cli_args, "secrets-dir")?);
-        // }
 
-        if cli_args.values_of("registry-contract").is_some() {
-            let registry_contract: String= parse_required(cli_args, "registry-contract")?;
-            info!(log, "read registry contract"; "registry-contract" => &registry_contract);
-            REGISTRY_CONTRACT.set(registry_contract).unwrap();
-        } else {
-            warn!(log, "can't read registry-contract, use old value, may be wrong");
+        let registry_contract: String = parse_required(cli_args, "registry-contract")?;
+        info!(log, "read registry contract"; "registry-contract" => &registry_contract);
+        REGISTRY_CONTRACT.set(registry_contract).unwrap();
+
+        let network_contract: String = parse_required(cli_args, "network-contract")?;
+        info!(log, "read network contract"; "network-contract" => &network_contract);
+        NETWORK_CONTRACT.set(network_contract).unwrap();
+
+        let self_ip: Ipv4Addr = parse_required(cli_args, "ip")?;
+        info!(log, "read node ip"; "ip" => &self_ip.to_string());
+        config
+            .dvf_node_config
+            .base_address
+            .set_ip(IpAddr::V4(self_ip));
+
+        let base_port: u16 = parse_required(cli_args, "base-port")?;
+        config.dvf_node_config.base_address.set_port(base_port);
+        info!(log, "read base port"; "base-port" => base_port);
+
+        let api_str: String = parse_required(cli_args, "api")?;
+        info!(log, "read api address"; "api" => &api_str);
+        API_ADDRESS.set(api_str).unwrap();
+
+        let ws_transport_url_str: String = parse_required(cli_args, "ws-url")?;
+        info!(log, "read ws-url"; "ws-url" => &ws_transport_url_str);
+        DEFAULT_TRANSPORT_URL.set(ws_transport_url_str).unwrap();
+
+        let operator_id: u32 = parse_required(cli_args, "id")?;
+        if operator_id == 0 {
+            return Err(
+                "operator id should not be 0, please get your operator id from web first!"
+                    .to_string(),
+            );
         }
+        info!(log, "read operator id"; "operator id" => &operator_id);
+        SELF_OPERATOR_ID.set(operator_id).unwrap();
 
-        if cli_args.values_of("network-contract").is_some() {
-            let network_contract: String= parse_required(cli_args, "network-contract")?;
-            info!(log, "read network contract"; "network-contract" => &network_contract);
-            NETWORK_CONTRACT.set(network_contract).unwrap();
-        } else {
-            warn!(log, "can't read network-contract, use old value, may be wrong");
-        }
+        config.validator_dir =
+            validator_dir.unwrap_or_else(|| default_base_dir.join(DEFAULT_VALIDATOR_DIR));
 
-        let mut self_ip : Option<String> = None;
-        if cli_args.value_of("ip").is_some() {
-            self_ip = Some(parse_required(cli_args, "ip")?);
-        } 
-
-        match self_ip {
-            Some(ip) => {
-                info!(log, "read node ip"; "ip" => &ip);
-                config.dvf_node_config.base_address.set_ip(IpAddr::V4(ip.parse::<Ipv4Addr>().unwrap()));
-            },
-            None => {
-                panic!("ip is none");
-            }
-        }
-
-        let mut base_port : Option<u16> = None;
-        if cli_args.value_of("base-port").is_some() {
-            let base_port_str: String = parse_required(cli_args, "base-port")?;
-            base_port = Some(base_port_str.parse::<u16>().unwrap());
-            info!(log, "read base port"; "base-port" => base_port.unwrap());
-        }
-
-        if cli_args.value_of("api").is_some() {
-            let api_str: String = parse_required(cli_args, "api")?;
-            info!(log, "read api address"; "api" => &api_str);
-            API_ADDRESS.set(api_str).unwrap();
-        }
-
-        if cli_args.value_of("ws-url").is_some() {
-            let ws_transport_url_str: String = parse_required(cli_args, "ws-url")?;
-            info!(log, "read ws-url"; "ws-url" => &ws_transport_url_str);
-            DEFAULT_TRANSPORT_URL.set(ws_transport_url_str).unwrap();
-        }
-
-        if cli_args.value_of("id").is_some() {
-            let operator_id : u32 = parse_required(cli_args, "id")?;
-            if operator_id == 0 {
-                error!(log, "operator id should not be 0, please get your operator id from web first!"; );
-                panic!("operator id is 0");
-            }
-            info!(log, "read operator id"; "operator id" => &operator_id);
-            SELF_OPERATOR_ID.set(operator_id).unwrap();
-        }
-
-        match base_port {
-            Some(base_port) => {
-                config.dvf_node_config = config.dvf_node_config.set_base_port(base_port);
-            }
-            _ => {}
-        }
-
-        config.validator_dir = validator_dir.unwrap_or_else(|| {
-            default_base_dir
-                .join(DEFAULT_VALIDATOR_DIR)
-        });
-
-        config.secrets_dir = secrets_dir.unwrap_or_else(|| {
-            default_base_dir
-                .join(DEFAULT_SECRET_DIR)
-        });
+        config.secrets_dir =
+            secrets_dir.unwrap_or_else(|| default_base_dir.join(DEFAULT_SECRET_DIR));
 
         ensure_dir_exists(&config.validator_dir)?;
         ensure_dir_exists(&config.secrets_dir)?;
-        // let base_dir = dirs::home_dir()
-        //     .unwrap_or_else(|| PathBuf::from("."))
-        //     .join(DEFAULT_ROOT_DIR)
-        //     .join(get_network_dir(cli_args));
-        config.dvf_node_config = config.dvf_node_config.set_secret_dir(config.secrets_dir.clone()).set_validator_dir(config.validator_dir.clone()).set_node_key_path(default_base_dir.clone()).set_store_path(default_base_dir);
+        config.dvf_node_config = config
+            .dvf_node_config
+            .set_secret_dir(config.secrets_dir.clone())
+            .set_validator_dir(config.validator_dir.clone())
+            .set_node_key_path(default_base_dir.clone())
+            .set_store_path(default_base_dir);
         if !config.validator_dir.exists() {
             fs::create_dir_all(&config.validator_dir)
                 .map_err(|e| format!("Failed to create {:?}: {:?}", config.validator_dir, e))?;
@@ -241,34 +203,9 @@ impl Config {
                 .collect::<Result<_, _>>()
                 .map_err(|e| format!("Unable to parse beacon node URL: {:?}", e))?;
         }
-        // To be deprecated.
-        else if let Some(beacon_node) = parse_optional::<String>(cli_args, "beacon-node")? {
-            warn!(
-                log,
-                "The --beacon-node flag is deprecated";
-                "msg" => "please use --beacon-nodes instead"
-            );
-            config.beacon_nodes = vec![SensitiveUrl::parse(&beacon_node)
-                .map_err(|e| format!("Unable to parse beacon node URL: {:?}", e))?];
-        }
-        // To be deprecated.
-        else if let Some(server) = parse_optional::<String>(cli_args, "server")? {
-            warn!(
-                log,
-                "The --server flag is deprecated";
-                "msg" => "please use --beacon-nodes instead"
-            );
-            config.beacon_nodes = vec![SensitiveUrl::parse(&server)
-                .map_err(|e| format!("Unable to parse beacon node URL: {:?}", e))?];
-        } else {
-            error!(
-                log,
-                "beacon-nodes is not configured";
-                "msg" => "please use --beacon--nodes arg"
-            );
-            panic!("beacon-nodes is none");
-        }
-        config.dvf_node_config = config.dvf_node_config.set_beacon_nodes(config.beacon_nodes.clone());
+        config.dvf_node_config = config
+            .dvf_node_config
+            .set_beacon_nodes(config.beacon_nodes.clone());
 
         if cli_args.is_present("delete-lockfiles") {
             warn!(
@@ -279,7 +216,14 @@ impl Config {
         }
 
         config.allow_unsynced_beacon_node = cli_args.is_present("allow-unsynced");
-        config.disable_run_on_all = cli_args.is_present("disable-run-on-all");
+        if let Some(proposer_nodes) = parse_optional::<String>(cli_args, "proposer_nodes")? {
+            config.proposer_nodes = proposer_nodes
+                .split(',')
+                .map(SensitiveUrl::parse)
+                .collect::<Result<_, _>>()
+                .map_err(|e| format!("Unable to parse proposer node URL: {:?}", e))?;
+        }
+
         config.disable_auto_discover = cli_args.is_present("disable-auto-discover");
         config.init_slashing_protection = cli_args.is_present("init-slashing-protection");
         config.use_long_timeouts = cli_args.is_present("use-long-timeouts");
@@ -312,19 +256,6 @@ impl Config {
             }
         }
 
-        if let Some(fee_recipient_file_path) = cli_args.value_of("suggested-fee-recipient-file") {
-            let mut fee_recipient_file = FeeRecipientFile::new(fee_recipient_file_path.into());
-            fee_recipient_file
-                .read_fee_recipient_file()
-                .map_err(|e| format!("Error reading suggested-fee-recipient file: {:?}", e))?;
-            config.fee_recipient_file = Some(fee_recipient_file);
-            info!(
-                log,
-                "Successfully loaded suggested-fee-recipient file";
-                "path" => fee_recipient_file_path
-            );
-        }
-
         if let Some(input_fee_recipient) =
             parse_optional::<Address>(cli_args, "suggested-fee-recipient")?
         {
@@ -333,6 +264,26 @@ impl Config {
 
         if let Some(tls_certs) = parse_optional::<String>(cli_args, "beacon-nodes-tls-certs")? {
             config.beacon_nodes_tls_certs = Some(tls_certs.split(',').map(PathBuf::from).collect());
+        }
+
+        if cli_args.is_present("disable-run-on-all") {
+            warn!(
+                log,
+                "The --disable-run-on-all flag is deprecated";
+                "msg" => "please use --broadcast instead"
+            );
+            config.broadcast_topics = vec![];
+        }
+        if let Some(broadcast_topics) = cli_args.value_of("broadcast") {
+            config.broadcast_topics = broadcast_topics
+                .split(',')
+                .filter(|t| *t != "none")
+                .map(|t| {
+                    t.trim()
+                        .parse::<ApiTopic>()
+                        .map_err(|_| format!("Unknown API topic to broadcast: {t}"))
+                })
+                .collect::<Result<_, _>>()?;
         }
 
         /*
@@ -379,6 +330,10 @@ impl Config {
             config.http_metrics.enabled = true;
         }
 
+        if cli_args.is_present("enable-high-validator-count-metrics") {
+            config.enable_high_validator_count_metrics = true;
+        }
+
         if let Some(address) = cli_args.value_of("metrics-address") {
             config.http_metrics.listen_addr = address
                 .parse::<IpAddr>()
@@ -421,9 +376,8 @@ impl Config {
             config.builder_proposals = true;
         }
 
-
-        if cli_args.is_present("private-tx-proposals") {
-            config.private_tx_proposals = true;
+        if cli_args.is_present("produce-block-v3") {
+            config.produce_block_v3 = true;
         }
 
         config.gas_limit = cli_args
@@ -445,6 +399,15 @@ impl Config {
             );
         }
 
+        config.enable_latency_measurement_service =
+            parse_optional(cli_args, "latency-measurement-service")?.unwrap_or(true);
+
+        config.validator_registration_batch_size =
+            parse_required(cli_args, "validator-registration-batch-size")?;
+        if config.validator_registration_batch_size == 0 {
+            return Err("validator-registration-batch-size cannot be 0".to_string());
+        }
+
         Ok(config)
     }
 }
@@ -459,4 +422,3 @@ mod tests {
         Config::default();
     }
 }
-

@@ -1,11 +1,11 @@
 #![allow(unused_imports)]
-use dvf::validation::{OperatorCommittee};
-use dvf::validation::operator::{LocalOperator};
-use dvf::crypto::{ThresholdSignature};
+use dvf::crypto::ThresholdSignature;
+use dvf::validation::operator::LocalOperator;
+use dvf::validation::OperatorCommittee;
+use ethereum_hashing::{Context, Sha256Context};
+use futures::executor::block_on;
 use std::sync::Arc;
 use types::Hash256;
-use ethereum_hashing::{Context, Sha256Context};
-use futures::executor::block_on; 
 
 #[cfg(feature = "fake_committee")]
 #[test]
@@ -18,8 +18,10 @@ fn test_fake_operator_committee() {
 
     let mut committee = OperatorCommittee::new(0, kp.pk.clone(), t);
     for i in 0..n {
-        let operator = Arc::new(
-            RwLock::new(LocalOperator::new(ids[i], Arc::new(kps[i].clone()))));  
+        let operator = Arc::new(RwLock::new(LocalOperator::new(
+            ids[i],
+            Arc::new(kps[i].clone()),
+        )));
         committee.add_operator(ids[i], operator);
     }
 

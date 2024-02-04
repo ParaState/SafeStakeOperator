@@ -151,7 +151,7 @@ BESU_NETWORK=holesky
 ERIGON_NETWORK=holesky
 LIGHTHOUSE_NETWORK=holesky
 OPERATOR_NETWORK=holesky
-IMAGE_TAG=v2.0-testnet
+IMAGE_TAG=v2.1-testnet
 REGISTRY_CONTRACT_ADDRESS=3a1d816ECb38E3e553a2E13907e4759186CC40F4
 NETWORK_CONTRACT_ADDRESS=3417fa49B0FDA2BB6277c0e1793552eBd66FC4e8
 API_SERVER=https://api-testnet-holesky.safestake.xyz/api/op/
@@ -169,6 +169,8 @@ OPERATOR_ID=<YOUR_OPERATOR_ID>
 ```bash
 WS_URL= #YOUR WS URL: ws://<geth/nethermind/besu node ip>:8546 or ws://<erigon node ip>:8545
 BEACON_NODE_ENDPOINT= # The beacon node endpoint. Depending on whether you are running single-node mode or multi-node mode, fill in the correct Lighthouse beacon node service url, e.g. http://127.0.0.1:5052 for a local node
+# public ipv4 ip of the server running your operator
+NODE_IP=<IP_ADDRESS>
 ```
 
 

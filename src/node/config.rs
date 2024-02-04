@@ -3,13 +3,13 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 
 use directory::{DEFAULT_ROOT_DIR, DEFAULT_SECRET_DIR, DEFAULT_VALIDATOR_DIR};
-use serde_derive::{Deserialize, Serialize};
-use tokio::sync::OnceCell;
-use log::{warn};
 use lazy_static::lazy_static;
 use lighthouse_network::discv5::enr::{CombinedKey, Enr};
-use std::fs::File;
+use log::warn;
 use sensitive_url::SensitiveUrl;
+use serde_derive::{Deserialize, Serialize};
+use std::fs::File;
+use tokio::sync::OnceCell;
 /// The file name for the serialized `OperatorCommitteeDefinition` struct.
 pub const NODE_KEY_FILENAME: &str = "node_key.json";
 pub const DB_FILENAME: &str = "dvf_node_db";
@@ -30,7 +30,7 @@ pub const STAKE_SIGNATURE_URL: &str = "stake_signature";
 pub const TOPIC_NODE_INFO: &str = "dvf/topic_node_info";
 const BOOT_ENRS_CONFIG_FILE: &str = "boot_config/boot_enrs.yaml";
 
-lazy_static!{
+lazy_static! {
     // [Issue] SocketAddr::new is not yet a const fn in stable release.
     // Can change this variable to const once it becomes stable.
     // Tracking issue: https://doc.rust-lang.org/std/net/enum.SocketAddr.html#method.new
@@ -51,8 +51,7 @@ pub fn is_addr_invalid(addr: SocketAddr) -> bool {
 pub fn base_to_transaction_addr(base_addr: SocketAddr) -> SocketAddr {
     if is_addr_invalid(base_addr) {
         base_addr
-    }
-    else {
+    } else {
         SocketAddr::new(base_addr.ip(), base_addr.port() + TRANSACTION_PORT_OFFSET)
     }
 }
@@ -60,8 +59,7 @@ pub fn base_to_transaction_addr(base_addr: SocketAddr) -> SocketAddr {
 pub fn base_to_mempool_addr(base_addr: SocketAddr) -> SocketAddr {
     if is_addr_invalid(base_addr) {
         base_addr
-    }
-    else {
+    } else {
         SocketAddr::new(base_addr.ip(), base_addr.port() + MEMPOOL_PORT_OFFSET)
     }
 }
@@ -69,8 +67,7 @@ pub fn base_to_mempool_addr(base_addr: SocketAddr) -> SocketAddr {
 pub fn base_to_consensus_addr(base_addr: SocketAddr) -> SocketAddr {
     if is_addr_invalid(base_addr) {
         base_addr
-    }
-    else {
+    } else {
         SocketAddr::new(base_addr.ip(), base_addr.port() + CONSENSUS_PORT_OFFSET)
     }
 }
@@ -78,8 +75,7 @@ pub fn base_to_consensus_addr(base_addr: SocketAddr) -> SocketAddr {
 pub fn base_to_signature_addr(base_addr: SocketAddr) -> SocketAddr {
     if is_addr_invalid(base_addr) {
         base_addr
-    }
-    else {
+    } else {
         SocketAddr::new(base_addr.ip(), base_addr.port() + SIGNATURE_PORT_OFFSET)
     }
 }
@@ -92,14 +88,19 @@ pub struct NodeConfig {
     pub validator_dir: PathBuf,
     pub secrets_dir: PathBuf,
     pub boot_enrs: Vec<Enr<CombinedKey>>,
-    pub beacon_nodes: Vec<SensitiveUrl>
+    pub beacon_nodes: Vec<SensitiveUrl>,
 }
 
 impl Default for NodeConfig {
     fn default() -> Self {
         Self::new(
             1,
-            IpAddr::V4(Ipv4Addr::new(BASE_ADDRESS[0], BASE_ADDRESS[1], BASE_ADDRESS[2], BASE_ADDRESS[3])),
+            IpAddr::V4(Ipv4Addr::new(
+                BASE_ADDRESS[0],
+                BASE_ADDRESS[1],
+                BASE_ADDRESS[2],
+                BASE_ADDRESS[3],
+            )),
             DEFAULT_BASE_PORT,
         )
     }
@@ -125,9 +126,15 @@ impl NodeConfig {
             .write(false)
             .create(false)
             .open(BOOT_ENRS_CONFIG_FILE)
-            .expect(format!("Unable to open the boot enrs config file: {:?}", BOOT_ENRS_CONFIG_FILE).as_str());
-        let boot_enrs: Vec<Enr<CombinedKey>> = serde_yaml::from_reader(file)
-            .expect("Unable to parse boot enr");
+            .expect(
+                format!(
+                    "Unable to open the boot enrs config file: {:?}",
+                    BOOT_ENRS_CONFIG_FILE
+                )
+                .as_str(),
+            );
+        let boot_enrs: Vec<Enr<CombinedKey>> =
+            serde_yaml::from_reader(file).expect("Unable to parse boot enr");
 
         Self {
             base_address: SocketAddr::new(ip.clone(), base_port),
@@ -136,7 +143,7 @@ impl NodeConfig {
             validator_dir,
             secrets_dir,
             boot_enrs,
-            beacon_nodes: Vec::new()
+            beacon_nodes: Vec::new(),
         }
     }
 
@@ -151,10 +158,6 @@ impl NodeConfig {
 
     pub fn set_base_port(mut self, new_port: u16) -> Self {
         self.base_address.set_port(new_port);
-        // self.transaction_address.set_port(new_port + TRANSACTION_PORT_OFFSET);
-        // self.mempool_address.set_port(new_port + MEMPOOL_PORT_OFFSET);
-        // self.consensus_address.set_port(new_port + CONSENSUS_PORT_OFFSET);
-        // self.signature_address.set_port(new_port + SIGNATURE_PORT_OFFSET);
         self
     }
 

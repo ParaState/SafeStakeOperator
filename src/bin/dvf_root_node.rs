@@ -1,11 +1,16 @@
 use async_trait::async_trait;
 use bytes::Bytes;
-use lighthouse_network::discv5::enr::EnrPublicKey;
-use lighthouse_network::discv5::{enr, enr::CombinedKey, Discv5, Discv5ConfigBuilder, Discv5Event, ListenConfig};
 use dvf::utils::ip_util::get_public_ip;
-use futures::{prelude::*};
+use futures::prelude::*;
 use hsconfig::Export as _;
 use hsconfig::Secret;
+use lighthouse_network::discv5::enr::EnrPublicKey;
+use lighthouse_network::discv5::{
+    enr,
+    enr::{CombinedKey, Enr},
+    ConfigBuilder, Discv5, Event, ListenConfig,
+};
+use log::{error, info};
 use network::{MessageHandler, Receiver as NetworkReceiver, Writer as NetworkWriter};
 use std::collections::HashMap;
 use std::error::Error;
@@ -18,7 +23,6 @@ use std::{
 };
 use store::Store;
 use tokio::sync::RwLock;
-use log::{error, info};
 
 pub const DEFAULT_SECRET_DIR: &str = "node_key.json";
 pub const DEFAULT_STORE_DIR: &str = "boot_store";
@@ -46,7 +50,7 @@ impl MessageHandler for IpQueryReceiverHandler {
                 }
                 None => {
                     let _ = writer
-                        .send(Bytes::from("can't find signature, please wait"))
+                        .send(Bytes::from("can't find ip, please wait"))
                         .await;
                 }
             },
@@ -64,7 +68,8 @@ impl MessageHandler for IpQueryReceiverHandler {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // tracing_subscriber::fmt().json().init();
-    let mut logger = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
+    let mut logger =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
     logger.format_timestamp_millis();
     logger.init();
 
@@ -94,16 +99,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
 
     let secret = if secret_dir.exists() {
-        info!(
-            "Loading secret file: {}",
-            &secret_dir.to_str().unwrap()
-        );
+        info!("Loading secret file: {}", &secret_dir.to_str().unwrap());
         Secret::read(secret_dir.to_str().unwrap()).unwrap()
     } else {
-        info!(
-            "Generating secret file: {}",
-            &secret_dir.to_str().unwrap()
-        );
+        info!("Generating secret file: {}", &secret_dir.to_str().unwrap());
         let secret = Secret::new();
         if !base_dir.exists() {
             fs::create_dir_all(&base_dir).unwrap_or_else(|why| {
@@ -118,7 +117,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // construct a local ENR
     let local_enr = {
-        let mut builder = enr::EnrBuilder::new("v4");
+        let mut builder = Enr::builder();
         builder.ip(ip.into());
         builder.udp4(port);
         builder.build(&enr_key).unwrap()
@@ -126,10 +125,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     info!("Boot node ENR ip: {}, port: {}", ip, port);
     info!("Boot node public key: {}", secret.name.encode_base64());
-    info!("Boot node id: {}", base64::encode(local_enr.node_id().raw()));
+    info!(
+        "Boot node id: {}",
+        base64::encode(local_enr.node_id().raw())
+    );
     info!("Boot node ENR: {:?}", local_enr.to_base64());
 
-    let config = Discv5ConfigBuilder::new(ListenConfig::Ipv4 { ip: "0.0.0.0".parse().unwrap(), port: port }).build();
+    let config = ConfigBuilder::new(ListenConfig::Ipv4 {
+        ip: "0.0.0.0".parse().unwrap(),
+        port: port,
+    })
+    .build();
 
     // construct the discv5 server
     let mut discv5: Discv5 = Discv5::new(local_enr.clone(), enr_key, config).unwrap();
@@ -169,25 +175,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
             Some(event) = event_stream.recv() => {
                 match event {
-                    Discv5Event::Discovered(enr) => {
+                    Event::Discovered(enr) => {
                         if let Some(enr_ip) =  enr.ip4() {
                             store.write(enr.public_key().encode(), enr_ip.octets().to_vec()).await;
                         }
                     },
-                    Discv5Event::SessionEstablished(enr,  _addr) => {
+                    Event::SessionEstablished(enr,  _addr) => {
                         if let Some(enr_ip) =  enr.ip4() {
-                            info!("A peer has established session: public key: {}, ip: {:?}", 
+                            info!("A peer has established session: public key: {}, ip: {:?}",
                                 base64::encode(enr.public_key().encode()), enr_ip);
                             store.write(enr.public_key().encode(), enr_ip.octets().to_vec()).await;
                         }
                     },
-                    Discv5Event::SocketUpdated(addr) => {
-                        info!("Discv5Event::SocketUpdated: local ENR IP address has been updated, addr:{}", addr);
+                    Event::SocketUpdated(addr) => {
+                        info!("Event::SocketUpdated: local ENR IP address has been updated, addr:{}", addr);
                         // zico: Is there any way to broadcast this news?
                     },
-                    Discv5Event::EnrAdded { .. }
-                    | Discv5Event::NodeInserted { .. }
-                    | Discv5Event::TalkRequest(_) => {}, // Ignore all other discv5 server events
+                    Event::EnrAdded { .. }
+                    | Event::NodeInserted { .. }
+                    | Event::TalkRequest(_) => {}, // Ignore all other discv5 server events
                 };
             }
         }

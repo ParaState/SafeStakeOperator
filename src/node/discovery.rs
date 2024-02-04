@@ -1,25 +1,27 @@
-use lighthouse_network::discv5::{
-    self,
-    enr::{CombinedKey, Enr, EnrPublicKey, NodeId},
-    Discv5, Discv5ConfigBuilder, Discv5Event, ListenConfig
-};
+use crate::DEFAULT_CHANNEL_CAPACITY;
+use bytes::Bytes;
+use dvf_version::VERSION;
 use hsconfig::Secret;
+use lighthouse_network::discv5::{
+    enr::{CombinedKey, Enr, EnrPublicKey, NodeId},
+    ConfigBuilder, Discv5, Event, ListenConfig,
+};
+use log::{error, info, warn};
+use network::{DvfMessage, ReliableSender};
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr::{self, V4, V6}},
+    net::{
+        IpAddr, Ipv4Addr,
+        SocketAddr::{self, V4, V6},
+    },
     time::Duration,
 };
-use tokio::sync::{mpsc, oneshot};
-use tokio::time::{Interval, timeout};
-use log::{error, info, warn};
-use crate::DEFAULT_CHANNEL_CAPACITY;
 use store::Store;
-use std::path::PathBuf;
-use network::{DvfMessage, ReliableSender};
-use dvf_version::VERSION;
-use bytes::Bytes;
-use tokio::task::JoinHandle;
 use tokio::sync::RwLock;
-use std::collections::HashMap;
+use tokio::sync::{mpsc, oneshot};
+use tokio::task::JoinHandle;
+use tokio::time::{timeout, Interval};
 
 pub const DEFAULT_DISCOVERY_IP_STORE: &str = "discovery_ip_store";
 pub const DISCOVER_HEARTBEAT_INTERVAL: u64 = 60;
@@ -61,19 +63,19 @@ impl Discovery {
                     let new_seq = u64::from_le_bytes(value.try_into().unwrap()) + 1;
                     new_seq
                 }
-                _ => {
-                    2
-                }
+                _ => 2,
             }
         };
-        store.write("seq".as_bytes().to_vec(), seq.to_le_bytes().into()).await;
+        store
+            .write("seq".as_bytes().to_vec(), seq.to_le_bytes().into())
+            .await;
         info!("Node ENR seq updated to: {}", seq);
 
         let mut secret_key = secret.secret.0[..].to_vec();
         let enr_key = CombinedKey::secp256k1_from_bytes(&mut secret_key[..]).unwrap();
 
         let local_enr = {
-            let mut builder = discv5::enr::EnrBuilder::new("v4");
+            let mut builder = Enr::builder();
             builder.ip(ip);
             builder.udp4(udp_port);
             builder.seq(seq);
@@ -84,9 +86,13 @@ impl Discovery {
         info!("Node public key: {}", secret.name.encode_base64());
         info!("Node id: {}", base64::encode(local_enr.node_id().raw()));
         info!("Node ENR: {:?}", local_enr.to_base64());
-        
+
         // default configuration without packet filtering
-        let config = Discv5ConfigBuilder::new(ListenConfig::Ipv4 { ip: "0.0.0.0".parse().unwrap(), port: udp_port }).build();
+        let config = ConfigBuilder::new(ListenConfig::Ipv4 {
+            ip: "0.0.0.0".parse().unwrap(),
+            port: udp_port,
+        })
+        .build();
 
         // construct the discv5 server
         let mut discv5: Discv5 = Discv5::new(local_enr.clone(), enr_key, config).unwrap();
@@ -100,7 +106,12 @@ impl Discovery {
 
         let (tx, mut rx) = mpsc::channel::<(NodeId, oneshot::Sender<()>)>(DEFAULT_CHANNEL_CAPACITY);
 
-        store.write(local_enr.public_key().encode(), local_enr.ip4().unwrap().octets().to_vec()).await;
+        store
+            .write(
+                local_enr.public_key().encode(),
+                local_enr.ip4().unwrap().octets().to_vec(),
+            )
+            .await;
 
         let discv5_service_handle = tokio::spawn(async move {
             // start the discv5 service
@@ -130,19 +141,19 @@ impl Discovery {
                     }
                     Some(event) = event_stream.recv() => {
                         match event {
-                            Discv5Event::Discovered(enr) => {
+                            Event::Discovered(enr) => {
                                 if let Some(ip) = enr.ip4() {
                                     // update public key ip
                                     store.write(enr.public_key().encode(), ip.octets().to_vec()).await;
                                 };
                             },
-                            Discv5Event::SessionEstablished(enr, _addr) => {
+                            Event::SessionEstablished(enr, _addr) => {
                                 if let Some(ip) = enr.ip4() {
                                     // update public key ip
                                     store.write(enr.public_key().encode(), ip.octets().to_vec()).await;
                                 };
                             },
-                            Discv5Event::SocketUpdated(addr) => {
+                            Event::SocketUpdated(addr) => {
                                 info!("Discv5Event::SocketUpdated: local ENR IP address has been updated, addr:{}", addr);
                                 match addr {
                                     V4(v4addr) => {
@@ -152,9 +163,9 @@ impl Discovery {
                                 }
                                 // zico: Is there any way to broadcast this news?
                             },
-                            Discv5Event::EnrAdded { .. } 
-                            | Discv5Event::NodeInserted { .. } 
-                            | Discv5Event::TalkRequest(_) => {}, // Ignore all other discv5 server events
+                            Event::EnrAdded { .. }
+                            | Event::NodeInserted { .. }
+                            | Event::TalkRequest(_) => {}, // Ignore all other discv5 server events
                         };
                     }
                 }
@@ -192,12 +203,12 @@ impl Discovery {
         //     return None;
         // };
         // let curve_pk = curve_pk.unwrap();
-        let node_id = NodeId::parse( &keccak_hash::keccak(pk).0).unwrap();
+        let node_id = NodeId::parse(&keccak_hash::keccak(pk).0).unwrap();
         self.discover(node_id).await;
         // Randomly pick a boot node
         let boot_idx = rand::random::<usize>() % self.boot_enrs.len();
         self.query_ip_from_boot(boot_idx, pk).await;
-        
+
         self.query_ip_from_local_store(pk).await
     }
 
@@ -218,7 +229,7 @@ impl Discovery {
     }
 
     /// This function may update local store with network searching.
-    /// Use `query_ip_from_local_store` if you want the result immediately 
+    /// Use `query_ip_from_local_store` if you want the result immediately
     /// from local store without network searching.
     pub async fn query_ip(&self, pk: &[u8]) -> Option<IpAddr> {
         // Three ways to query the ip:
@@ -247,7 +258,7 @@ impl Discovery {
 
         let heartbeat = heartbeats.get_mut(&curve_pk).unwrap();
         let ready = std::future::ready(());
-        tokio::select!{
+        tokio::select! {
             biased; // Poll from top to bottom
             _ = heartbeat.tick() => {
                 // Updating IP takes time, so we can release the hashmap lock here.
@@ -269,10 +280,11 @@ impl Discovery {
                         error!("Discovery database is corrupted");
                         None
                     } else {
-                        Some(IpAddr::V4(Ipv4Addr::new(data[0], data[1], data[2], data[3])))
+                        Some(IpAddr::V4(Ipv4Addr::new(
+                            data[0], data[1], data[2], data[3],
+                        )))
                     }
-                }
-                else {
+                } else {
                     error!("Discovery database cannot find pk: empty IP for the pk");
                     None
                 }
@@ -298,32 +310,40 @@ impl Discovery {
         let serialized_msg = bincode::serialize(&dvf_message).unwrap();
         let network_sender = ReliableSender::new();
         let socketaddr = SocketAddr::new(
-            IpAddr::V4(self.boot_enrs[boot_idx].ip4().expect("boot enr ip should not be empty")),
-            self.boot_enrs[boot_idx].udp4().expect("boot enr port should not be empty"),
+            IpAddr::V4(
+                self.boot_enrs[boot_idx]
+                    .ip4()
+                    .expect("boot enr ip should not be empty"),
+            ),
+            self.boot_enrs[boot_idx]
+                .udp4()
+                .expect("boot enr port should not be empty"),
         );
-        let receiver = network_sender.send(socketaddr, Bytes::from(serialized_msg)).await;
+        let receiver = network_sender
+            .send(socketaddr, Bytes::from(serialized_msg))
+            .await;
         let result = timeout(Duration::from_millis(timeout_mill), receiver).await;
-    
+
         let base64_pk = base64::encode(pk);
         let ipaddr: Option<IpAddr> = match result {
-            Ok(output) => {
-                match output {
-                    Ok(data) => {
-                        if data.len() != 4 {
-                            error!("Boot node IP response is corrupted");
-                            None
-                        } else {
-                            info!("Get ip from boot node, pk {}, ip {:?}", &base64_pk, data);
-                            self.store.write(pk.into(), data.to_vec()).await;
-                            Some(IpAddr::V4(Ipv4Addr::new(data[0], data[1], data[2], data[3])))
-                        }
-                    }
-                    Err(_) => {
-                        warn!("Boot node query is interrupted.");
+            Ok(output) => match output {
+                Ok(data) => {
+                    if data.len() != 4 {
+                        error!("Boot node IP response is corrupted");
                         None
+                    } else {
+                        info!("Get ip from boot node, pk {}, ip {:?}", &base64_pk, data);
+                        self.store.write(pk.into(), data.to_vec()).await;
+                        Some(IpAddr::V4(Ipv4Addr::new(
+                            data[0], data[1], data[2], data[3],
+                        )))
                     }
                 }
-            }
+                Err(_) => {
+                    warn!("Boot node query is interrupted.");
+                    None
+                }
+            },
             Err(_) => {
                 warn!("Timeout for querying ip from boot for op {}", &base64_pk);
                 None

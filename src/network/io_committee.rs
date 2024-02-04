@@ -1,34 +1,33 @@
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use crate::utils::blst_utils::{
+    blst_ecdh_shared_secret, blst_p1_to_bytes, blst_p1_to_pk, blst_scalar_to_blst_sk,
+    blst_sk_to_pk, bytes_to_blst_p1, random_blst_scalar,
+};
 use crate::DEFAULT_CHANNEL_CAPACITY;
-use async_trait::async_trait;
-use std::collections::HashMap;
-use bytes::Bytes;
-use std::sync::Arc;
-use tokio::sync::{RwLock};
-use futures::stream::{SplitSink, SplitStream};
-use futures::stream::StreamExt as _;
-use tokio::net::{TcpListener, TcpStream};
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
-use futures::SinkExt;
-use std::net::{SocketAddr};
-use log::{info, warn};
-use tokio::task::JoinHandle;
-use tokio::sync::{Notify};
-use tokio::time::{sleep, Duration};
-use std::cmp::min;
-use sha256::{digest};
-use aes_gcm::{Aes128Gcm, Key, Nonce};
 use aes_gcm::aead::{Aead, NewAead};
+use aes_gcm::{Aes128Gcm, Key, Nonce};
+use async_trait::async_trait;
+use blst::min_pk::Signature;
+use blst::{blst_p1, blst_scalar, BLST_ERROR};
+use bytes::Bytes;
+use futures::stream::StreamExt as _;
+use futures::stream::{SplitSink, SplitStream};
+use futures::SinkExt;
+use log::{info, warn};
 use rand::Rng;
-use crate::utils::blst_utils::{blst_sk_to_pk, 
-    bytes_to_blst_p1, blst_p1_to_bytes, 
-    blst_ecdh_shared_secret, blst_scalar_to_blst_sk,
-    blst_p1_to_pk, random_blst_scalar};
-use blst::{blst_scalar, blst_p1, BLST_ERROR};
-use blst::min_pk::{Signature};
+use sha256::digest;
+use std::cmp::min;
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::Notify;
+use tokio::sync::RwLock;
+use tokio::task::JoinHandle;
+use tokio::time::{sleep, Duration};
+use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 pub const DST: &[u8] = b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
-
 
 pub trait PrivateChannel {
     fn encrypt_with_key(message: Bytes, key: Bytes) -> Bytes;
@@ -44,7 +43,7 @@ pub trait PrivateChannel {
 }
 
 #[async_trait]
-pub trait IOChannel: Sync + Send  {
+pub trait IOChannel: Sync + Send {
     async fn send(&self, message: Bytes);
     async fn recv(&self) -> Bytes;
 }
@@ -55,7 +54,7 @@ pub struct MemIOChannel {
 }
 
 impl MemIOChannel {
-    pub fn new(sender: Sender<Bytes>, receiver:Receiver<Bytes>) -> Self {
+    pub fn new(sender: Sender<Bytes>, receiver: Receiver<Bytes>) -> Self {
         Self {
             sender,
             receiver: Arc::new(RwLock::new(receiver)),
@@ -65,7 +64,6 @@ impl MemIOChannel {
 
 #[async_trait]
 impl IOChannel for MemIOChannel {
-
     async fn send(&self, message: Bytes) {
         if let Err(e) = self.sender.send(message).await {
             panic!("Failed to send message. Error: {}", e);
@@ -76,8 +74,7 @@ impl IOChannel for MemIOChannel {
         let mut receiver = self.receiver.write().await;
         if let Some(message) = receiver.recv().await {
             message
-        }
-        else {
+        } else {
             panic!("Failed to recv message.");
         }
     }
@@ -95,19 +92,22 @@ pub struct ConnectionManager {
 
 impl Drop for ConnectionManager {
     fn drop(&mut self) {
-        info!("[DKG-IO] Party {}: Shutting down connection manager", self.party);
+        info!(
+            "[DKG-IO] Party {}: Shutting down connection manager",
+            self.party
+        );
         self.thread_handle.abort();
     }
 }
 
 impl ConnectionManager {
     pub fn new(party: u64, address: SocketAddr) -> Self {
-        let connections: Arc<RwLock<HashMap<u64, NetIOChannel>>> = 
+        let connections: Arc<RwLock<HashMap<u64, NetIOChannel>>> =
             Arc::new(RwLock::new(HashMap::default()));
         let connections_clone = connections.clone();
 
-        let notifications: Arc<RwLock<HashMap<u64, Arc<Notify>>>> = 
-        Arc::new(RwLock::new(HashMap::default()));
+        let notifications: Arc<RwLock<HashMap<u64, Arc<Notify>>>> =
+            Arc::new(RwLock::new(HashMap::default()));
         let notifications_clone = notifications.clone();
 
         let address_clone = address.clone();
@@ -127,7 +127,10 @@ impl ConnectionManager {
                 };
                 let channel = NetIOChannel::new(socket);
                 let peer = bincode::deserialize::<u64>(&channel.recv().await[..]).unwrap();
-                info!("[[DKG-IO]] Party {}: received connection from {}.", party, peer);
+                info!(
+                    "[[DKG-IO]] Party {}: received connection from {}.",
+                    party, peer
+                );
                 {
                     let mut connections = connections_clone.write().await;
                     connections.insert(peer, channel);
@@ -135,8 +138,7 @@ impl ConnectionManager {
                 let mut notifications = notifications_clone.write().await;
                 if let Some(notify) = notifications.get(&peer) {
                     notify.notify_one();
-                }
-                else {
+                } else {
                     let notify = Arc::new(Notify::new());
                     notify.notify_one();
                     notifications.insert(peer, notify);
@@ -162,17 +164,22 @@ impl ConnectionManager {
             match TcpStream::connect(peer_address).await {
                 Ok(stream) => {
                     let channel = NetIOChannel::new(stream);
-                    channel.send(Bytes::from(bincode::serialize(&party).unwrap())).await;
+                    channel
+                        .send(Bytes::from(bincode::serialize(&party).unwrap()))
+                        .await;
                     info!("[DKG-IO] Party {}: connecting to party {}.", party, peer);
                     return Some(channel);
-                },
+                }
                 Err(_e) => {
-                    warn!("connection-manager: Failed to connect to {}. Try({}).", peer_address, retry);
+                    warn!(
+                        "connection-manager: Failed to connect to {}. Try({}).",
+                        peer_address, retry
+                    );
                     sleep(Duration::from_millis(delay)).await;
 
                     // Wait an increasing delay before attempting to reconnect.
-                    delay = min(2*delay, 60_000);
-                    retry +=1;
+                    delay = min(2 * delay, 60_000);
+                    retry += 1;
                 }
             }
         }
@@ -181,11 +188,10 @@ impl ConnectionManager {
     /// Accept connection from `peer`
     pub async fn accept(&mut self, peer: u64) -> Option<NetIOChannel> {
         let notify = {
-            let mut notifications = self.notifications.write().await; 
+            let mut notifications = self.notifications.write().await;
             if let Some(notify) = notifications.get(&peer) {
                 notify.clone()
-            }
-            else {
+            } else {
                 let notify = Arc::new(Notify::new());
                 notifications.insert(peer, notify.clone());
                 notify
@@ -223,7 +229,6 @@ impl NetIOChannel {
 
 #[async_trait]
 impl IOChannel for NetIOChannel {
-
     async fn send(&self, message: Bytes) {
         let mut writer = self.writer.write().await;
         if let Err(e) = writer.send(message).await {
@@ -235,13 +240,11 @@ impl IOChannel for NetIOChannel {
         let mut reader = self.reader.write().await;
         if let Some(Ok(message)) = reader.next().await {
             message.freeze()
-        }
-        else {
+        } else {
             panic!("Failed to recv message.");
         }
     }
 }
-
 
 #[async_trait]
 pub trait IOCommittee<T>: Sync + Send {
@@ -266,7 +269,10 @@ impl MemIOCommittee {
             channels.insert(ids[i], HashMap::default());
             for j in 0..n {
                 let (sender, receiver) = channel(DEFAULT_CHANNEL_CAPACITY);
-                channels.get_mut(&ids[i]).unwrap().insert(ids[j], MemIOChannel::new(sender, receiver));
+                channels
+                    .get_mut(&ids[i])
+                    .unwrap()
+                    .insert(ids[j], MemIOChannel::new(sender, receiver));
             }
         }
         Self {
@@ -278,22 +284,15 @@ impl MemIOCommittee {
 
 #[async_trait]
 impl IOCommittee<MemIOChannel> for MemIOCommittee {
-
     fn ids(&self) -> &[u64] {
         self.ids.as_slice()
     }
 
     fn channel(&self, from: u64, to: u64) -> &MemIOChannel {
-        self.channels
-            .get(&from)
-            .unwrap()
-            .get(&to)
-            .unwrap()
+        self.channels.get(&from).unwrap().get(&to).unwrap()
     }
 
-    async fn broadcast(&self, _message: Bytes) {
-        
-    }
+    async fn broadcast(&self, _message: Bytes) {}
 }
 
 /// Network IO committee
@@ -306,10 +305,16 @@ pub struct NetIOCommittee {
 impl NetIOCommittee {
     /// Construct a network IO committee for `party` who is listening on `port`.
     /// The committee is identified by the id set `ids` and the address set `addresses`.
-    pub async fn new(party: u64, port: u16, ids: &[u64], addresses: &[SocketAddr]) -> NetIOCommittee {
+    pub async fn new(
+        party: u64,
+        port: u16,
+        ids: &[u64],
+        addresses: &[SocketAddr],
+    ) -> NetIOCommittee {
         info!("[DKG-IO] Party {}: ids({:?})", party, ids);
         info!("[DKG-IO] Party {}: addrs({:?})", party, addresses);
-        let mut connection_manager = ConnectionManager::new(party, SocketAddr::new("0.0.0.0".parse().unwrap(), port));
+        let mut connection_manager =
+            ConnectionManager::new(party, SocketAddr::new("0.0.0.0".parse().unwrap(), port));
         let mut channels: HashMap<u64, NetIOChannel> = Default::default();
         let n = ids.len();
         for i in 0..n {
@@ -318,9 +323,10 @@ impl NetIOCommittee {
             }
             let channel = {
                 if ids[i] < party {
-                    ConnectionManager::connect(party, ids[i], addresses[i]).await.unwrap()
-                }
-                else {
+                    ConnectionManager::connect(party, ids[i], addresses[i])
+                        .await
+                        .unwrap()
+                } else {
                     connection_manager.accept(ids[i]).await.unwrap()
                 }
             };
@@ -333,17 +339,26 @@ impl NetIOCommittee {
             channels,
         };
         committee.broadcast(Bytes::from("Y")).await;
-        info!("[DKG-IO] Party {}: broadcast ack to other parties --> Done", party);
+        info!(
+            "[DKG-IO] Party {}: broadcast ack to other parties --> Done",
+            party
+        );
         for i in 0..n {
             if ids[i] == party {
                 continue;
             }
             let ack = committee.channels.get(&ids[i]).unwrap().recv().await;
             if ack != Bytes::from("Y") {
-                panic!("Party {}: Invalid acknowledge for channel connection from party {}", party, ids[i]);
+                panic!(
+                    "Party {}: Invalid acknowledge for channel connection from party {}",
+                    party, ids[i]
+                );
             }
         }
-        info!("[DKG-IO] Party {}: all channels connected and acknowledged", party);
+        info!(
+            "[DKG-IO] Party {}: all channels connected and acknowledged",
+            party
+        );
         committee
     }
 
@@ -360,12 +375,10 @@ impl NetIOCommittee {
     pub fn unwrap(self) -> (u64, Vec<u64>, HashMap<u64, NetIOChannel>) {
         (self.party, self.ids, self.channels)
     }
-    
 }
 
 #[async_trait]
 impl IOCommittee<NetIOChannel> for NetIOCommittee {
-
     fn ids(&self) -> &[u64] {
         self.ids.as_slice()
     }
@@ -375,14 +388,9 @@ impl IOCommittee<NetIOChannel> for NetIOCommittee {
             panic!("Invalid channel");
         }
         if from == self.party {
-            self.channels
-                .get(&to)
-                .unwrap()
-        }
-        else {
-            self.channels
-                .get(&from)
-                .unwrap()
+            self.channels.get(&to).unwrap()
+        } else {
+            self.channels.get(&from).unwrap()
         }
     }
 
@@ -397,7 +405,6 @@ impl IOCommittee<NetIOChannel> for NetIOCommittee {
     }
 }
 
-
 /// Secure network IO committee
 pub struct SecureNetIOCommittee {
     party: u64,
@@ -410,10 +417,11 @@ impl SecureNetIOCommittee {
     /// The committee is identified by the id set `ids` and the address set `addresses`.
     /// The communication is also secured.
     pub async fn new(
-        party: u64, 
+        party: u64,
         port: u16,
         ids: &[u64],
-        addresses: &[SocketAddr]) -> SecureNetIOCommittee {
+        addresses: &[SocketAddr],
+    ) -> SecureNetIOCommittee {
         let plain_committee = NetIOCommittee::new(party, port, ids, addresses).await;
         let sk = random_blst_scalar();
         let pk = blst_sk_to_pk(&sk);
@@ -421,13 +429,12 @@ impl SecureNetIOCommittee {
         let pk_bytes = blst_p1_to_bytes(&pk);
         plain_committee.broadcast(pk_bytes).await;
         let (_, _, mut channels) = plain_committee.unwrap();
-        let mut sec_channels : HashMap<u64, SecureNetIOChannel> = Default::default();
-        
+        let mut sec_channels: HashMap<u64, SecureNetIOChannel> = Default::default();
+
         for i in 0..ids.len() {
             if ids[i] == party {
                 continue;
-            }
-            else {
+            } else {
                 let recv_channel = channels.remove(&ids[i]).unwrap();
                 let other_pk_bytes = recv_channel.recv().await;
                 let other_pk = bytes_to_blst_p1(other_pk_bytes);
@@ -461,30 +468,31 @@ impl SecureNetIOChannel {
 
 #[async_trait]
 impl IOChannel for SecureNetIOChannel {
-
     async fn send(&self, message: Bytes) {
         let enc_msg = self.encrypt(message);
         self.channel.send(enc_msg).await;
     }
 
     async fn recv(&self) -> Bytes {
-        let enc_msg = self.channel.recv().await;   
+        let enc_msg = self.channel.recv().await;
         self.decrypt(enc_msg)
     }
 }
 
 impl PrivateChannel for SecureNetIOChannel {
     fn encrypt_with_key(message: Bytes, key: Bytes) -> Bytes {
-        let secret = hex::decode(digest(key.as_ref())).unwrap(); 
+        let secret = hex::decode(digest(key.as_ref())).unwrap();
 
-        let key = Key::from_slice(&secret.as_slice()[0..16]); 
+        let key = Key::from_slice(&secret.as_slice()[0..16]);
         let cipher = Aes128Gcm::new(key);
 
         let mut nonce_bytes = vec![0u8; 12]; // 96-bit nonce
         rand::thread_rng().fill(&mut nonce_bytes[..]);
         let nonce = Nonce::from_slice(nonce_bytes.as_slice());
 
-        let aes_ct = cipher.encrypt(nonce, message.as_ref()).expect("AES encryption failed!");
+        let aes_ct = cipher
+            .encrypt(nonce, message.as_ref())
+            .expect("AES encryption failed!");
         let aes_ct = [nonce_bytes, aes_ct].concat();
 
         let enc_msg = Bytes::from(aes_ct);
@@ -498,16 +506,18 @@ impl PrivateChannel for SecureNetIOChannel {
     }
 
     fn decrypt_with_key(enc_msg: Bytes, key: Bytes) -> Bytes {
-        let secret = hex::decode(digest(key.as_ref())).unwrap(); 
+        let secret = hex::decode(digest(key.as_ref())).unwrap();
 
-        let key = Key::from_slice(&secret.as_slice()[0..16]); 
+        let key = Key::from_slice(&secret.as_slice()[0..16]);
         let cipher = Aes128Gcm::new(key);
 
         let nonce_bytes = &enc_msg.as_ref()[0..12];
         let nonce = Nonce::from_slice(nonce_bytes);
 
         let aes_ct = &enc_msg.as_ref()[12..];
-        let msg = cipher.decrypt(nonce, aes_ct).expect("AES decryption failed!");
+        let msg = cipher
+            .decrypt(nonce, aes_ct)
+            .expect("AES decryption failed!");
         Bytes::from(msg)
     }
 
@@ -541,7 +551,6 @@ impl PrivateChannel for SecureNetIOChannel {
 
 #[async_trait]
 impl IOCommittee<SecureNetIOChannel> for SecureNetIOCommittee {
-
     fn ids(&self) -> &[u64] {
         self.ids.as_slice()
     }
@@ -551,14 +560,9 @@ impl IOCommittee<SecureNetIOChannel> for SecureNetIOCommittee {
             panic!("Invalid channel");
         }
         if from == self.party {
-            self.channels
-                .get(&to)
-                .unwrap()
-        }
-        else {
-            self.channels
-                .get(&from)
-                .unwrap()
+            self.channels.get(&to).unwrap()
+        } else {
+            self.channels.get(&from).unwrap()
         }
     }
 
@@ -576,7 +580,7 @@ impl IOCommittee<SecureNetIOChannel> for SecureNetIOCommittee {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::network::io_committee::{SecureNetIOCommittee};
+    use crate::network::io_committee::SecureNetIOCommittee;
     use futures::future::join_all;
 
     const IDS: [u64; 4] = [1, 2, 3, 4];
@@ -584,20 +588,38 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_secure_net_committee() {
         let ports: Vec<u16> = IDS.iter().map(|id| (25000 + *id) as u16).collect();
-        let addrs: Vec<SocketAddr> = ports.iter().map(|port| SocketAddr::new("127.0.0.1".parse().unwrap(), *port)).collect();
+        let addrs: Vec<SocketAddr> = ports
+            .iter()
+            .map(|port| SocketAddr::new("127.0.0.1".parse().unwrap(), *port))
+            .collect();
 
         let ports_ref = &ports;
         let addrs_ref = &addrs;
         let futs = (0..IDS.len()).map(|i| async move {
-            let io = &Arc::new(SecureNetIOCommittee::new(IDS[i], ports_ref[i], IDS.as_slice(), addrs_ref.as_slice()).await);
-            io.broadcast(Bytes::copy_from_slice(format!("hello from {}", IDS[i]).as_bytes())).await;
+            let io = &Arc::new(
+                SecureNetIOCommittee::new(
+                    IDS[i],
+                    ports_ref[i],
+                    IDS.as_slice(),
+                    addrs_ref.as_slice(),
+                )
+                .await,
+            );
+            io.broadcast(Bytes::copy_from_slice(
+                format!("hello from {}", IDS[i]).as_bytes(),
+            ))
+            .await;
             for j in 0..IDS.len() {
                 if i == j {
                     continue;
                 }
                 let recv_channel = io.channel(IDS[j], IDS[i]);
                 let msg = recv_channel.recv().await;
-                println!("Party {} receive: {}", IDS[i], String::from_utf8(msg.to_vec()).unwrap());
+                println!(
+                    "Party {} receive: {}",
+                    IDS[i],
+                    String::from_utf8(msg.to_vec()).unwrap()
+                );
             }
             println!("all messages received");
         });

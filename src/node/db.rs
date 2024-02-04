@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use rusqlite::{Connection, DropBehavior, params, Result};
+use crate::node::contract::{Initiator, Operator, Validator};
+use log::error;
+use rusqlite::{params, Connection, DropBehavior, Result};
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::oneshot;
-use log::{error};
-use crate::node::contract::{Operator, Validator, Initiator};
 use web3::types::Address;
 
 use super::contract::InitiatorStoreRecord;
@@ -40,14 +40,13 @@ pub enum DbCommand {
     UpdatetimeContractCommand(u32),
     DeleteInitiator(u32, oneshot::Sender<DbResult<Option<Initiator>>>),
     InsertInitiatorStore(InitiatorStoreRecord),
-    QueryInitiatorStore(u32, oneshot::Sender<DbResult<Option<InitiatorStoreRecord>>>)
+    QueryInitiatorStore(u32, oneshot::Sender<DbResult<Option<InitiatorStoreRecord>>>),
 }
 
 #[derive(Clone)]
 pub struct Database {
     channel: Sender<DbCommand>,
 }
-
 
 impl Database {
     pub fn new<P: AsRef<Path>>(path: P) -> DbResult<Self> {
@@ -129,10 +128,10 @@ impl Database {
             CONSTRAINT initiator_store_constraint FOREIGN KEY (record_id) REFERENCES initiator_store_record(id) ON DELETE CASCADE
         )";
 
-        conn.execute(create_operators_sql, [],)?;
-        conn.execute(create_validators_sql, [],)?;
-        conn.execute(create_releation_sql, [],)?;
-        conn.execute(create_initiator_sql,[])?;
+        conn.execute(create_operators_sql, [])?;
+        conn.execute(create_validators_sql, [])?;
+        conn.execute(create_releation_sql, [])?;
+        conn.execute(create_initiator_sql, [])?;
         conn.execute(create_initiator_releation_sql, [])?;
         conn.execute(create_contract_command_sql, [])?;
         conn.execute(create_contract_cmd_sequence_sql, [])?;
@@ -147,12 +146,8 @@ impl Database {
                     DbCommand::InsertOperator(operator) => {
                         insert_operator(&conn, operator);
                     }
-                    DbCommand::InsertValidator(validator) => {
-                        insert_validator(&mut conn, validator)
-                    }
-                    DbCommand::DeleteOperator(operator_id) => {
-                        delete_operator(&conn, operator_id)
-                    }
+                    DbCommand::InsertValidator(validator) => insert_validator(&mut conn, validator),
+                    DbCommand::DeleteOperator(operator_id) => delete_operator(&conn, operator_id),
                     DbCommand::DeleteValidator(validator_pk) => {
                         delete_validator(&conn, &validator_pk);
                     }
@@ -174,15 +169,15 @@ impl Database {
                     }
                     DbCommand::InsertInitiator(initiator) => {
                         insert_initiator(&mut conn, initiator);
-                    },
+                    }
                     DbCommand::UpdateInitiator(id, va_pk, minipool_address, sender) => {
                         let response = update_initiator(&conn, id, va_pk, minipool_address);
                         let _ = sender.send(response);
-                    },
+                    }
                     DbCommand::QueryInitiator(id, sender) => {
                         let response = query_initiator(&conn, id);
                         let _ = sender.send(response);
-                    },
+                    }
                     DbCommand::QueryInitiatorReleaterOpPk(initiator_id, sender) => {
                         let response = query_initiator_releated_operator_pks(&conn, initiator_id);
                         let _ = sender.send(response);
@@ -242,178 +237,347 @@ impl Database {
     }
 
     pub async fn insert_validator(&self, validator: Validator) {
-        if let Err(e) = self.channel.send(DbCommand::InsertValidator(validator)).await {
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::InsertValidator(validator))
+            .await
+        {
             panic!("Failed to send command to store: {}", e);
         }
     }
 
     pub async fn query_operator_by_id(&self, operator_id: u32) -> DbResult<Option<Operator>> {
         let (sender, receiver) = oneshot::channel();
-        if let Err(e) = self.channel.send(DbCommand::QueryOperatorById(operator_id, sender)).await {
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::QueryOperatorById(operator_id, sender))
+            .await
+        {
             panic!("Failed to send command to store: {}", e);
         }
-        receiver.await.expect("Failed to receive reply to query operator command from db")
+        receiver
+            .await
+            .expect("Failed to receive reply to query operator command from db")
     }
 
-    pub async fn query_validator_by_public_key(&self, public_key: String) -> DbResult<Option<Validator>> {
+    pub async fn query_validator_by_public_key(
+        &self,
+        public_key: String,
+    ) -> DbResult<Option<Validator>> {
         let (sender, receiver) = oneshot::channel();
-        if let Err(e) = self.channel.send(DbCommand::QueryValidatorByPublicKey(public_key, sender)).await {
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::QueryValidatorByPublicKey(public_key, sender))
+            .await
+        {
             panic!("Failed to send command to store: {}", e);
         }
-        receiver.await.expect("Failed to receive reply to query validator command from db")
+        receiver
+            .await
+            .expect("Failed to receive reply to query validator command from db")
     }
 
     pub async fn query_validator_by_address(&self, address: Address) -> DbResult<Vec<Validator>> {
         let (sender, receiver) = oneshot::channel();
-        if let Err(e) = self.channel.send(DbCommand::QueryValidatorByAddress(address, sender)).await {
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::QueryValidatorByAddress(address, sender))
+            .await
+        {
             panic!("Failed to send command to store: {}", e);
         }
-        receiver.await.expect("Failed to receive reply to query validator command from db")
+        receiver
+            .await
+            .expect("Failed to receive reply to query validator command from db")
     }
 
-    pub async fn query_operators_public_key_by_ids(&self, operator_ids: Vec<u32>) -> DbResult<Option<Vec<String>>> {
+    pub async fn query_operators_public_key_by_ids(
+        &self,
+        operator_ids: Vec<u32>,
+    ) -> DbResult<Option<Vec<String>>> {
         let (sender, receiver) = oneshot::channel();
-        if let Err(e) = self.channel.send(DbCommand::QueryOperatorPublicKeyByIds(operator_ids, sender)).await {
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::QueryOperatorPublicKeyByIds(operator_ids, sender))
+            .await
+        {
             panic!("Failed to send command to store: {}", e);
         }
-        receiver.await.expect("Failed to receive reply to query operator command from db")
+        receiver
+            .await
+            .expect("Failed to receive reply to query operator command from db")
     }
 
-    pub async fn query_operator_public_key_by_id(&self, operator_id: u32) -> DbResult<Option<String>> {
+    pub async fn query_operator_public_key_by_id(
+        &self,
+        operator_id: u32,
+    ) -> DbResult<Option<String>> {
         let (sender, receiver) = oneshot::channel();
-        if let Err(e) = self.channel.send(DbCommand::QueryOperatorPublicKeyById(operator_id, sender)).await {
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::QueryOperatorPublicKeyById(operator_id, sender))
+            .await
+        {
             panic!("Failed to send command to store: {}", e);
         }
-        receiver.await.expect("Failed to receive reply to query operator pk command from db")
+        receiver
+            .await
+            .expect("Failed to receive reply to query operator pk command from db")
     }
 
     pub async fn delete_validator(&self, validator_pk: String) {
-        if let Err(e) = self.channel.send(DbCommand::DeleteValidator(validator_pk)).await {
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::DeleteValidator(validator_pk))
+            .await
+        {
             panic!("Failed to send command to store: {}", e);
         }
     }
 
     pub async fn delete_operator(&self, operator_id: u32) {
-        if let Err(e) = self.channel.send(DbCommand::DeleteOperator(operator_id)).await {
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::DeleteOperator(operator_id))
+            .await
+        {
             panic!("Failed to send delete operator command to store: {}", e);
         }
     }
 
     pub async fn insert_initiator(&self, initiator: Initiator) {
-        if let Err(e) = self.channel.send(DbCommand::InsertInitiator(initiator)).await {
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::InsertInitiator(initiator))
+            .await
+        {
             panic!("Failed to insert insert initiator command to store: {}", e);
         }
     }
 
-    pub async fn update_initiator(&self, id: u32, va_pk: String, minipool_address: String) -> DbResult<usize> {
+    pub async fn update_initiator(
+        &self,
+        id: u32,
+        va_pk: String,
+        minipool_address: String,
+    ) -> DbResult<usize> {
         let (sender, receiver) = oneshot::channel();
-        if let Err(e) = self.channel.send(DbCommand::UpdateInitiator(id, va_pk, minipool_address, sender)).await {
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::UpdateInitiator(
+                id,
+                va_pk,
+                minipool_address,
+                sender,
+            ))
+            .await
+        {
             panic!("Failed to send update initiator command to store: {}", e);
         }
-        receiver.await.expect("Failed to receive reply to update initiator command from db")
+        receiver
+            .await
+            .expect("Failed to receive reply to update initiator command from db")
     }
 
     pub async fn query_initiator(&self, id: u32) -> DbResult<Option<Initiator>> {
         let (sender, receiver) = oneshot::channel();
-        if let Err(e) = self.channel.send(DbCommand::QueryInitiator(id, sender)).await {
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::QueryInitiator(id, sender))
+            .await
+        {
             panic!("Failed to send query initiator command to store: {}", e);
         }
-        receiver.await.expect("Failed to receive reply to query initiator command from db")
+        receiver
+            .await
+            .expect("Failed to receive reply to query initiator command from db")
     }
 
-    pub async fn query_initiator_releated_op_pks(&self, id: u32) -> DbResult<(Vec<String>, Vec<u32>)> {
+    pub async fn query_initiator_releated_op_pks(
+        &self,
+        id: u32,
+    ) -> DbResult<(Vec<String>, Vec<u32>)> {
         let (sender, receiver) = oneshot::channel();
-        if let Err(e) = self.channel.send(DbCommand::QueryInitiatorReleaterOpPk(id, sender)).await {
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::QueryInitiatorReleaterOpPk(id, sender))
+            .await
+        {
             panic!("Failed to send query initiator command to store: {}", e);
         }
-        receiver.await.expect("Failed to receive reply to query initiator command from db")
+        receiver
+            .await
+            .expect("Failed to receive reply to query initiator command from db")
     }
 
     pub async fn query_all_validator_address(&self) -> DbResult<Vec<Address>> {
         let (sender, receiver) = oneshot::channel();
-        if let Err(e) = self.channel.send(DbCommand::QueryAllValidatorOwners(sender)).await {
-            panic!("Failed to send query validator owners command to store: {}", e);
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::QueryAllValidatorOwners(sender))
+            .await
+        {
+            panic!(
+                "Failed to send query validator owners command to store: {}",
+                e
+            );
         }
-        receiver.await.expect("Failed to receive reply to query initiator command from db")
+        receiver
+            .await
+            .expect("Failed to receive reply to query initiator command from db")
     }
 
     pub async fn if_validator_active(&self, public_key: String) -> DbResult<bool> {
         let (sender, receiver) = oneshot::channel();
-        if let Err(e) = self.channel.send(DbCommand::ValidatorActive(public_key, sender)).await {
-            panic!("Failed to send query validator owners command to store: {}", e);
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::ValidatorActive(public_key, sender))
+            .await
+        {
+            panic!(
+                "Failed to send query validator owners command to store: {}",
+                e
+            );
         }
-        receiver.await.expect("Failed to receive reply to query initiator command from db")
+        receiver
+            .await
+            .expect("Failed to receive reply to query initiator command from db")
     }
 
     pub async fn disable_validator(&self, public_key: String) {
-        if let Err(e) = self.channel.send(DbCommand::DisableValidator(public_key)).await {
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::DisableValidator(public_key))
+            .await
+        {
             panic!("Failed to send disable validator command to store: {}", e);
         }
     }
 
     pub async fn enable_validator(&self, public_key: String) {
-        if let Err(e) = self.channel.send(DbCommand::EnableValidator(public_key)).await {
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::EnableValidator(public_key))
+            .await
+        {
             panic!("Failed to send enable validator command to store: {}", e);
         }
     }
 
     pub async fn insert_contract_command(&self, validator_or_initiator_id: u64, command: String) {
-        if let Err(e) = self.channel.send(DbCommand::InsertContractCommand(validator_or_initiator_id, command)).await {
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::InsertContractCommand(
+                validator_or_initiator_id,
+                command,
+            ))
+            .await
+        {
             panic!("Failed to send insert validator command to store: {}", e);
         }
     }
 
     pub async fn get_contract_command(&self) -> DbResult<(String, u32)> {
         let (sender, receiver) = oneshot::channel();
-        if let Err(e) = self.channel.send(DbCommand::GetContractCommand(sender)).await {
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::GetContractCommand(sender))
+            .await
+        {
             panic!("Failed to send get validator command to store: {}", e);
         }
-        receiver.await.expect("Failed to receive reply to query initiator command from db")
+        receiver
+            .await
+            .expect("Failed to receive reply to query initiator command from db")
     }
 
     pub async fn delete_contract_command(&self, id: u32) {
-        if let Err(e) = self.channel.send(DbCommand::DeleteContractCommand(id)).await {
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::DeleteContractCommand(id))
+            .await
+        {
             panic!("Failed to send insert validator command to store: {}", e);
         }
     }
 
     pub async fn updatetime_contract_command(&self, id: u32) {
-        if let Err(e) = self.channel.send(DbCommand::DeleteContractCommand(id)).await {
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::DeleteContractCommand(id))
+            .await
+        {
             panic!("Failed to send insert validator command to store: {}", e);
         }
     }
 
-    pub async fn delete_initiator(&self, id: u32) -> DbResult<Option<Initiator>>{
+    pub async fn delete_initiator(&self, id: u32) -> DbResult<Option<Initiator>> {
         let (sender, receiver) = oneshot::channel();
-        if let Err(e) = self.channel.send(DbCommand::DeleteInitiator(id, sender)).await {
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::DeleteInitiator(id, sender))
+            .await
+        {
             panic!("Failed to send delete initiator command to store: {}", e);
         }
-        receiver.await.expect("Failed to receive reply to delete initiator command from db")
+        receiver
+            .await
+            .expect("Failed to receive reply to delete initiator command from db")
     }
 
     pub async fn insert_initiator_store(&self, record: InitiatorStoreRecord) {
-        if let Err(e) = self.channel.send(DbCommand::InsertInitiatorStore(record)).await {
-            panic!("Failed to send insert initiator store command to database: {}", e);
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::InsertInitiatorStore(record))
+            .await
+        {
+            panic!(
+                "Failed to send insert initiator store command to database: {}",
+                e
+            );
         }
     }
 
-    pub async fn query_initiator_store(&self, initiator_id: u32) -> DbResult<Option<InitiatorStoreRecord>> {
+    pub async fn query_initiator_store(
+        &self,
+        initiator_id: u32,
+    ) -> DbResult<Option<InitiatorStoreRecord>> {
         let (sender, receiver) = oneshot::channel();
-        if let Err(e) = self.channel.send(DbCommand::QueryInitiatorStore(initiator_id, sender)).await {
-            panic!("Failed to send query initiator store command to store: {}", e);
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::QueryInitiatorStore(initiator_id, sender))
+            .await
+        {
+            panic!(
+                "Failed to send query initiator store command to store: {}",
+                e
+            );
         }
-        receiver.await.expect("Failed to receive reply of query initiator store from db")
+        receiver
+            .await
+            .expect("Failed to receive reply of query initiator store from db")
     }
 }
 
 fn insert_operator(conn: &Connection, operator: Operator) {
-    if let Err(e) = conn.execute("INSERT INTO operators(id, name, address, public_key) values (?1, ?2, ?3, ?4)", params![&operator.id, &operator.name, format!("{0:0x}", operator.address), base64::encode(&operator.public_key)]) {
+    if let Err(e) = conn.execute(
+        "INSERT INTO operators(id, name, address, public_key) values (?1, ?2, ?3, ?4)",
+        params![
+            &operator.id,
+            &operator.name,
+            format!("{0:0x}", operator.address),
+            base64::encode(&operator.public_key)
+        ],
+    ) {
         error!("Can't insert into operators, error: {} {:?}", e, operator);
     }
 }
 
 fn insert_initiator(conn: &mut Connection, initiator: Initiator) {
-    if let Err(e) = conn.execute("INSERT INTO initiators(id, address) values (?1, ?2)", params![initiator.id, format!("{0:0x}", initiator.owner_address), ]) {
+    if let Err(e) = conn.execute(
+        "INSERT INTO initiators(id, address) values (?1, ?2)",
+        params![initiator.id, format!("{0:0x}", initiator.owner_address),],
+    ) {
         error!("Can't insert into initiator, error: {} {:?}", e, initiator);
     }
     match conn.transaction() {
@@ -436,15 +600,30 @@ fn insert_initiator(conn: &mut Connection, initiator: Initiator) {
 }
 
 // validator_pk is in hex mode
-fn update_initiator(conn: &Connection, id: u32, validator_pk: String, minipool_address: String) -> DbResult<usize> {
-    conn.execute("UPDATE initiators SET validator_pk = ?1, minipool_address = ?2 WHERE id = ?3", params![validator_pk, minipool_address, id])
+fn update_initiator(
+    conn: &Connection,
+    id: u32,
+    validator_pk: String,
+    minipool_address: String,
+) -> DbResult<usize> {
+    conn.execute(
+        "UPDATE initiators SET validator_pk = ?1, minipool_address = ?2 WHERE id = ?3",
+        params![validator_pk, minipool_address, id],
+    )
 }
 
 fn insert_validator(conn: &mut Connection, validator: Validator) {
     match conn.transaction() {
         Ok(mut tx) => {
             tx.set_drop_behavior(DropBehavior::Commit);
-            if let Err(e) = &tx.execute("INSERT INTO validators(public_key, id, owner_address) values(?1, ?2, ?3)", params![hex::encode(&validator.public_key), validator.id.to_string(), format!("{0:0x}", validator.owner_address)]) {
+            if let Err(e) = &tx.execute(
+                "INSERT INTO validators(public_key, id, owner_address) values(?1, ?2, ?3)",
+                params![
+                    hex::encode(&validator.public_key),
+                    validator.id.to_string(),
+                    format!("{0:0x}", validator.owner_address)
+                ],
+            ) {
                 error!("Can't insert into validators, error: {} {:?}", e, validator);
                 let _ = &tx.set_drop_behavior(DropBehavior::Rollback);
             }
@@ -467,14 +646,26 @@ fn insert_validator(conn: &mut Connection, validator: Validator) {
 }
 
 fn delete_operator(conn: &Connection, operator_id: u32) {
-    if let Err(e) = conn.execute("DELETE FROM operators WHERE operator_id = ?1", params![operator_id]) {
-        error!("Can't delete from operators {} operator_id {}", e, operator_id);
+    if let Err(e) = conn.execute(
+        "DELETE FROM operators WHERE operator_id = ?1",
+        params![operator_id],
+    ) {
+        error!(
+            "Can't delete from operators {} operator_id {}",
+            e, operator_id
+        );
     }
 }
 
 fn delete_validator(conn: &Connection, validator_pk: &str) {
-    if let Err(e) = conn.execute("DELETE FROM validators WHERE public_key = ?1", params![validator_pk]) {
-        error!("Can't delete from validators {} validator_pk {}", e, validator_pk);
+    if let Err(e) = conn.execute(
+        "DELETE FROM validators WHERE public_key = ?1",
+        params![validator_pk],
+    ) {
+        error!(
+            "Can't delete from validators {} validator_pk {}",
+            e, validator_pk
+        );
     }
 }
 
@@ -493,7 +684,7 @@ fn query_operator_by_id(conn: &Connection, operator_id: &u32) -> DbResult<Option
                         public_key: base64::decode(public_key).unwrap().try_into().unwrap(),
                     }))
                 }
-                None => { Ok(None) }
+                None => Ok(None),
             }
         }
         Err(e) => {
@@ -504,10 +695,14 @@ fn query_operator_by_id(conn: &Connection, operator_id: &u32) -> DbResult<Option
 }
 
 // validator_pk is in hex
-fn query_validator_by_public_key(conn: &Connection, validator_pk: &str) -> DbResult<Option<Validator>> {
+fn query_validator_by_public_key(
+    conn: &Connection,
+    validator_pk: &str,
+) -> DbResult<Option<Validator>> {
     // select releated operators
     let mut releated_operators: Vec<u32> = Vec::new();
-    match conn.prepare("SELECT operator_id from validator_operators_mapping where public_key = (?)") {
+    match conn.prepare("SELECT operator_id from validator_operators_mapping where public_key = (?)")
+    {
         Ok(mut stmt) => {
             let mut rows = stmt.query([validator_pk])?;
             while let Some(row) = rows.next()? {
@@ -520,7 +715,9 @@ fn query_validator_by_public_key(conn: &Connection, validator_pk: &str) -> DbRes
         }
     };
 
-    match conn.prepare("SELECT public_key, id, owner_address, active FROM validators where public_key = (?)") {
+    match conn.prepare(
+        "SELECT public_key, id, owner_address, active FROM validators where public_key = (?)",
+    ) {
         Ok(mut stmt) => {
             let mut rows = stmt.query([validator_pk])?;
             match rows.next()? {
@@ -536,7 +733,7 @@ fn query_validator_by_public_key(conn: &Connection, validator_pk: &str) -> DbRes
                         active: row.get(3)?,
                     }))
                 }
-                None => { Ok(None) }
+                None => Ok(None),
             }
         }
         Err(e) => {
@@ -546,7 +743,10 @@ fn query_validator_by_public_key(conn: &Connection, validator_pk: &str) -> DbRes
     }
 }
 
-fn query_operators_public_key_by_ids(conn: &Connection, operator_ids: Vec<u32>) -> DbResult<Option<Vec<String>>> {
+fn query_operators_public_key_by_ids(
+    conn: &Connection,
+    operator_ids: Vec<u32>,
+) -> DbResult<Option<Vec<String>>> {
     let mut public_keys: Vec<String> = Vec::new();
     assert_ne!(operator_ids.len(), 0);
     for operator_id in operator_ids {
@@ -554,9 +754,7 @@ fn query_operators_public_key_by_ids(conn: &Connection, operator_ids: Vec<u32>) 
             Ok(mut stmt) => {
                 let mut rows = stmt.query([operator_id])?;
                 match rows.next()? {
-                    Some(row) => {
-                        public_keys.push(row.get(0)?)
-                    }
+                    Some(row) => public_keys.push(row.get(0)?),
                     None => {}
                 }
             }
@@ -565,22 +763,23 @@ fn query_operators_public_key_by_ids(conn: &Connection, operator_ids: Vec<u32>) 
                 return Err(e);
             }
         }
-    };
+    }
     match public_keys.len() {
         0 => Ok(None),
-        _ => Ok(Some(public_keys))
+        _ => Ok(Some(public_keys)),
     }
 }
 
-fn query_operator_public_key_by_id(conn: &Connection, operator_id: u32) -> DbResult<Option<String>> {
+fn query_operator_public_key_by_id(
+    conn: &Connection,
+    operator_id: u32,
+) -> DbResult<Option<String>> {
     match conn.prepare("SELECT public_key from operators where id = (?)") {
         Ok(mut stmt) => {
             let mut rows = stmt.query([operator_id])?;
             match rows.next()? {
-                Some(row) => {
-                    Ok(Some(row.get(0)?))
-                }
-                None => { Ok(None) }
+                Some(row) => Ok(Some(row.get(0)?)),
+                None => Ok(None),
             }
         }
         Err(e) => {
@@ -591,7 +790,9 @@ fn query_operator_public_key_by_id(conn: &Connection, operator_id: u32) -> DbRes
 }
 
 fn query_initiator(conn: &Connection, id: u32) -> DbResult<Option<Initiator>> {
-    match conn.prepare("SELECT id, address, validator_pk, minipool_address from initiators where id = (?)") {
+    match conn.prepare(
+        "SELECT id, address, validator_pk, minipool_address from initiators where id = (?)",
+    ) {
         Ok(mut stmt) => {
             let mut rows = stmt.query([id])?;
             match rows.next()? {
@@ -599,10 +800,14 @@ fn query_initiator(conn: &Connection, id: u32) -> DbResult<Option<Initiator>> {
                     let address: String = row.get(1)?;
                     let validator_pk: String = row.get(2)?;
                     let minipool_address: String = row.get(3)?;
-                    let va_pk_option = if validator_pk.len() == 0 { None } else {
+                    let va_pk_option = if validator_pk.len() == 0 {
+                        None
+                    } else {
                         Some(hex::decode(&validator_pk).unwrap().try_into().unwrap())
                     };
-                    let minipool_address_option = if minipool_address.len() == 0 { None } else {
+                    let minipool_address_option = if minipool_address.len() == 0 {
+                        None
+                    } else {
                         Some(Address::from_slice(&hex::decode(minipool_address).unwrap()))
                     };
 
@@ -614,7 +819,7 @@ fn query_initiator(conn: &Connection, id: u32) -> DbResult<Option<Initiator>> {
                         minipool_address: minipool_address_option,
                     }))
                 }
-                None => { Ok(None) }
+                None => Ok(None),
             }
         }
         Err(e) => {
@@ -624,7 +829,10 @@ fn query_initiator(conn: &Connection, id: u32) -> DbResult<Option<Initiator>> {
     }
 }
 
-fn query_initiator_releated_operator_pks(conn: &Connection, id: u32) -> DbResult<(Vec<String>, Vec<u32>) > {
+fn query_initiator_releated_operator_pks(
+    conn: &Connection,
+    id: u32,
+) -> DbResult<(Vec<String>, Vec<u32>)> {
     let mut op_pks = Vec::new();
     let mut op_ids: Vec<u32> = Vec::new();
     match conn.prepare("select public_key, id from operators where id in (select operator_id from initiator_operators_mapping where initiator_id = (?))") {
@@ -650,11 +858,7 @@ fn query_all_validator_address(conn: &Connection) -> DbResult<Vec<Address>> {
             let mut rows = stmt.query([])?;
             while let Some(row) = rows.next()? {
                 let address: String = row.get(0)?;
-                owners.push(
-                    Address::from_slice(
-                        &hex::decode(&address).unwrap()
-                    )
-                );
+                owners.push(Address::from_slice(&hex::decode(&address).unwrap()));
             }
         }
         Err(e) => {
@@ -665,12 +869,13 @@ fn query_all_validator_address(conn: &Connection) -> DbResult<Vec<Address>> {
     Ok(owners)
 }
 
-
 // only used for stop validator, don't need to query releated operator ids
 fn query_validator_by_address(conn: &Connection, address: Address) -> DbResult<Vec<Validator>> {
     let mut validators = Vec::new();
     let address_str = format!("{0:0x}", address);
-    match conn.prepare("select public_key, id, owner_address, active from validators where owner_address = (?)") {
+    match conn.prepare(
+        "select public_key, id, owner_address, active from validators where owner_address = (?)",
+    ) {
         Ok(mut stmt) => {
             let mut rows = stmt.query([address_str])?;
 
@@ -694,13 +899,19 @@ fn query_validator_by_address(conn: &Connection, address: Address) -> DbResult<V
 }
 
 fn disable_validator(conn: &Connection, public_key: String) {
-    if let Err(e) = conn.execute("UPDATE validators SET active = 0 WHERE public_key = ?1", params![public_key]) {
+    if let Err(e) = conn.execute(
+        "UPDATE validators SET active = 0 WHERE public_key = ?1",
+        params![public_key],
+    ) {
         error!("Can't update validators {}, error {}", public_key, e);
     }
 }
 
 fn enable_validator(conn: &Connection, public_key: String) {
-    if let Err(e) = conn.execute("UPDATE validators SET active = 1 WHERE public_key = ?1", params![public_key]) {
+    if let Err(e) = conn.execute(
+        "UPDATE validators SET active = 1 WHERE public_key = ?1",
+        params![public_key],
+    ) {
         error!("Can't update validators {}, error {}", public_key, e);
     }
 }
@@ -723,7 +934,9 @@ fn if_validator_active(conn: &Connection, public_key: String) -> DbResult<bool> 
 
 fn increase_va_sequence(conn: &Connection, validator_or_initiator_id: u64) -> DbResult<u32> {
     let mut sequence_num: u32 = 0;
-    match conn.prepare("select sequence_num from contract_cmd_sequence where validator_or_initiator_id = (?)") {
+    match conn.prepare(
+        "select sequence_num from contract_cmd_sequence where validator_or_initiator_id = (?)",
+    ) {
         Ok(mut stmt) => {
             let mut rows = stmt.query([validator_or_initiator_id.to_string()]).unwrap();
             while let Some(row) = rows.next().unwrap() {
@@ -744,7 +957,7 @@ fn increase_va_sequence(conn: &Connection, validator_or_initiator_id: u64) -> Db
         }
     }
     Ok(sequence_num + 1)
-} 
+}
 
 fn delete_contract_command(conn: &Connection, id: u32) {
     if let Err(e) = conn.execute("delete from contract_commands where id = ?1", params![id]) {
@@ -782,12 +995,15 @@ fn get_contract_command(conn: &Connection) -> DbResult<(String, u32)> {
 }
 
 fn updatetime_contract_command(conn: &Connection, id: u32) {
-    if let Err(e) = conn.execute("update contract_commands set id = ?1 where id = ?1", params![id]) {
+    if let Err(e) = conn.execute(
+        "update contract_commands set id = ?1 where id = ?1",
+        params![id],
+    ) {
         error!("Can't update contract_commands, error: {} {}", e, id);
     }
 }
 
-fn delete_initiator(conn: &Connection, id: u32) -> DbResult<Option<Initiator>>{
+fn delete_initiator(conn: &Connection, id: u32) -> DbResult<Option<Initiator>> {
     let initiator = query_initiator(conn, id)?;
     match initiator {
         Some(_) => {
@@ -820,15 +1036,17 @@ fn insert_initiator_store(conn: &mut Connection, record: InitiatorStoreRecord) {
             if let Err(e) = tx.finish() {
                 error!("Can't finish the transaction {}", e);
             }
-        },
+        }
         Err(e) => {
             error!("Can't create a transaction for database {}", e);
         }
     }
-    
 }
 
-fn query_initiator_store(conn: &Connection, initiator_id: u32) -> DbResult<Option<InitiatorStoreRecord>> {
+fn query_initiator_store(
+    conn: &Connection,
+    initiator_id: u32,
+) -> DbResult<Option<InitiatorStoreRecord>> {
     match conn.prepare("select A.share_bls_sk, A.validator_pk, B.operator_id, B.share_bls_pk from initiator_store_record as a join initiator_store_record_oppk as b on A.id = B.record_id where A.initiator_id =(?)") {
         Ok(mut stmt) => {
             let mut rows = stmt.query([initiator_id]).unwrap();
@@ -846,7 +1064,6 @@ fn query_initiator_store(conn: &Connection, initiator_id: u32) -> DbResult<Optio
                     let validator_pk = bls::PublicKey::deserialize(&hex::decode(validator_pk).unwrap()).unwrap();
                     va_pk = Some(validator_pk);
                 }
-                
                 let operator_id: u64 = row.get(2).unwrap();
                 let share_bls_pk: String = row.get(3).unwrap();
                 let op_pk = bls::PublicKey::deserialize(&hex::decode(share_bls_pk).unwrap()).unwrap();
@@ -855,7 +1072,7 @@ fn query_initiator_store(conn: &Connection, initiator_id: u32) -> DbResult<Optio
             if sk.is_none() {
                 return Ok(None);
             }
-            Ok(Some(InitiatorStoreRecord { id: initiator_id, share_bls_sk: sk.unwrap(), validator_pk: va_pk.unwrap(), share_bls_pks: op_pks })) 
+            Ok(Some(InitiatorStoreRecord { id: initiator_id, share_bls_sk: sk.unwrap(), validator_pk: va_pk.unwrap(), share_bls_pks: op_pks }))
         }
         Err(e) => {
             error!("Can't prepare statement {}", e);
@@ -863,18 +1080,32 @@ fn query_initiator_store(conn: &Connection, initiator_id: u32) -> DbResult<Optio
         }
     }
 }
-        
+
+pub fn query_validators_fee_recipient<P: AsRef<Path>>(path: P) -> DbResult<Vec<(String, Address)>> {
+    let conn = Connection::open(path)?;
+    let mut stmt = conn.prepare("select public_key, owner_address from validators")?;
+    let mut rows = stmt.query([]).unwrap();
+    let mut res = Vec::new();
+    while let Some(row) = rows.next()? {
+        let validator_publickey: String = row.get(0)?;
+        let address_str: String = row.get(1)?;
+        let address: Address = Address::from_slice(&hex::decode(&address_str).unwrap());
+        res.push((validator_publickey, address));
+    }
+    Ok(res)
+}
 
 #[tokio::test]
 async fn test_database() {
     use crate::crypto::ThresholdSignature;
     use crate::node::contract::InitiatorStoreRecord;
     use std::collections::HashMap;
-    let mut logger = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
+    let mut logger =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
     logger.format_timestamp_millis();
     logger.init();
     let mut sig = ThresholdSignature::new(3);
-    let keys = sig.key_gen(&[1,2,3,4]).unwrap();
+    let keys = sig.key_gen(&[1, 2, 3, 4]).unwrap();
     if std::fs::metadata("/tmp/test.db").is_ok() {
         std::fs::remove_file("/tmp/test.db").unwrap();
     }
@@ -887,10 +1118,13 @@ async fn test_database() {
         id: 1,
         share_bls_sk: keys.0.sk.clone(),
         validator_pk: keys.0.pk.clone(),
-        share_bls_pks: pks
+        share_bls_pks: pks,
     };
     let mut conn = Connection::open("/tmp/test.db").unwrap();
     insert_initiator_store(&mut conn, initiator_store.clone());
     let record = query_initiator_store(&mut conn, 1).unwrap().unwrap();
-    assert_eq!(record.share_bls_sk.serialize().as_bytes(), initiator_store.share_bls_sk.serialize().as_bytes());
+    assert_eq!(
+        record.share_bls_sk.serialize().as_bytes(),
+        initiator_store.share_bls_sk.serialize().as_bytes()
+    );
 }

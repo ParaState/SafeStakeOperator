@@ -1,4 +1,4 @@
-//! Reference: lighthouse/validator_client/doppelganger_service.rs 
+//! Reference: lighthouse/validator_client/doppelganger_service.rs
 //!
 //! The "Doppelganger" service is an **imperfect** mechanism to try and prevent the validator client
 //! from starting whilst any of its validators are actively producing messages on the network.
@@ -31,10 +31,13 @@
 //!
 //! Doppelganger protection is a best-effort, last-line-of-defence mitigation. Do not rely upon it.
 
-use crate::validation::beacon_node_fallback::{BeaconNodeFallback, OfflineOnFailure, RequireSynced};
+use crate::validation::beacon_node_fallback::{
+    BeaconNodeFallback, OfflineOnFailure, RequireSynced,
+};
 use crate::validation::validator_store::ValidatorStore;
 use environment::RuntimeContext;
 use eth2::types::LivenessResponseData;
+use futures::executor::block_on;
 use parking_lot::RwLock;
 use slog::{crit, error, info, Logger};
 use slot_clock::SlotClock;
@@ -44,7 +47,6 @@ use std::sync::Arc;
 use task_executor::ShutdownReason;
 use tokio::time::sleep;
 use types::{Epoch, EthSpec, PublicKeyBytes, Slot};
-use futures::executor::block_on;
 
 /// A wrapper around `PublicKeyBytes` which encodes information about the status of a validator
 /// pubkey with regards to doppelganger protection.
@@ -179,13 +181,17 @@ async fn beacon_node_liveness<'a, T: 'static + SlotClock, E: EthSpec>(
     } else {
         // Request the previous epoch liveness state from the beacon node.
         beacon_nodes
-            .first_success(RequireSynced::Yes, OfflineOnFailure::Yes, |beacon_node| async move {
-                beacon_node
-                    .post_lighthouse_liveness(validator_indices, previous_epoch)
-                    .await
-                    .map_err(|e| format!("Failed query for validator liveness: {:?}", e))
-                    .map(|result| result.data)
-            })
+            .first_success(
+                RequireSynced::Yes,
+                OfflineOnFailure::Yes,
+                |beacon_node| async move {
+                    beacon_node
+                        .post_lighthouse_liveness(validator_indices, previous_epoch)
+                        .await
+                        .map_err(|e| format!("Failed query for validator liveness: {:?}", e))
+                        .map(|result| result.data)
+                },
+            )
             .await
             .unwrap_or_else(|e| {
                 crit!(
@@ -202,13 +208,17 @@ async fn beacon_node_liveness<'a, T: 'static + SlotClock, E: EthSpec>(
 
     // Request the current epoch liveness state from the beacon node.
     let current_epoch_responses = beacon_nodes
-        .first_success(RequireSynced::Yes, OfflineOnFailure::Yes, |beacon_node| async move {
-            beacon_node
-                .post_lighthouse_liveness(validator_indices, current_epoch)
-                .await
-                .map_err(|e| format!("Failed query for validator liveness: {:?}", e))
-                .map(|result| result.data)
-        })
+        .first_success(
+            RequireSynced::Yes,
+            OfflineOnFailure::Yes,
+            |beacon_node| async move {
+                beacon_node
+                    .post_lighthouse_liveness(validator_indices, current_epoch)
+                    .await
+                    .map_err(|e| format!("Failed query for validator liveness: {:?}", e))
+                    .map(|result| result.data)
+            },
+        )
         .await
         .unwrap_or_else(|e| {
             crit!(
@@ -267,7 +277,7 @@ impl DoppelgangerService {
         slot_clock: T,
     ) -> Result<(), String> {
         // Define the `get_index` function as one that uses the validator store.
-        // [TODO] Zico: using `block_on` here may block tokio's core thread because `get_index` will be used 
+        // [TODO] Zico: using `block_on` here may block tokio's core thread because `get_index` will be used
         // in async context
         let get_index = move |pubkey| block_on(validator_store.validator_index(&pubkey));
 
@@ -1442,4 +1452,3 @@ mod test {
         scenario.assert_all_enabled();
     }
 }
-

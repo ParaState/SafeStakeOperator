@@ -7,7 +7,6 @@ pub fn require(status: bool, msg: &'static str) {
     }
 }
 
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum DvfError {
     BlsError(BlsError),
@@ -17,16 +16,29 @@ pub enum DvfError {
     /// Key generation failed.
     KeyGenError(String),
     /// Threshold signature aggregation failed due to insufficient valid signatures.
-    InsufficientSignatures {got: usize, expected: usize},
+    InsufficientSignatures {
+        got: usize,
+        expected: usize,
+    },
     /// Threshold signature aggregation failed due to insufficient valid signatures.
-    InsufficientValidSignatures {got: usize, expected: usize},
+    InsufficientValidSignatures {
+        got: usize,
+        expected: usize,
+    },
     /// Invalid operator signature
-    InvalidSignatureShare {id: u64},
-    /// Invalid operator id 
-    InvalidOperatorId {id: u64},
+    InvalidSignatureShare {
+        id: u64,
+    },
+    /// Invalid operator id
+    InvalidOperatorId {
+        id: u64,
+    },
     /// Different length
-    DifferentLength {x: usize, y: usize},
-    /// 
+    DifferentLength {
+        x: usize,
+        y: usize,
+    },
+    ///
     InvalidLength,
     /// Should not call the function specified by the string
     UnexpectedCall(String),
@@ -56,7 +68,7 @@ pub enum DvfError {
     /// Get beacon validator data error
     BeaconNodeValidatorError(String),
     /// Get beacon state fork error
-    BeaconNodeStateForkError(String)
+    BeaconNodeStateForkError(String),
 }
 
 impl From<BlsError> for DvfError {

@@ -1,11 +1,14 @@
 //! Implementation of the standard remotekey management API.
+use crate::validation::account_utils::validator_definitions::{
+    SigningDefinition, ValidatorDefinition,
+};
 use crate::validation::{initialized_validators::Error, InitializedValidators, ValidatorStore};
-use crate::validation::account_utils::validator_definitions::{SigningDefinition, ValidatorDefinition};
 use eth2::lighthouse_vc::std_types::{
     DeleteRemotekeyStatus, DeleteRemotekeysRequest, DeleteRemotekeysResponse,
     ImportRemotekeyStatus, ImportRemotekeysRequest, ImportRemotekeysResponse,
     ListRemotekeysResponse, SingleListRemotekeysResponse, Status,
 };
+use futures::executor::block_on;
 use slog::{info, warn, Logger};
 use slot_clock::SlotClock;
 use std::sync::Arc;
@@ -15,7 +18,6 @@ use types::{EthSpec, PublicKeyBytes};
 use url::Url;
 use warp::Rejection;
 use warp_utils::reject::custom_server_error;
-use futures::executor::block_on;
 
 pub fn list<T: SlotClock + 'static, E: EthSpec>(
     validator_store: Arc<ValidatorStore<T, E>>,
@@ -38,7 +40,7 @@ pub fn list<T: SlotClock + 'static, E: EthSpec>(
                     readonly: false,
                 }),
                 // [Zico]TODO: to be revised
-                SigningDefinition::DistributedKeystore {..} => None,
+                SigningDefinition::DistributedKeystore { .. } => None,
             }
         })
         .collect::<Vec<_>>();
@@ -198,8 +200,7 @@ fn delete_single_remotekey<E: EthSpec>(
             .decompress()
             .map_err(|e| format!("invalid pubkey, {:?}: {:?}", pubkey_bytes, e))?;
 
-        match handle.block_on(initialized_validators.delete_definition_and_keystore(&pubkey))
-        {
+        match handle.block_on(initialized_validators.delete_definition_and_keystore(&pubkey)) {
             Ok(_) => Ok(DeleteRemotekeyStatus::Deleted),
             Err(e) => match e {
                 Error::ValidatorNotInitialized(_) => Ok(DeleteRemotekeyStatus::NotFound),
@@ -210,4 +211,3 @@ fn delete_single_remotekey<E: EthSpec>(
         Err("validator client shutdown".into())
     }
 }
-

@@ -1,15 +1,15 @@
-use std::{fs::File, time::Duration};
-use std::path::Path;
+use crate::node::contract::SELF_OPERATOR_ID;
+use hscrypto::{Digest, SecretKey, Signature};
 use keccak_hash::keccak;
-use hscrypto::{SecretKey, Signature, Digest};
+use log::{error, info};
 use reqwest::{Client, Error};
 use serde::de::DeserializeOwned;
-use serde::{Serialize, Deserialize};
-use log::{error, info};
+use serde::{Deserialize, Serialize};
+use std::path::Path;
+use std::{fs::File, time::Duration};
 use types::DepositData;
 use url::Url;
 use web3::types::H160;
-use crate::node::contract::SELF_OPERATOR_ID;
 
 pub trait FromFile<T: DeserializeOwned> {
     fn from_file<P: AsRef<Path>>(path: P) -> Result<T, String> {
@@ -23,8 +23,8 @@ pub trait FromFile<T: DeserializeOwned> {
 
 pub trait ToFile {
     fn to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), String>
-        where
-            Self: Serialize,
+    where
+        Self: Serialize,
     {
         let file = File::options()
             .write(true)
@@ -37,12 +37,16 @@ pub trait ToFile {
 }
 
 pub trait SignDigest {
-    fn sign_digest(&self, secret: &SecretKey) -> Result<String, String> where Self:Serialize {
-        let ser_json = serde_json::to_string(self).map_err(|e| format!("error serialize {:?}", e))?;
+    fn sign_digest(&self, secret: &SecretKey) -> Result<String, String>
+    where
+        Self: Serialize,
+    {
+        let ser_json =
+            serde_json::to_string(self).map_err(|e| format!("error serialize {:?}", e))?;
         let digest = keccak(ser_json.as_bytes());
         let sig = Signature::new(&Digest::from(digest.as_fixed_bytes()), secret);
         Ok(hex::encode(sig.flatten()))
-    }       
+    }
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -57,7 +61,7 @@ pub struct DvfPerformanceRequest {
     pub duty: String,
     pub time: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub sign_hex: Option<String>
+    pub sign_hex: Option<String>,
 }
 
 impl SignDigest for DvfPerformanceRequest {}
@@ -79,11 +83,10 @@ pub struct ValidatorPkRequest {
     #[serde(rename = "sharedPublicKey")]
     pub shared_public_key: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub sign_hex: Option<String>
+    pub sign_hex: Option<String>,
 }
 
 impl SignDigest for ValidatorPkRequest {}
-
 
 #[derive(Debug, Serialize)]
 pub struct DepositRequest {
@@ -110,7 +113,7 @@ impl DepositRequest {
             amount: deposit.amount,
             signature: hex::encode(deposit.signature.serialize()),
             sign_hex: None,
-            operator_id: *SELF_OPERATOR_ID.get().unwrap()
+            operator_id: *SELF_OPERATOR_ID.get().unwrap(),
         }
     }
 }
@@ -118,11 +121,14 @@ impl DepositRequest {
 #[derive(Deserialize, Serialize)]
 struct Response {
     code: usize,
-    message: String
+    message: String,
 }
 
 pub async fn request_to_web_server<T: Serialize>(body: T, url_str: &str) -> Result<(), String> {
-    let client = Client::builder().timeout(Duration::from_secs(3)).build().unwrap();
+    let client = Client::builder()
+        .timeout(Duration::from_secs(3))
+        .build()
+        .unwrap();
     let url = Url::parse(url_str).map_err(|_e| format!("Can't parse url {}", url_str))?;
     for _ in 0..3 {
         match client.post(url.clone()).json(&body).send().await {
@@ -131,12 +137,18 @@ pub async fn request_to_web_server<T: Serialize>(body: T, url_str: &str) -> Resu
                 match response {
                     Ok(res) => {
                         if res.code == 200 {
-                            info!("Successfully send request {}", serde_json::to_string(&body).unwrap());
+                            info!(
+                                "Successfully send request {}",
+                                serde_json::to_string(&body).unwrap()
+                            );
                             break;
                         } else {
-                            error!("Can't send request, response: {:?}, retrying", serde_json::to_string(&res).unwrap())
+                            error!(
+                                "Can't send request, response: {:?}, retrying",
+                                serde_json::to_string(&res).unwrap()
+                            )
                         }
-                    },
+                    }
                     Err(e) => {
                         error!("Can't send request: {:?}, retrying", e);
                     }
@@ -187,7 +199,7 @@ fn request_signature_test() {
         pub duty: String,
         pub time: i64,
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub sign_hex: Option<String>
+        pub sign_hex: Option<String>,
     }
 
     impl SignDigest for DvfPerformanceRequestTest {}
@@ -204,7 +216,7 @@ fn request_signature_test() {
     };
     let test_secret = Secret {
         name: PublicKey::decode_base64("Au8M2eERK1GCyt6njUQG1Bt0RYbWlJbZlcGFklDYbvVN").unwrap(),
-        secret: SecretKey::decode_base64("AQ+PCzHRx/bLEwhJhd8FjGR+88/CUO1RljqmDKn5Rds=").unwrap()
+        secret: SecretKey::decode_base64("AQ+PCzHRx/bLEwhJhd8FjGR+88/CUO1RljqmDKn5Rds=").unwrap(),
     };
     assert_eq!("9bf90a6ce2da00518db91042d38b1bbca479d2479ae0b0c5fc8b10a21d95036c5b601d9c4efdc7541fe92ebdadfebb628f05399a960f47df5c9015c29e57835d".to_string(), request.sign_digest(&test_secret.secret).unwrap());
 }

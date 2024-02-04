@@ -1,14 +1,16 @@
-//! Reference: lighthouse/validator_client/validator_store.rs 
+//! Reference: lighthouse/validator_client/validator_store.rs
 
+use crate::validation::account_utils::{validator_definitions::ValidatorDefinition, ZeroizeString};
+use crate::validation::preparation_service::ProposalData;
 use crate::{
     validation::doppelganger_service::DoppelgangerService,
     validation::http_metrics::metrics,
     validation::initialized_validators::InitializedValidators,
-    validation::signing_method::{Error as SigningError, SignableMessage, SigningContext, SigningMethod},
+    validation::signing_method::{
+        Error as SigningError, SignableMessage, SigningContext, SigningMethod,
+    },
     validation::Config,
 };
-use crate::validation::account_utils::{validator_definitions::ValidatorDefinition, ZeroizeString};
-use tokio::sync::{Mutex, RwLock};
 use slashing_protection::{
     interchange::Interchange, InterchangeError, NotSafe, Safe, SlashingDatabase,
 };
@@ -19,17 +21,17 @@ use std::marker::PhantomData;
 use std::path::Path;
 use std::sync::Arc;
 use task_executor::TaskExecutor;
+use tokio::sync::{Mutex, RwLock};
 use types::{
-    attestation::Error as AttestationError, graffiti::GraffitiString, AbstractExecPayload, Address, AggregateAndProof,
-    Attestation, BeaconBlock, BlindedPayload, ChainSpec, ContributionAndProof, Domain, Epoch,
-    EthSpec, Fork, Graffiti, Hash256, Keypair, PublicKeyBytes, PublicKey, SelectionProof,
-    Signature, SignedAggregateAndProof, SignedBeaconBlock, SignedContributionAndProof, SignedRoot, 
-    SignedValidatorRegistrationData, Slot,
-    SyncAggregatorSelectionData, SyncCommitteeContribution, SyncCommitteeMessage,
-    SyncSelectionProof, SyncSubnetId, ValidatorRegistrationData, 
+    attestation::Error as AttestationError, graffiti::GraffitiString, AbstractExecPayload, Address,
+    AggregateAndProof, Attestation, BeaconBlock, BlindedPayload, ChainSpec, ContributionAndProof,
+    Domain, Epoch, EthSpec, Fork, ForkName, Graffiti, Hash256, Keypair, PublicKey, PublicKeyBytes,
+    SelectionProof, Signature, SignedAggregateAndProof, SignedBeaconBlock,
+    SignedContributionAndProof, SignedRoot, SignedValidatorRegistrationData, SignedVoluntaryExit,
+    Slot, SyncAggregatorSelectionData, SyncCommitteeContribution, SyncCommitteeMessage,
+    SyncSelectionProof, SyncSubnetId, ValidatorRegistrationData, VoluntaryExit,
 };
 use validator_dir::ValidatorDir;
-use crate::validation::preparation_service::ProposalData;
 
 pub use crate::validation::doppelganger_service::DoppelgangerStatus;
 
@@ -99,6 +101,7 @@ pub struct ValidatorStore<T, E: EthSpec> {
     fee_recipient_process: Option<Address>,
     gas_limit: Option<u64>,
     builder_proposals: bool,
+    produce_block_v3: bool,
     task_executor: TaskExecutor,
     _phantom: PhantomData<E>,
 }
@@ -130,6 +133,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
             fee_recipient_process: config.fee_recipient,
             gas_limit: config.gas_limit,
             builder_proposals: config.builder_proposals,
+            produce_block_v3: config.produce_block_v3,
             task_executor,
             _phantom: PhantomData,
         }
@@ -176,7 +180,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
             graffiti.map(Into::into),
             suggested_fee_recipient,
             gas_limit,
-            builder_proposals
+            builder_proposals,
         )
         .map_err(|e| format!("failed to create validator definitions: {:?}", e))?;
 
@@ -198,7 +202,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         builder_proposals: Option<bool>,
         operator_committee_definition_path: P,
         operator_committee_index: u64,
-        operator_id: u64
+        operator_id: u64,
     ) -> Result<ValidatorDefinition, String> {
         let mut validator_def = ValidatorDefinition::new_keystore_share_with_password_path(
             voting_keystore_share_path,
@@ -267,7 +271,6 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
                     .get_builder_proposals_defaulting(validator.get_builder_proposals()),
             })
     }
-
 
     /// Attempts to resolve the pubkey to a validator index.
     ///
@@ -365,6 +368,10 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         self.spec.fork_at_epoch(epoch)
     }
 
+    pub fn produce_block_v3(&self) -> bool {
+        self.produce_block_v3
+    }
+
     /// Returns a `SigningMethod` for `validator_pubkey` *only if* that validator is considered safe
     /// by doppelganger protection.
     async fn doppelganger_checked_signing_method(
@@ -400,11 +407,35 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
     }
 
     fn signing_context(&self, domain: Domain, signing_epoch: Epoch) -> SigningContext {
-        SigningContext {
-            domain,
-            epoch: signing_epoch,
-            fork: self.fork(signing_epoch),
-            genesis_validators_root: self.genesis_validators_root,
+        if domain == Domain::VoluntaryExit {
+            match self.spec.fork_name_at_epoch(signing_epoch) {
+                ForkName::Base | ForkName::Altair | ForkName::Merge | ForkName::Capella => {
+                    SigningContext {
+                        domain,
+                        epoch: signing_epoch,
+                        fork: self.fork(signing_epoch),
+                        genesis_validators_root: self.genesis_validators_root,
+                    }
+                }
+                // EIP-7044
+                ForkName::Deneb => SigningContext {
+                    domain,
+                    epoch: signing_epoch,
+                    fork: Fork {
+                        previous_version: self.spec.capella_fork_version,
+                        current_version: self.spec.capella_fork_version,
+                        epoch: signing_epoch,
+                    },
+                    genesis_validators_root: self.genesis_validators_root,
+                },
+            }
+        } else {
+            SigningContext {
+                domain,
+                epoch: signing_epoch,
+                fork: self.fork(signing_epoch),
+                genesis_validators_root: self.genesis_validators_root,
+            }
         }
     }
 
@@ -413,7 +444,9 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         validator_pubkey: PublicKeyBytes,
         signing_epoch: Epoch,
     ) -> Result<Signature, Error> {
-        let signing_method = self.doppelganger_checked_signing_method(validator_pubkey).await?;
+        let signing_method = self
+            .doppelganger_checked_signing_method(validator_pubkey)
+            .await?;
         let signing_context = self.signing_context(Domain::Randao, signing_epoch);
 
         let signature = signing_method
@@ -432,16 +465,39 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         self.validators.read().await.graffiti(validator_pubkey)
     }
 
+    /// Returns the fee recipient for the given public key. The priority order for fetching
+    /// the fee recipient is:
+    /// 1. validator_definitions.yml
+    /// 2. process level fee recipient
+    pub async fn get_fee_recipient(&self, validator_pubkey: &PublicKeyBytes) -> Option<Address> {
+        // If there is a `suggested_fee_recipient` in the validator definitions yaml
+        // file, use that value.
+        self.get_fee_recipient_defaulting(self.suggested_fee_recipient(validator_pubkey).await)
+    }
+
     pub fn get_fee_recipient_defaulting(&self, fee_recipient: Option<Address>) -> Option<Address> {
         // If there's nothing in the file, try the process-level default value.
         fee_recipient.or(self.fee_recipient_process)
     }
 
-    pub async fn suggested_fee_recipient(&self, validator_pubkey: &PublicKeyBytes) -> Option<Address> {
+    pub async fn suggested_fee_recipient(
+        &self,
+        validator_pubkey: &PublicKeyBytes,
+    ) -> Option<Address> {
         self.validators
             .read()
             .await
             .suggested_fee_recipient(validator_pubkey)
+    }
+
+    /// Returns the gas limit for the given public key. The priority order for fetching
+    /// the gas limit is:
+    ///
+    /// 1. validator_definitions.yml
+    /// 2. process level gas limit
+    /// 3. `DEFAULT_GAS_LIMIT`
+    pub async fn get_gas_limit(&self, validator_pubkey: &PublicKeyBytes) -> u64 {
+        self.get_gas_limit_defaulting(self.validators.read().await.gas_limit(validator_pubkey))
     }
 
     fn get_gas_limit_defaulting(&self, gas_limit: Option<u64>) -> u64 {
@@ -452,6 +508,22 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
             .or(self.gas_limit)
             // If there's no process-level default, use the `DEFAULT_GAS_LIMIT`.
             .unwrap_or(DEFAULT_GAS_LIMIT)
+    }
+
+    /// Returns a `bool` for the given public key that denotes whther this validator should use the
+    /// builder API. The priority order for fetching this value is:
+    ///
+    /// 1. validator_definitions.yml
+    /// 2. process level flag
+    pub async fn get_builder_proposals(&self, validator_pubkey: &PublicKeyBytes) -> bool {
+        // If there is a `suggested_fee_recipient` in the validator definitions yaml
+        // file, use that value.
+        self.get_builder_proposals_defaulting(
+            self.validators
+                .read()
+                .await
+                .builder_proposals(validator_pubkey),
+        )
     }
 
     fn get_builder_proposals_defaulting(&self, builder_proposals: Option<bool>) -> bool {
@@ -496,7 +568,9 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
             Ok(Safe::Valid) => {
                 metrics::inc_counter_vec(&metrics::SIGNED_BLOCKS_TOTAL, &[metrics::SUCCESS]);
 
-                let signing_method = self.doppelganger_checked_signing_method(validator_pubkey).await?;
+                let signing_method = self
+                    .doppelganger_checked_signing_method(validator_pubkey)
+                    .await?;
                 let signature = signing_method
                     .get_signature::<E, Payload>(
                         SignableMessage::BeaconBlock(&block),
@@ -565,7 +639,9 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         match slashing_status {
             // We can safely sign this attestation.
             Ok(Safe::Valid) => {
-                let signing_method = self.doppelganger_checked_signing_method(validator_pubkey).await?;
+                let signing_method = self
+                    .doppelganger_checked_signing_method(validator_pubkey)
+                    .await?;
                 let signature = signing_method
                     .get_signature::<E, BlindedPayload<E>>(
                         SignableMessage::AttestationData(&attestation.data),
@@ -622,6 +698,34 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         }
     }
 
+    pub async fn sign_voluntary_exit(
+        &self,
+        validator_pubkey: PublicKeyBytes,
+        voluntary_exit: VoluntaryExit,
+    ) -> Result<SignedVoluntaryExit, Error> {
+        let signing_epoch = voluntary_exit.epoch;
+        let signing_context = self.signing_context(Domain::VoluntaryExit, signing_epoch);
+        let signing_method = self
+            .doppelganger_bypassed_signing_method(validator_pubkey)
+            .await?;
+
+        let signature = signing_method
+            .get_signature::<E, BlindedPayload<E>>(
+                SignableMessage::VoluntaryExit(&voluntary_exit),
+                signing_context,
+                &self.spec,
+                &self.task_executor,
+            )
+            .await?;
+
+        metrics::inc_counter_vec(&metrics::SIGNED_VOLUNTARY_EXITS_TOTAL, &[metrics::SUCCESS]);
+
+        Ok(SignedVoluntaryExit {
+            message: voluntary_exit,
+            signature,
+        })
+    }
+
     pub async fn sign_validator_registration_data(
         &self,
         validator_registration_data: ValidatorRegistrationData,
@@ -629,8 +733,9 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         let domain_hash = self.spec.get_builder_domain();
         let signing_root = validator_registration_data.signing_root(domain_hash);
 
-        let signing_method =
-            self.doppelganger_bypassed_signing_method(validator_registration_data.pubkey).await?;
+        let signing_method = self
+            .doppelganger_bypassed_signing_method(validator_registration_data.pubkey)
+            .await?;
         let signature = signing_method
             .get_signature_from_root::<E, BlindedPayload<E>>(
                 SignableMessage::ValidatorRegistration(&validator_registration_data),
@@ -653,7 +758,6 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         })
     }
 
-
     /// Signs an `AggregateAndProof` for a given validator.
     ///
     /// The resulting `SignedAggregateAndProof` is sent on the aggregation channel and cannot be
@@ -674,7 +778,9 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
             selection_proof: selection_proof.into(),
         };
 
-        let signing_method = self.doppelganger_checked_signing_method(validator_pubkey).await?;
+        let signing_method = self
+            .doppelganger_checked_signing_method(validator_pubkey)
+            .await?;
         let signature = signing_method
             .get_signature::<E, BlindedPayload<E>>(
                 SignableMessage::SignedAggregateAndProof(&message),
@@ -706,7 +812,9 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         //
         // As long as we disallow `SignedAggregateAndProof` then these selection proofs will never
         // be published on the network.
-        let signing_method = self.doppelganger_bypassed_signing_method(validator_pubkey).await?;
+        let signing_method = self
+            .doppelganger_bypassed_signing_method(validator_pubkey)
+            .await?;
 
         let signature = signing_method
             .get_signature::<E, BlindedPayload<E>>(
@@ -734,7 +842,9 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
             self.signing_context(Domain::SyncCommitteeSelectionProof, signing_epoch);
 
         // Bypass `with_validator_signing_method`: sync committee messages are not slashable.
-        let signing_method = self.doppelganger_bypassed_signing_method(*validator_pubkey).await?;
+        let signing_method = self
+            .doppelganger_bypassed_signing_method(*validator_pubkey)
+            .await?;
 
         metrics::inc_counter_vec(
             &metrics::SIGNED_SYNC_SELECTION_PROOFS_TOTAL,
@@ -769,7 +879,9 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         let signing_context = self.signing_context(Domain::SyncCommittee, signing_epoch);
 
         // Bypass `with_validator_signing_method`: sync committee messages are not slashable.
-        let signing_method = self.doppelganger_bypassed_signing_method(*validator_pubkey).await?;
+        let signing_method = self
+            .doppelganger_bypassed_signing_method(*validator_pubkey)
+            .await?;
 
         let signature = signing_method
             .get_signature::<E, BlindedPayload<E>>(
@@ -807,7 +919,9 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         let signing_context = self.signing_context(Domain::ContributionAndProof, signing_epoch);
 
         // Bypass `with_validator_signing_method`: sync committee messages are not slashable.
-        let signing_method = self.doppelganger_bypassed_signing_method(aggregator_pubkey).await?;
+        let signing_method = self
+            .doppelganger_bypassed_signing_method(aggregator_pubkey)
+            .await?;
 
         let message = ContributionAndProof {
             aggregator_index,
@@ -937,11 +1051,14 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
     }
 
     /// Remove a validator
-    pub async fn remove_validator_keystore(
-        &self,
-        pubkey: &PublicKey
-    ) {
-        match self.validators.write().await.delete_definition_and_keystore(pubkey).await {
+    pub async fn remove_validator_keystore(&self, pubkey: &PublicKey) {
+        match self
+            .validators
+            .write()
+            .await
+            .delete_definition_and_keystore(pubkey)
+            .await
+        {
             Ok(_) => {
                 info!(self.log, "remove validator keystore";
                 "msg" => format!("Success: delete definition and keystore {:?}", pubkey));
@@ -954,10 +1071,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
     }
 
     /// Stop a validator
-    pub async fn stop_validator_keystore(
-        &self,
-        pubkey: &PublicKey
-    ) {
+    pub async fn stop_validator_keystore(&self, pubkey: &PublicKey) {
         match self.validators.write().await.disable_keystore(pubkey).await {
             Ok(_) => {
                 info!(self.log, "stop validator keystore";
@@ -971,10 +1085,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
     }
 
     /// Start a validator
-    pub async fn start_validator_keystore(
-        &self,
-        pubkey: &PublicKey
-    ) {
+    pub async fn start_validator_keystore(&self, pubkey: &PublicKey) {
         match self.validators.write().await.enable_keystore(pubkey).await {
             Ok(_) => {
                 info!(self.log, "start validator keystore";
@@ -988,10 +1099,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
     }
 
     /// Restart a validator
-    pub async fn restart_validator_keystore(
-        &self,
-        pubkey: &PublicKey
-    ) {
+    pub async fn restart_validator_keystore(&self, pubkey: &PublicKey) {
         info!(self.log, "restarting validator keystore";
             "pubkey" => format!("{:?}", pubkey));
         self.stop_validator_keystore(pubkey).await;
@@ -999,5 +1107,25 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
         self.start_validator_keystore(pubkey).await;
     }
-}
 
+    pub async fn set_fee_recipient_for_validator(
+        &self,
+        pubkey: &PublicKey,
+        fee_recipient: Address,
+    ) {
+        info!(self.log, "setting validator fee recipient";
+            "pubkey" => format!("{:?}", pubkey),
+            "fee recipient" => format!("{:?}", fee_recipient));
+        match self
+            .validators
+            .write()
+            .await
+            .set_validator_fee_recipient(pubkey, fee_recipient)
+        {
+            Ok(_) => {}
+            Err(e) => {
+                error!(self.log, "failed to set validator fee recipient"; "error" => format!("{:?}", e));
+            }
+        }
+    }
+}

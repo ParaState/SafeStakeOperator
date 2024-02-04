@@ -1,43 +1,27 @@
-use std::collections::HashMap;
-use std::fs::{remove_dir_all, remove_file};
-use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-
-use bls::{Keypair as BlsKeypair, PublicKey as BlsPublicKey, SecretKey as BlsSecretKey};
-use consensus::ConsensusReceiverHandler;
-use eth2_keystore::KeystoreBuilder;
-use hsconfig::{ConfigError, Secret};
-use hsconfig::Export as _;
-use mempool::{MempoolReceiverHandler, TxReceiverHandler};
-use network::Receiver as NetworkReceiver;
-use slot_clock::SystemTimeSlotClock;
-use tokio::sync::RwLock;
-use tokio::time::{Duration, sleep};
-use log::{error, info, warn};
-use types::EthSpec;
-use validator_dir::insecure_keys::INSECURE_PASSWORD;
-use web3::types::H160;
-use crate::utils::error::DvfError;
-use crate::crypto::dkg::{SimpleDistributedSigner, DKGTrait, DKGMalicious};
+use crate::crypto::dkg::{DKGMalicious, DKGTrait, SimpleDistributedSigner};
 use crate::crypto::elgamal::{Ciphertext, Elgamal};
 use crate::deposit::get_distributed_deposit;
 use crate::exit::get_distributed_voluntary_exit;
-use crate::network::io_committee::{SecureNetIOCommittee, SecureNetIOChannel};
+use crate::network::io_committee::{SecureNetIOChannel, SecureNetIOCommittee};
 use crate::node::config::{
-    base_to_transaction_addr, base_to_mempool_addr, base_to_consensus_addr, base_to_signature_addr,
-    API_ADDRESS, DB_FILENAME, DISCOVERY_PORT_OFFSET, DKG_PORT_OFFSET, NodeConfig,
+    base_to_consensus_addr, base_to_mempool_addr, base_to_signature_addr, base_to_transaction_addr,
+    NodeConfig, API_ADDRESS, DB_FILENAME, DISCOVERY_PORT_OFFSET, DKG_PORT_OFFSET,
     PRESTAKE_SIGNATURE_URL, STAKE_SIGNATURE_URL, VALIDATOR_PK_URL,
 };
+use crate::node::contract::{
+    Contract, ContractCommand, EncryptedSecretKeys, Initiator, InitiatorStoreRecord, OperatorIds,
+    OperatorPublicKeys, SharedPublicKeys, Validator, CONTRACT_DATABASE_FILE, SELF_OPERATOR_ID,
+};
+use crate::node::db;
+use crate::node::db::Database;
 use crate::node::discovery::Discovery;
 /// The default channel capacity for this module.
 use crate::node::dvfcore::DvfSignatureReceiverHandler;
-use crate::node::contract::{
-    Contract, ContractCommand, EncryptedSecretKeys, Initiator, OperatorPublicKeys,
-    SharedPublicKeys, Validator, SELF_OPERATOR_ID, OperatorIds, CONTRACT_DATABASE_FILE, InitiatorStoreRecord
+use crate::node::utils::{
+    convert_address_to_withdraw_crendentials, request_to_web_server, DepositRequest, SignDigest,
+    ValidatorPkRequest,
 };
-use crate::node::db::Database;
-use crate::node::utils::{request_to_web_server, convert_address_to_withdraw_crendentials, ValidatorPkRequest, DepositRequest, SignDigest};
+use crate::utils::error::DvfError;
 use crate::validation::account_utils::default_keystore_share_password_path;
 use crate::validation::account_utils::default_keystore_share_path;
 use crate::validation::account_utils::default_operator_committee_definition_path;
@@ -45,6 +29,25 @@ use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
 use crate::validation::operator_committee_definitions::OperatorCommitteeDefinition;
 use crate::validation::validator_dir::share_builder::{insecure_kdf, ShareBuilder};
 use crate::validation::validator_store::ValidatorStore;
+use bls::{Keypair as BlsKeypair, PublicKey as BlsPublicKey, SecretKey as BlsSecretKey};
+use consensus::ConsensusReceiverHandler;
+use eth2_keystore::KeystoreBuilder;
+use hsconfig::Export as _;
+use hsconfig::{ConfigError, Secret};
+use log::{error, info, warn};
+use mempool::{MempoolReceiverHandler, TxReceiverHandler};
+use network::Receiver as NetworkReceiver;
+use slot_clock::SystemTimeSlotClock;
+use std::collections::HashMap;
+use std::fs::{remove_dir_all, remove_file};
+use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use tokio::time::{sleep, Duration};
+use types::EthSpec;
+use validator_dir::insecure_keys::INSECURE_PASSWORD;
+use web3::types::H160;
 
 const THRESHOLD: u64 = 3;
 pub const COMMITTEE_IP_HEARTBEAT_INTERVAL: u64 = 600;
@@ -70,7 +73,7 @@ pub struct Node<T: EthSpec> {
 
 // impl Send for Node{}
 impl<T: EthSpec> Node<T> {
-    pub async fn new(config: NodeConfig) -> Result<Option<Arc<RwLock<Self>>>, ConfigError> {
+    pub async fn new(config: NodeConfig) -> Result<Arc<RwLock<Self>>, ConfigError> {
         let self_address = config.base_address.ip();
         let secret_dir = config.secrets_dir.clone();
         let secret = Node::<T>::open_or_create_secret(config.node_key_path.clone())?;
@@ -129,8 +132,9 @@ impl<T: EthSpec> Node<T> {
             secret.clone(),
             config.boot_enrs.clone(),
             config.base_store_path.clone(),
-        ).await;
-        
+        )
+        .await;
+
         let node = Self {
             config,
             secret: secret.clone(),
@@ -143,23 +147,18 @@ impl<T: EthSpec> Node<T> {
         };
 
         let base_dir = secret_dir.parent().unwrap().to_path_buf();
-        let db = Database::new(base_dir.join(CONTRACT_DATABASE_FILE))
-            .map_err(|e| {error!("can't create contract database {:?}", e); ConfigError::ReadError { file: CONTRACT_DATABASE_FILE.to_string(), message: "can't create contract database".to_string() }})?;
-        Contract::spawn(
-            base_dir,
-            secret.name,
-            db.clone()
-        );
+        let db = Database::new(base_dir.join(CONTRACT_DATABASE_FILE)).map_err(|e| {
+            error!("can't create contract database {:?}", e);
+            ConfigError::ReadError {
+                file: CONTRACT_DATABASE_FILE.to_string(),
+                message: "can't create contract database".to_string(),
+            }
+        })?;
+        Contract::spawn(base_dir, secret.name, db.clone());
         let node = Arc::new(RwLock::new(node));
-        // let initiator_store  = Arc::new(RwLock::new(HashMap::new()));
-        Node::process_contract_command(
-            Arc::clone(&node),
-            db,
-            // initiator_store,
-        );
-
+        Node::process_contract_command(Arc::clone(&node), db);
         info!("Node {} successfully booted", secret.name);
-        Ok(Some(node))
+        Ok(node)
     }
 
     pub fn open_or_create_secret(path: PathBuf) -> Result<Secret, ConfigError> {
@@ -173,11 +172,7 @@ impl<T: EthSpec> Node<T> {
         }
     }
 
-    pub fn process_contract_command(
-        node: Arc<RwLock<Node<T>>>,
-        db: Database,
-        // initiator_store : InitiatorStore,
-    ) {
+    pub fn process_contract_command(node: Arc<RwLock<Node<T>>>, db: Database) {
         tokio::spawn(async move {
             loop {
                 let mut query_interval = tokio::time::interval(Duration::from_secs(12));
@@ -204,7 +199,7 @@ impl<T: EthSpec> Node<T> {
                                     shared_pks,
                                     encrypted_sks,
                                 )
-                                    .await
+                                .await
                                 {
                                     Ok(_) => {
                                         db.delete_contract_command(id).await;
@@ -218,13 +213,14 @@ impl<T: EthSpec> Node<T> {
                             }
                             ContractCommand::RemoveValidator(validator) => {
                                 info!("RemoveValidator");
-                                let va_id = validator.id;
+                                let va_pubkey = hex::encode(validator.public_key.clone());
                                 match remove_validator(node.clone(), validator).await {
                                     Ok(_) => {
+                                        db.delete_validator(va_pubkey).await;
                                         db.delete_contract_command(id).await;
                                     }
                                     Err(e) => {
-                                        error!("Failed to remove validator:  {} {}", e, va_id);
+                                        error!("Failed to remove validator:  {} {}", e, va_pubkey);
                                         db.updatetime_contract_command(id).await;
                                     }
                                 }
@@ -258,18 +254,17 @@ impl<T: EthSpec> Node<T> {
                             ContractCommand::StartInitiator(initiator, operator_pks) => {
                                 info!("StartInitiator");
                                 let initiator_id = initiator.id;
-                                match start_initiator(
-                                    node.clone(),
-                                    initiator,
-                                    operator_pks,
-                                    // initiator_store .clone(),
-                                    &db
-                                )
+                                match start_initiator(node.clone(), initiator, operator_pks, &db)
                                     .await
                                 {
-                                    Ok(_) => { db.delete_contract_command(id).await; }
+                                    Ok(_) => {
+                                        db.delete_contract_command(id).await;
+                                    }
                                     Err(e) => {
-                                        error!("Failed to start initiator:  {} {}", e, initiator_id);
+                                        error!(
+                                            "Failed to start initiator:  {} {}",
+                                            e, initiator_id
+                                        );
                                         db.updatetime_contract_command(id).await;
                                     }
                                 }
@@ -289,15 +284,19 @@ impl<T: EthSpec> Node<T> {
                                     op_pks,
                                     op_ids,
                                     minipool_address,
-                                    // initiator_store .clone(),
                                     &db,
                                     1_000_000_000,
                                 )
-                                    .await
+                                .await
                                 {
-                                    Ok(_) => { db.delete_contract_command(id).await; }
+                                    Ok(_) => {
+                                        db.delete_contract_command(id).await;
+                                    }
                                     Err(e) => {
-                                        error!("Failed to process minpool created: {} {}", e, initiator_id);
+                                        error!(
+                                            "Failed to process minpool created: {} {}",
+                                            e, initiator_id
+                                        );
                                         db.updatetime_contract_command(id).await;
                                     }
                                 }
@@ -317,40 +316,37 @@ impl<T: EthSpec> Node<T> {
                                     op_pks,
                                     op_ids,
                                     minipool_address,
-                                    // initiator_store .clone(),
                                     &db,
-                                    31_000_000_000
+                                    31_000_000_000,
                                 )
-                                    .await
+                                .await
                                 {
-                                    Ok(_) => { 
-                                        db.delete_contract_command(id).await; 
-                                        // let _ = initiator_store .write().await.remove(&initiator_id);
+                                    Ok(_) => {
+                                        db.delete_contract_command(id).await;
                                     }
                                     Err(e) => {
-                                        error!("Failed to process minpool ready: {} {}", e, initiator_id);
+                                        error!(
+                                            "Failed to process minpool ready: {} {}",
+                                            e, initiator_id
+                                        );
                                         db.updatetime_contract_command(id).await;
                                     }
                                 }
                             }
-                            ContractCommand::RemoveInitiator(
-                                initiator,
-                                op_pks
-                            ) => {
+                            ContractCommand::RemoveInitiator(initiator, op_pks) => {
                                 info!("Remove initiator, exit validator");
                                 match remove_initiator(node.clone(), initiator, op_pks, &db).await {
-                                    Ok(_) => { 
-                                        db.delete_contract_command(id).await; 
-                                        // let _ = initiator_store .write().await.remove(&initiator_id);
+                                    Ok(_) => {
+                                        db.delete_contract_command(id).await;
                                     }
                                     Err(e) => {
                                         error!("Failed to process remove initiator ready: {}", e);
                                         db.updatetime_contract_command(id).await;
                                     }
-                                } 
+                                }
                             }
                         }
-                    },
+                    }
                     Err(e) => {
                         error!("error happens when get contract command {}", e);
                     }
@@ -360,17 +356,20 @@ impl<T: EthSpec> Node<T> {
     }
 
     pub fn spawn_committee_ip_monitor(
-        node: Arc<RwLock<Node<T>>>, 
-        mut committee_def: OperatorCommitteeDefinition, 
-        exit: exit_future::Exit
+        node: Arc<RwLock<Node<T>>>,
+        mut committee_def: OperatorCommitteeDefinition,
+        exit: exit_future::Exit,
     ) {
         tokio::spawn(async move {
             let (base_port, validator_dir) = {
                 let node_ = node.read().await;
-                (node_.config.base_address.port(), node_.config.validator_dir.clone())
-                
+                (
+                    node_.config.base_address.port(),
+                    node_.config.validator_dir.clone(),
+                )
             };
-            let mut query_interval = tokio::time::interval(Duration::from_secs(COMMITTEE_IP_HEARTBEAT_INTERVAL));
+            let mut query_interval =
+                tokio::time::interval(Duration::from_secs(COMMITTEE_IP_HEARTBEAT_INTERVAL));
             query_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             loop {
                 let exit_clone = exit.clone();
@@ -408,22 +407,22 @@ impl<T: EthSpec> Node<T> {
                             loop {
                                 match restart_validator(node.clone(), committee_def.validator_id, committee_def.validator_public_key.clone()).await {
                                     Ok(_) => {
-                                        info!("Successfully restart validator: {}, pk: {}", 
+                                        info!("Successfully restart validator: {}, pk: {}",
                                             committee_def.validator_id, committee_def.validator_public_key);
                                         break;
                                     }
                                     Err(DvfError::ValidatorStoreNotReady) => {
                                         error!("Failed to restart validator: {}, pk: {}. Error:
-                                            validator store is not ready yet, will try again in 1 minute.", 
+                                            validator store is not ready yet, will try again in 1 minute.",
                                             committee_def.validator_id, committee_def.validator_public_key);
                                         tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
                                         continue;
                                     }
                                     Err(e) => {
-                                        error!("Failed to restart validator: {}, pk: {}. Error: {:?}", 
+                                        error!("Failed to restart validator: {}, pk: {}. Error: {:?}",
                                             committee_def.validator_id, committee_def.validator_public_key, e);
                                         break;
-                                    }  
+                                    }
                                 };
                             }
                         }
@@ -434,6 +433,39 @@ impl<T: EthSpec> Node<T> {
                 }
             }
         });
+    }
+
+    pub async fn set_validators_fee_recipient(&self) -> Result<(), String> {
+        let secret_dir = self.config.secrets_dir.clone();
+        let db_path = secret_dir
+            .parent()
+            .unwrap()
+            .to_path_buf()
+            .join(CONTRACT_DATABASE_FILE);
+        let validators_fee_recipients = db::query_validators_fee_recipient(&db_path)
+            .map_err(|e| format!("query validators fee recipient failed {}", e))?;
+        for (validator_publickey, fee_recipient) in validators_fee_recipients {
+            match &self.validator_store {
+                Some(validator_store) => {
+                    let publickey =
+                        BlsPublicKey::deserialize(&hex::decode(validator_publickey).unwrap())
+                            .unwrap();
+                    match validator_store
+                        .suggested_fee_recipient(&publickey.compress())
+                        .await
+                    {
+                        Some(_) => {}
+                        None => {
+                            validator_store
+                                .set_fee_recipient_for_validator(&publickey, fee_recipient)
+                                .await;
+                        }
+                    }
+                }
+                None => {}
+            }
+        }
+        Ok(())
     }
 }
 
@@ -464,7 +496,9 @@ pub async fn add_validator<T: EthSpec>(
     }
 
     let operator_base_address: Vec<Option<SocketAddr>> = {
-        node.discovery.query_addrs(&operator_public_keys, base_port).await
+        node.discovery
+            .query_addrs(&operator_public_keys, base_port)
+            .await
     };
 
     let operator_ids: Vec<u64> = validator
@@ -574,7 +608,7 @@ pub async fn add_validator<T: EthSpec>(
                     voting_keystore_share_password_path,
                     true,
                     None,
-                    None,
+                    Some(validator.owner_address),
                     None,
                     None,
                     committee_def_path,
@@ -613,7 +647,9 @@ pub async fn activate_validator<T: EthSpec>(
 
     match validator_store {
         Some(validator_store) => {
-            validator_store.start_validator_keystore(&validator_pk).await;
+            validator_store
+                .start_validator_keystore(&validator_pk)
+                .await;
             info!("[VA {}] validator {} activated", validator_id, validator_pk);
         }
         _ => {
@@ -666,7 +702,8 @@ pub async fn stop_validator<T: EthSpec>(
     validator: Validator,
 ) -> Result<(), String> {
     let validator_id = validator.id;
-    let validator_pk = BlsPublicKey::deserialize(&validator.public_key).map_err(|e| format!("[VA {}] Deserialize error ({:?})", validator_id, e))?;
+    let validator_pk = BlsPublicKey::deserialize(&validator.public_key)
+        .map_err(|e| format!("[VA {}] Deserialize error ({:?})", validator_id, e))?;
     info!(
         "[VA {}] stopping validator {}...",
         validator_id, validator_pk
@@ -691,24 +728,28 @@ pub async fn start_initiator<T: EthSpec>(
     node: Arc<RwLock<Node<T>>>,
     initiator: Initiator,
     operator_public_keys: OperatorPublicKeys,
-    // initiator_store : InitiatorStore,
-    db: &Database
+    db: &Database,
 ) -> Result<(), String> {
-
-    let (base_port,  operator_ips, secret)= {
+    let (base_port, operator_ips, secret) = {
         let node = node.read().await;
-        (node.config.base_address.port(), node.discovery.query_ips(&operator_public_keys).await, node.secret.secret.clone())
+        (
+            node.config.base_address.port(),
+            node.discovery.query_ips(&operator_public_keys).await,
+            node.secret.secret.clone(),
+        )
     };
     let secp = secp256k1::Secp256k1::new();
-    let node_secret_key = secp256k1::SecretKey::from_slice(&secret.0).expect("Unable to load secret key");
+    let node_secret_key =
+        secp256k1::SecretKey::from_slice(&secret.0).expect("Unable to load secret key");
     let node_public_key = secp256k1::PublicKey::from_secret_key(&secp, &node_secret_key);
     if operator_ips.iter().any(|x| x.is_none()) {
         sleep(Duration::from_secs(10)).await;
         return Err("StartInitializer: Insufficient operators discovered for DKG".to_string());
     }
-    let operator_ips: Vec<SocketAddr> = operator_ips.iter().map(|x| {
-        SocketAddr::new(x.unwrap(), base_port + DKG_PORT_OFFSET)
-    }).collect();
+    let operator_ips: Vec<SocketAddr> = operator_ips
+        .iter()
+        .map(|x| SocketAddr::new(x.unwrap(), base_port + DKG_PORT_OFFSET))
+        .collect();
 
     let self_op_id = *SELF_OPERATOR_ID
         .get()
@@ -725,7 +766,7 @@ pub async fn start_initiator<T: EthSpec>(
             op_ids.as_slice(),
             operator_ips.as_slice(),
         )
-            .await,
+        .await,
     );
     let dkg = DKGMalicious::new(self_op_id as u64, io, THRESHOLD as usize);
     let (keypair, va_pk, shared_pks) = dkg
@@ -734,16 +775,22 @@ pub async fn start_initiator<T: EthSpec>(
         .map_err(|e| format!("run dkg failed {:?}", e))?;
 
     // encrypt shared secret key
-    let encrypted_shared_secret_key = 
-    {
+    let encrypted_shared_secret_key = {
         let rng = rand::thread_rng();
         let mut elgamal = Elgamal::new(rng);
         let shared_secret_key = keypair.sk.serialize();
-        let encrypted_shared_secret_key = elgamal.encrypt(shared_secret_key.as_bytes(), &node_public_key).map_err(|_e| format!("elgamal encrypt shared secret failed "))?.to_bytes();
+        let encrypted_shared_secret_key = elgamal
+            .encrypt(shared_secret_key.as_bytes(), &node_public_key)
+            .map_err(|_e| format!("elgamal encrypt shared secret failed "))?
+            .to_bytes();
         hex::encode(encrypted_shared_secret_key)
     };
 
-    let shared_public_key = shared_pks.get(&(self_op_id as u64)).unwrap().as_hex_string()[2..].to_string();
+    let shared_public_key = shared_pks
+        .get(&(self_op_id as u64))
+        .unwrap()
+        .as_hex_string()[2..]
+        .to_string();
 
     let pk_str: String = va_pk.as_hex_string()[2..].to_string();
     // push va pk to web server
@@ -755,17 +802,18 @@ pub async fn start_initiator<T: EthSpec>(
         operator_id: self_op_id,
         encrypted_shared_key: encrypted_shared_secret_key,
         shared_public_key: shared_public_key,
-        sign_hex: None
+        sign_hex: None,
     };
     request_body.sign_hex = Some(request_body.sign_digest(&secret)?);
     let url_str = API_ADDRESS.get().unwrap().to_owned() + VALIDATOR_PK_URL;
     request_to_web_server(request_body, &url_str).await?;
-    db.insert_initiator_store(InitiatorStoreRecord{
+    db.insert_initiator_store(InitiatorStoreRecord {
         id: initiator.id,
         share_bls_sk: keypair.sk,
         validator_pk: va_pk,
-        share_bls_pks: shared_pks
-    }).await;
+        share_bls_pks: shared_pks,
+    })
+    .await;
     info!("dkg success!");
     Ok(())
 }
@@ -774,17 +822,21 @@ pub async fn remove_initiator<T: EthSpec>(
     node: Arc<RwLock<Node<T>>>,
     initiator: Initiator,
     operator_public_keys: OperatorPublicKeys,
-    // _initiator_store: InitiatorStore,
-    db: &Database
+    db: &Database,
 ) -> Result<(), String> {
     let (base_port, operator_ips, beacon_node_urls) = {
         let node = node.read().await;
-        (node.config.base_address.port(), node.discovery.query_ips(&operator_public_keys).await, node.config.beacon_nodes.clone())
+        (
+            node.config.base_address.port(),
+            node.discovery.query_ips(&operator_public_keys).await,
+            node.config.beacon_nodes.clone(),
+        )
     };
     let initiator_id = initiator.id;
-    let operator_ips: Vec<SocketAddr> = operator_ips.iter().map(|x| {
-        SocketAddr::new(x.unwrap(), base_port + DKG_PORT_OFFSET)
-    }).collect();
+    let operator_ips: Vec<SocketAddr> = operator_ips
+        .iter()
+        .map(|x| SocketAddr::new(x.unwrap(), base_port + DKG_PORT_OFFSET))
+        .collect();
     let self_op_id = *SELF_OPERATOR_ID
         .get()
         .ok_or("Self operator has not been set".to_string())?;
@@ -800,21 +852,43 @@ pub async fn remove_initiator<T: EthSpec>(
             op_ids.as_slice(),
             operator_ips.as_slice(),
         )
-            .await,
+        .await,
     );
-    let initiator_store = db.query_initiator_store(initiator_id).await.map_err(|e| format!("Can't find initiator store {:?}", e))?.ok_or(format!("Can't find initiator store"))?;
-    let keypair = BlsKeypair::from_components(initiator_store.share_bls_sk.public_key(), initiator_store.share_bls_sk);
+    let initiator_store = db
+        .query_initiator_store(initiator_id)
+        .await
+        .map_err(|e| format!("Can't find initiator store {:?}", e))?
+        .ok_or(format!("Can't find initiator store"))?;
+    let keypair = BlsKeypair::from_components(
+        initiator_store.share_bls_sk.public_key(),
+        initiator_store.share_bls_sk,
+    );
     let va_pk = initiator_store.validator_pk;
     let op_bls_pks = initiator_store.share_bls_pks;
 
-    let signer = SimpleDistributedSigner::new(self_op_id as u64, keypair.clone(), va_pk.clone(), op_bls_pks.clone(), io_committee, THRESHOLD as usize);
-    let mpk = BlsPublicKey::deserialize(&initiator.validator_pk.unwrap()).map_err(|e| format!("Can't deserilize bls pk {:?}", e))?;
+    let signer = SimpleDistributedSigner::new(
+        self_op_id as u64,
+        keypair.clone(),
+        va_pk.clone(),
+        op_bls_pks.clone(),
+        io_committee,
+        THRESHOLD as usize,
+    );
+    let mpk = BlsPublicKey::deserialize(&initiator.validator_pk.unwrap())
+        .map_err(|e| format!("Can't deserilize bls pk {:?}", e))?;
     if mpk != va_pk {
-        return Err(format!("validator pks don't match, local stored: {:?}, received {:?}", va_pk, mpk));
+        return Err(format!(
+            "validator pks don't match, local stored: {:?}, received {:?}",
+            va_pk, mpk
+        ));
     }
-    let _ = get_distributed_voluntary_exit::<SecureNetIOCommittee, SecureNetIOChannel, T>(&signer, &beacon_node_urls, &mpk).await.map_err(|e| {
-        format!("Can't get distributed voluntary exit {:?}", e)
-    })?;
+    let _ = get_distributed_voluntary_exit::<SecureNetIOCommittee, SecureNetIOChannel, T>(
+        &signer,
+        &beacon_node_urls,
+        &mpk,
+    )
+    .await
+    .map_err(|e| format!("Can't get distributed voluntary exit {:?}", e))?;
     Ok(())
 }
 
@@ -827,42 +901,79 @@ pub async fn minipool_deposit<T: EthSpec>(
     minipool_address: H160,
     // _initiator_store : InitiatorStore,
     db: &Database,
-    amount: u64
+    amount: u64,
 ) -> Result<(), String> {
     let (base_port, operator_ips, beacon_node_urls, secret) = {
         let node = node.read().await;
-        (node.config.base_address.port(), node.discovery.query_ips(&operator_public_keys).await, node.config.beacon_nodes.clone(), node.secret.secret.clone())
+        (
+            node.config.base_address.port(),
+            node.discovery.query_ips(&operator_public_keys).await,
+            node.config.beacon_nodes.clone(),
+            node.secret.secret.clone(),
+        )
     };
     if operator_ips.iter().any(|x| x.is_none()) {
         error!("Some operators are not online, it's critical error, minipool exiting");
-        // initiator_store .write().await.remove(&initiator_id).ok_or(format!("can't remove initiator store id: {}", initiator_id))?;
-        return Err("MinipoolDeposit: Insufficient operators discovered for distributed signing".to_string());
+        return Err(
+            "MinipoolDeposit: Insufficient operators discovered for distributed signing"
+                .to_string(),
+        );
     }
-    let operator_ips: Vec<SocketAddr> = operator_ips.iter().map(|x| {
-        SocketAddr::new(x.unwrap(), base_port + DKG_PORT_OFFSET)
-    }).collect();
+    let operator_ips: Vec<SocketAddr> = operator_ips
+        .iter()
+        .map(|x| SocketAddr::new(x.unwrap(), base_port + DKG_PORT_OFFSET))
+        .collect();
 
     let op_ids: Vec<u64> = operator_ids.into_iter().map(|x| x as u64).collect();
     let self_op_id = *SELF_OPERATOR_ID
         .get()
         .ok_or("Self operator has not been set".to_string())?;
-    // let store = initiator_store.read().await;
-    // let (keypair, va_pk, op_bls_pks) = store.get(&initiator_id).ok_or(format!("can't get initiator store id: {}", initiator_id))?;
-    let initiator_store = db.query_initiator_store(initiator_id).await.map_err(|e| format!("Can't find initiator store {:?}", e))?.ok_or(format!("Can't find initiator store"))?;
-    let keypair = BlsKeypair::from_components(initiator_store.share_bls_sk.public_key(), initiator_store.share_bls_sk);
+    let initiator_store = db
+        .query_initiator_store(initiator_id)
+        .await
+        .map_err(|e| format!("Can't find initiator store {:?}", e))?
+        .ok_or(format!("Can't find initiator store"))?;
+    let keypair = BlsKeypair::from_components(
+        initiator_store.share_bls_sk.public_key(),
+        initiator_store.share_bls_sk,
+    );
     let va_pk = initiator_store.validator_pk;
     let op_bls_pks = initiator_store.share_bls_pks;
 
-    let io_committee = Arc::new(SecureNetIOCommittee::new(self_op_id as u64, base_port + DKG_PORT_OFFSET, &op_ids, &operator_ips).await);
-    let signer = SimpleDistributedSigner::new(self_op_id as u64, keypair.clone(), va_pk.clone(), op_bls_pks.clone(), io_committee, THRESHOLD as usize);
-    let mpk = BlsPublicKey::deserialize(&validator_pk).map_err(|e| format!("Can't deserilize bls pk {:?}", e))?;
+    let io_committee = Arc::new(
+        SecureNetIOCommittee::new(
+            self_op_id as u64,
+            base_port + DKG_PORT_OFFSET,
+            &op_ids,
+            &operator_ips,
+        )
+        .await,
+    );
+    let signer = SimpleDistributedSigner::new(
+        self_op_id as u64,
+        keypair.clone(),
+        va_pk.clone(),
+        op_bls_pks.clone(),
+        io_committee,
+        THRESHOLD as usize,
+    );
+    let mpk = BlsPublicKey::deserialize(&validator_pk)
+        .map_err(|e| format!("Can't deserilize bls pk {:?}", e))?;
     if mpk != va_pk {
-        return Err(format!("validator pks don't match, local stored: {:?}, received {:?}", va_pk, mpk));
+        return Err(format!(
+            "validator pks don't match, local stored: {:?}, received {:?}",
+            va_pk, mpk
+        ));
     }
     let withdraw_cret = convert_address_to_withdraw_crendentials(minipool_address);
-    let deposit_data = get_distributed_deposit::<SecureNetIOCommittee, SecureNetIOChannel, T>(&signer, &withdraw_cret, amount, &beacon_node_urls).await.map_err(|e| {
-        format!("Can't get distributed deposit data {:?}", e)
-    })?;
+    let deposit_data = get_distributed_deposit::<SecureNetIOCommittee, SecureNetIOChannel, T>(
+        &signer,
+        &withdraw_cret,
+        amount,
+        &beacon_node_urls,
+    )
+    .await
+    .map_err(|e| format!("Can't get distributed deposit data {:?}", e))?;
     let mut request_body = DepositRequest::convert(deposit_data);
     request_body.sign_hex = Some(request_body.sign_digest(&secret)?);
     let url = {
@@ -876,16 +987,17 @@ pub async fn minipool_deposit<T: EthSpec>(
         }
     };
     let url_str = API_ADDRESS.get().unwrap().to_owned() + url;
-    request_to_web_server(request_body, &url_str).await.map_err(|e| format!("can't send request to server {:?}, url: {}", e, url_str))?;
+    request_to_web_server(request_body, &url_str)
+        .await
+        .map_err(|e| format!("can't send request to server {:?}, url: {}", e, url_str))?;
     Ok(())
 }
 
 pub async fn restart_validator<T: EthSpec>(
-    node: Arc<RwLock<Node<T>>>, 
+    node: Arc<RwLock<Node<T>>>,
     validator_id: u64,
-    validator_pk: BlsPublicKey
+    validator_pk: BlsPublicKey,
 ) -> Result<(), DvfError> {
-
     info!(
         "[VA {}] restarting validator {}...",
         validator_id, validator_pk
@@ -898,12 +1010,12 @@ pub async fn restart_validator<T: EthSpec>(
     cleanup_handler(node.clone(), validator_id).await;
     match validator_store {
         Some(validator_store) => {
-            validator_store.restart_validator_keystore(&validator_pk).await;
+            validator_store
+                .restart_validator_keystore(&validator_pk)
+                .await;
             Ok(())
         }
-        _ => {
-            Err(DvfError::ValidatorStoreNotReady)
-        }
+        _ => Err(DvfError::ValidatorStoreNotReady),
     }
 }
 
@@ -933,7 +1045,9 @@ pub async fn cleanup_keystore<T: EthSpec>(
 ) {
     match validator_store {
         Some(validator_store) => {
-            validator_store.remove_validator_keystore(validator_pk).await;
+            validator_store
+                .remove_validator_keystore(validator_pk)
+                .await;
         }
         _ => {}
     }

@@ -76,4 +76,3 @@ pub async fn check_synced<T: SlotClock>(
         Err(CandidateError::NotSynced)
     }
 }
-

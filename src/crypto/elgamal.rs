@@ -1,13 +1,13 @@
-use secp256k1::{All, Secp256k1, SecretKey, PublicKey, ecdh};
-use sha256::digest;
-use aes_gcm::{Aes128Gcm, Key, Nonce, Error};
 use aes_gcm::aead::{Aead, NewAead};
+use aes_gcm::{Aes128Gcm, Error, Key, Nonce};
 use rand::Rng;
+use secp256k1::{ecdh, All, PublicKey, Secp256k1, SecretKey};
+use sha256::digest;
 
 #[derive(PartialEq, Debug)]
 pub struct Ciphertext {
     temp_pk: PublicKey,
-    aes_ct: Vec<u8>, 
+    aes_ct: Vec<u8>,
 }
 
 // `serde` lib inserts some bytes in the middle (e.g., for len of vector)
@@ -21,39 +21,39 @@ impl Ciphertext {
     pub fn from_bytes(bytes: &[u8]) -> Self {
         let temp_pk = PublicKey::from_slice(&bytes[0..33]).unwrap();
         let aes_ct = Vec::from(&bytes[33..]);
-        Self {
-            temp_pk,
-            aes_ct,
-        }
+        Self { temp_pk, aes_ct }
     }
 }
 
 #[derive(Debug)]
 pub struct Elgamal<R> {
-	rng: R,
+    rng: R,
     secp: Secp256k1<All>,
 }
 
 impl<R> Elgamal<R>
-where R: Rng {
-	pub	fn new(rng: R) -> Self {
-		Self {
-			rng,
+where
+    R: Rng,
+{
+    pub fn new(rng: R) -> Self {
+        Self {
+            rng,
             secp: Secp256k1::new(),
-		}
-	}
-
+        }
+    }
 }
 
 impl<R> Elgamal<R>
-where R: Rng {
+where
+    R: Rng,
+{
     /// Generate a pair of secret key and  public key.
     ///
     /// # Examples
     ///
     /// ```ignore
-    /// let mut rng = rand::thread_rng(); 
-    /// let mut elgamal = Elgamal::new(rng); 
+    /// let mut rng = rand::thread_rng();
+    /// let mut elgamal = Elgamal::new(rng);
     /// let (sk, pk) = elgamal.generate_key();
     /// ```
     pub fn generate_key(&mut self) -> (SecretKey, PublicKey) {
@@ -66,8 +66,8 @@ where R: Rng {
     /// # Examples
     ///
     /// ```ignore
-    /// let mut rng = rand::thread_rng(); 
-    /// let mut elgamal = Elgamal::new(rng); 
+    /// let mut rng = rand::thread_rng();
+    /// let mut elgamal = Elgamal::new(rng);
     /// let (_, pk) = elgamal.generate_key();
     /// let cipher = elgamal.encrypt("hello".as_bytes(), &pk);
     /// ```
@@ -75,9 +75,9 @@ where R: Rng {
         let (other_sk, other_pk) = self.secp.generate_keypair(&mut self.rng);
 
         let point = ecdh::shared_secret_point(&pk, &other_sk);
-        let secret = hex::decode(digest(&point)).unwrap(); 
+        let secret = hex::decode(digest(&point)).unwrap();
 
-        let key = Key::from_slice(&secret.as_slice()[0..16]); 
+        let key = Key::from_slice(&secret.as_slice()[0..16]);
         let cipher = Aes128Gcm::new(key);
 
         let mut nonce_bytes = vec![0u8; 12]; // 96-bit nonce
@@ -90,7 +90,7 @@ where R: Rng {
 
         //nonce_bytes.extend_from_slice(aes_ct.as_slice());
         let aes_ct = [nonce_bytes, aes_ct].concat();
-		
+
         Ok(Ciphertext {
             temp_pk: other_pk,
             aes_ct,
@@ -102,39 +102,37 @@ where R: Rng {
     /// # Examples
     ///
     /// ```ignore
-    /// // Following the examples of `encrypt` 
-    /// let result = elgamal.decrypt(&cipher, &sk); 
+    /// // Following the examples of `encrypt`
+    /// let result = elgamal.decrypt(&cipher, &sk);
     /// ```
 
     pub fn decrypt(&mut self, ct: &Ciphertext, sk: &SecretKey) -> Result<Vec<u8>, Error> {
-
         let point = ecdh::shared_secret_point(&ct.temp_pk, sk);
         let secret = hex::decode(digest(&point)).unwrap();
 
-        let key = Key::from_slice(&secret.as_slice()[0..16]); 
+        let key = Key::from_slice(&secret.as_slice()[0..16]);
         let cipher = Aes128Gcm::new(key);
 
         let nonce_bytes = &ct.aes_ct.as_slice()[0..12];
         let nonce = Nonce::from_slice(nonce_bytes);
 
         let aes_ct = &ct.aes_ct.as_slice()[12..];
-        cipher.decrypt(nonce, aes_ct) 
+        cipher.decrypt(nonce, aes_ct)
     }
-
 }
 
 #[cfg(test)]
 mod tests {
-    use aes_gcm::{Aes128Gcm, Key, Nonce};
+    use super::{Ciphertext, Elgamal};
     use aes_gcm::aead::{Aead, NewAead};
-    use secp256k1::{SecretKey};
-    use super::{Elgamal, Ciphertext};
-    use sha256::{digest};
+    use aes_gcm::{Aes128Gcm, Key, Nonce};
+    use secp256k1::SecretKey;
+    use sha256::digest;
 
     #[test]
     fn test_aes() {
         let key_bytes = hex::decode("c4c7c5b5f76482c78f667a277c8bfacb").unwrap();
-        let key = Key::from_slice(key_bytes.as_slice()); 
+        let key = Key::from_slice(key_bytes.as_slice());
         let cipher = Aes128Gcm::new(key);
 
         let nonce_bytes = hex::decode("e3cf46d03a3239c65c2d50a1").unwrap();
@@ -158,9 +156,8 @@ mod tests {
 
     #[test]
     fn test_elgamal() {
-
         let rng = rand::thread_rng();
-    
+
         let mut elgamal = Elgamal::new(rng);
         let (sk, pk) = elgamal.generate_key();
         let ct = elgamal.encrypt("hello".as_bytes(), &pk).unwrap();
@@ -171,14 +168,15 @@ mod tests {
 
         let plain = elgamal.decrypt(&ct2, &sk).unwrap();
         println!("Message: {:?}", String::from_utf8(plain));
-
     }
 
     #[test]
     fn test_elgamal_from_js_serialized() {
         let rng = rand::thread_rng();
 
-        let sk_bytes = hex::decode("d7bbda914fb72b1d9604be0e86a8d9149fe1418ec95e457aac280434779c162a").unwrap();
+        let sk_bytes =
+            hex::decode("d7bbda914fb72b1d9604be0e86a8d9149fe1418ec95e457aac280434779c162a")
+                .unwrap();
         println!("sk {}: {:?}", sk_bytes.len(), sk_bytes);
         // This is an encryption of 'hello' under the public key that corresponds to the above private key
         let ct_bytes = hex::decode("02fc986be28243bbcde76b80ef86cd0ca77b2a7083761930362882144c90c8c5ec500b4e44cdc0f7cb48f3258b5de50a30f61da8c40de6dfe06989cc3a39b72d79c0").unwrap();
@@ -186,18 +184,19 @@ mod tests {
 
         let mut elgamal = Elgamal::new(rng);
         let sk = SecretKey::from_slice(sk_bytes.as_slice()).unwrap();
-        let ct = Ciphertext::from_bytes(ct_bytes.as_slice()); 
+        let ct = Ciphertext::from_bytes(ct_bytes.as_slice());
 
         let plain = elgamal.decrypt(&ct, &sk).unwrap();
         println!("Message: {:?}", String::from_utf8(plain));
-
     }
 
     #[test]
     fn test_hash() {
-        let hash = digest(hex::decode("e767757033da4644738412e4b580a700d59d40d94cf5c0f08dd76e81f70eee94").unwrap().as_slice());
+        let hash = digest(
+            hex::decode("e767757033da4644738412e4b580a700d59d40d94cf5c0f08dd76e81f70eee94")
+                .unwrap()
+                .as_slice(),
+        );
         println!("hash: {:?}", hash);
     }
-
-
 }

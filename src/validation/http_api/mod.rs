@@ -4,14 +4,17 @@ mod keystores;
 mod remotekeys;
 mod tests;
 
-use crate::validation::ValidatorStore;
-use crate::validation::account_utils::validator_definitions::{SigningDefinition, ValidatorDefinition};
 use crate::validation::account_utils::mnemonic_from_phrase;
+use crate::validation::account_utils::validator_definitions::{
+    SigningDefinition, ValidatorDefinition,
+};
+use crate::validation::ValidatorStore;
 use create_validator::{create_validators_mnemonic, create_validators_web3signer};
 use eth2::lighthouse_vc::{
     std_types::AuthResponse,
     types::{self as api_types, PublicKey, PublicKeyBytes},
 };
+use futures::executor::block_on;
 use lighthouse_version::version_with_platform;
 use serde::{Deserialize, Serialize};
 use slog::{crit, info, warn, Logger};
@@ -20,7 +23,7 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
-use std::sync::{Arc};
+use std::sync::Arc;
 use task_executor::TaskExecutor;
 use types::{ChainSpec, ConfigAndPreset, EthSpec};
 use validator_dir::Builder as ValidatorDirBuilder;
@@ -32,7 +35,6 @@ use warp::{
     },
     Filter,
 };
-use futures::executor::block_on;
 
 pub use api_secret::ApiSecret;
 
@@ -231,9 +233,9 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
         .and(signer.clone())
         .and_then(|validator_store: Arc<ValidatorStore<T, E>>, signer| {
             blocking_signed_json_task(signer, move || {
-                // Zico: It is OK to use 'block_on' here because we know this function will be spawned in OS's blocking threads, 
+                // Zico: It is OK to use 'block_on' here because we know this function will be spawned in OS's blocking threads,
                 // hence will not block tokio's core thread (for executing async tasks).
-                let validators = block_on(validator_store.initialized_validators().read()) 
+                let validators = block_on(validator_store.initialized_validators().read())
                     .validator_definitions()
                     .iter()
                     .map(|def| api_types::ValidatorData {
@@ -257,7 +259,7 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
         .and_then(
             |validator_pubkey: PublicKey, validator_store: Arc<ValidatorStore<T, E>>, signer| {
                 blocking_signed_json_task(signer, move || {
-                    // Zico: It is OK to use 'block_on' here because we know this function will be spawned in OS's blocking threads, 
+                    // Zico: It is OK to use 'block_on' here because we know this function will be spawned in OS's blocking threads,
                     // hence will not block tokio's core thread (for executing async tasks).
                     let validator = block_on(validator_store.initialized_validators().read())
                         .validator_definitions()
@@ -516,9 +518,10 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
              task_executor: TaskExecutor| {
                 blocking_signed_json_task(signer, move || {
                     let initialized_validators_rw_lock = validator_store.initialized_validators();
-                    // Zico: It is OK to use 'block_on' here because we know this function will be spawned in OS's blocking threads, 
+                    // Zico: It is OK to use 'block_on' here because we know this function will be spawned in OS's blocking threads,
                     // hence will not block tokio's core thread (for executing async tasks).
-                    let mut initialized_validators = block_on(initialized_validators_rw_lock.write());
+                    let mut initialized_validators =
+                        block_on(initialized_validators_rw_lock.write());
 
                     match (
                         initialized_validators.is_enabled(&validator_pubkey),
@@ -616,7 +619,12 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
         .and(log_filter.clone())
         .and_then(|request, signer, validator_store, task_executor, log| {
             blocking_signed_json_task(signer, move || {
-                block_on(keystores::delete(request, validator_store, task_executor, log))
+                block_on(keystores::delete(
+                    request,
+                    validator_store,
+                    task_executor,
+                    log,
+                ))
             })
         });
 

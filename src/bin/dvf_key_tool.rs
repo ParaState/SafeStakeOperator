@@ -11,12 +11,15 @@ pub const DEFAULT_ROOT_DIR: &str = ".lighthouse";
 #[tokio::main]
 async fn main() {
     // tracing_subscriber::fmt().json().init();
-    let mut logger = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
+    let mut logger =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
     logger.format_timestamp_millis();
     logger.init();
     log::info!("------dvf_key_tool------");
 
-    let network = std::env::args().nth(1).expect("ERRPR: there is no valid network argument");
+    let network = std::env::args()
+        .nth(1)
+        .expect("ERRPR: there is no valid network argument");
     let base_dir = dirs::home_dir()
         .expect("ERROR: home dir is valid")
         .join(DEFAULT_ROOT_DIR)
@@ -26,8 +29,12 @@ async fn main() {
 
     //generate secret key if not exists
     if secret_dir.exists() {
-        info!("INFO: secret file has been generated, path: {}", &secret_dir.to_str().unwrap());
-        let secret = Secret::read(secret_dir.to_str().unwrap()).expect("ERROR: can't read secret file, unexpect error happened.");
+        info!(
+            "INFO: secret file has been generated, path: {}",
+            &secret_dir.to_str().unwrap()
+        );
+        let secret = Secret::read(secret_dir.to_str().unwrap())
+            .expect("ERROR: can't read secret file, unexpect error happened.");
         info!("INFO: node public key {}", secret.name.encode_base64());
     } else {
         let secret = Secret::new();
@@ -37,7 +44,9 @@ async fn main() {
                 return;
             });
         }
-        secret.write(secret_dir.to_str().unwrap()).expect("ERROR: Can't write to file");
+        secret
+            .write(secret_dir.to_str().unwrap())
+            .expect("ERROR: Can't write to file");
         info!("INFO: node public key {}", secret.name.encode_base64());
     }
 }

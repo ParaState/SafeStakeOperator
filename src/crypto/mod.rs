@@ -1,8 +1,8 @@
 pub mod define;
+pub mod dkg;
+pub mod elgamal;
 pub mod generic_threshold;
 pub mod impls;
-pub mod elgamal;
-pub mod dkg;
 
 macro_rules! define_mod {
     ($name: ident, $mod: path) => {
@@ -11,12 +11,14 @@ macro_rules! define_mod {
 
             use crate::crypto::generic_threshold::*;
 
-            pub type ThresholdSignature = GenericThresholdSignature<
-                bls_variant::ThresholdSignature,
-            >;
+            pub type ThresholdSignature =
+                GenericThresholdSignature<bls_variant::ThresholdSignature>;
         }
     };
 }
 
-define_mod!(blst_threshold_implementations, crate::crypto::impls::blst::types);
+define_mod!(
+    blst_threshold_implementations,
+    crate::crypto::impls::blst::types
+);
 pub use blst_threshold_implementations::*;

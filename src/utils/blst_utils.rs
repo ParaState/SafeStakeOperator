@@ -1,18 +1,18 @@
-use blst::{blst_scalar, blst_p1, blst_p1_affine};
-use num_bigint::{BigInt, Sign};
+use bls::{PublicKey as WrapPublicKey, SecretKey as WrapSecretKey, PUBLIC_KEY_BYTES_LEN};
+use blst::min_pk::{PublicKey, SecretKey};
+use blst::{blst_p1, blst_p1_affine, blst_scalar};
 use bytes::{Bytes, BytesMut};
-use bls::{PUBLIC_KEY_BYTES_LEN, SecretKey as WrapSecretKey, PublicKey as WrapPublicKey};
+use num_bigint::{BigInt, Sign};
 use rand::RngCore;
 use std::ptr;
-use blst::min_pk::{SecretKey, PublicKey};
 
 /// !NOTE: in the `blst` library,
 ///  `blst_scalar` stores data (the internal field `b`) in little endian,
 /// but SecretKey serializes data (the `to_bytes` API) in big endian!
-/// In our following utils, to unify things, the input or output `Bytes` always serialize 
+/// In our following utils, to unify things, the input or output `Bytes` always serialize
 /// integers (both `blst_scalar` and `SecretKey`) in LITTLE endian.
 
-pub fn u64_to_blst_scalar (v: u64) -> blst_scalar {
+pub fn u64_to_blst_scalar(v: u64) -> blst_scalar {
     let mut x = std::mem::MaybeUninit::<blst_scalar>::uninit();
     unsafe {
         blst::blst_scalar_from_uint64(x.as_mut_ptr(), vec![v, 0, 0, 0].as_ptr());
@@ -20,7 +20,7 @@ pub fn u64_to_blst_scalar (v: u64) -> blst_scalar {
     }
 }
 
-pub fn bigint_to_blst_scalar (v: BigInt) -> blst_scalar {
+pub fn bigint_to_blst_scalar(v: BigInt) -> blst_scalar {
     let (_, v_bytes) = v.to_bytes_be();
     let mut x = blst_scalar::default();
     unsafe {
@@ -29,7 +29,7 @@ pub fn bigint_to_blst_scalar (v: BigInt) -> blst_scalar {
     x
 }
 
-pub fn blst_scalar_to_bigint (s: &blst_scalar) -> BigInt {
+pub fn blst_scalar_to_bigint(s: &blst_scalar) -> BigInt {
     BigInt::from_bytes_le(Sign::Plus, &s.b)
 }
 
@@ -51,7 +51,15 @@ pub fn another_p1_generator() -> blst_p1 {
     //
     // https://github.com/sigp/lighthouse/issues/1720
     let h = unsafe {
-        blst::blst_hash_to_g1(h.as_mut_ptr(), msg.as_ptr(), msg.len(), ptr::null(), 0, ptr::null(), 0);
+        blst::blst_hash_to_g1(
+            h.as_mut_ptr(),
+            msg.as_ptr(),
+            msg.len(),
+            ptr::null(),
+            0,
+            ptr::null(),
+            0,
+        );
         h.assume_init()
     };
     h
@@ -134,7 +142,10 @@ pub fn bytes_to_blst_p1(b: Bytes) -> blst_p1 {
 pub fn blst_p1_affines_add(points: &[blst_p1_affine]) -> blst_p1 {
     let mut res = blst_p1::default();
     unsafe {
-        let pks = points.iter().map(|x| ptr::addr_of!(*x)).collect::<Vec<*const blst_p1_affine>>();
+        let pks = points
+            .iter()
+            .map(|x| ptr::addr_of!(*x))
+            .collect::<Vec<*const blst_p1_affine>>();
         blst::blst_p1s_add(&mut res, pks.as_ptr(), pks.len());
     };
     res
@@ -144,14 +155,19 @@ pub fn blst_p1s_add(points: &[blst_p1]) -> blst_p1 {
     let mut res = blst_p1::default();
     let mut affine_points = vec![blst_p1_affine::default(); points.len()];
     unsafe {
-        let pks = points.iter().map(|x| ptr::addr_of!(*x)).collect::<Vec<*const blst_p1>>();
+        let pks = points
+            .iter()
+            .map(|x| ptr::addr_of!(*x))
+            .collect::<Vec<*const blst_p1>>();
         blst::blst_p1s_to_affine(affine_points.as_mut_ptr(), pks.as_ptr(), pks.len());
-        let pks = affine_points.iter().map(|x| ptr::addr_of!(*x)).collect::<Vec<*const blst_p1_affine>>();
+        let pks = affine_points
+            .iter()
+            .map(|x| ptr::addr_of!(*x))
+            .collect::<Vec<*const blst_p1_affine>>();
         blst::blst_p1s_add(&mut res, pks.as_ptr(), pks.len());
     };
     res
 }
-
 
 pub fn blst_ecdh_shared_secret(other_pk: &blst_p1, self_sk: &blst_scalar) -> blst_p1 {
     blst_p1_mult(other_pk, self_sk)
@@ -163,9 +179,7 @@ pub fn blst_sk_to_pk_with_generator(generator: &blst_p1, sk: &blst_scalar) -> bl
 
 pub fn blst_sk_to_pk(sk: &blst_scalar) -> blst_p1 {
     let mut pk = blst_p1::default();
-    unsafe {
-        blst::blst_sk_to_pk_in_g1(&mut pk, sk)
-    }
+    unsafe { blst::blst_sk_to_pk_in_g1(&mut pk, sk) }
     pk
 }
 
@@ -210,7 +224,7 @@ pub fn blst_sk_to_bytes(sk: &SecretKey) -> Bytes {
 }
 
 /// Deserialize bytes into a SecretKey.
-/// 
+///
 /// # Arguments
 /// * b - Little endian
 pub fn bytes_to_blst_sk(b: Bytes) -> SecretKey {
@@ -241,8 +255,6 @@ pub fn blst_scalar_to_blst_wrap_sk(p: &blst_scalar) -> WrapSecretKey {
 pub fn blst_wrap_sk_to_blst_scalar(p: &WrapSecretKey) -> blst_scalar {
     bytes_to_blst_scalar(blst_wrap_sk_to_bytes(p))
 }
-
-
 
 pub fn bytes_to_blst_scalar(b: Bytes) -> blst_scalar {
     let mut x = blst_scalar::default();

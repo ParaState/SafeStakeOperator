@@ -1,3 +1,4 @@
+use lazy_static::lazy_static;
 use miracl_core::bls12381::big;
 use miracl_core::bls12381::big::BIG;
 use miracl_core::bls12381::dbig::DBIG;
@@ -5,9 +6,7 @@ use miracl_core::bls12381::ecp::ECP;
 use miracl_core::bls12381::ecp2::ECP2;
 use miracl_core::bls12381::fp12::FP12;
 use miracl_core::bls12381::rom;
-use lazy_static::lazy_static;
-use num_bigint::{Sign, BigInt};
-
+use num_bigint::{BigInt, Sign};
 
 pub use miracl_core::bls12381::pair;
 
@@ -19,7 +18,6 @@ pub type Gt = FP12;
 
 pub const MB: usize = big::MODBYTES as usize;
 
-
 pub type G1Vector = Vec<G1>;
 pub type G2Vector = Vec<G2>;
 
@@ -30,11 +28,10 @@ lazy_static! {
     // hence there is some bit shifting, but the number is the same.
     pub static ref CURVE_ORDER: BigNum = BigNum::new_ints(&rom::CURVE_ORDER);
     static ref BUF: [u8; MB] = {
-        let mut m = [0; MB]; 
+        let mut m = [0; MB];
         CURVE_ORDER.tobytes(&mut m);
         m
     };
     pub static ref MODULUS: BigInt = BigInt::from_bytes_be(Sign::Plus, &BUF[..]);
     pub static ref DBIG_ZERO: DBigNum = DBigNum::new();
 }
-

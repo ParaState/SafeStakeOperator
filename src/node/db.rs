@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::node::contract::{Initiator, Operator, Validator};
-use log::error;
+use log::{debug, error};
 use rusqlite::{params, Connection, DropBehavior, Result};
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::oneshot;
@@ -569,7 +569,7 @@ fn insert_operator(conn: &Connection, operator: Operator) {
             base64::encode(&operator.public_key)
         ],
     ) {
-        error!("Can't insert into operators, error: {} {:?}", e, operator);
+        debug!("Can't insert into operators, error: {} {:?}", e, operator);
     }
 }
 

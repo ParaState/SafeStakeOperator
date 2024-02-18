@@ -2,6 +2,7 @@ use super::db::Database;
 use super::utils::{convert_va_pk_to_u64, FromFile, ToFile};
 use async_trait::async_trait;
 use bls::{PublicKey as BlsPublickey, SecretKey as BlsSecretKey};
+use tokio::time::sleep;
 use core::panic;
 use hscrypto::PublicKey;
 use log::{error, info, warn};
@@ -453,6 +454,7 @@ impl Contract {
         let web3 = Arc::clone(&self.web3);
         let url = DEFAULT_TRANSPORT_URL.get().unwrap();
         tokio::spawn(async move {
+            sleep(Duration::from_secs(30)).await;
             let mut query_interval = tokio::time::interval(Duration::from_secs(3600 * 1));
             loop {
                 query_interval.tick().await;
@@ -468,10 +470,6 @@ impl Contract {
                                             Ok(validators) => {
                                                 for va in validators {
                                                     if va.active {
-                                                        db.disable_validator(hex::encode(
-                                                            &va.public_key,
-                                                        ))
-                                                        .await;
                                                         let va_id = va.id;
                                                         let cmd =
                                                             ContractCommand::StopValidator(va);
@@ -492,10 +490,6 @@ impl Contract {
                                             Ok(validators) => {
                                                 for va in validators {
                                                     if !va.active {
-                                                        db.enable_validator(hex::encode(
-                                                            &va.public_key,
-                                                        ))
-                                                        .await;
                                                         let va_id = va.id;
                                                         let cmd =
                                                             ContractCommand::ActivateValidator(va);

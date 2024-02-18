@@ -49,9 +49,7 @@ impl MessageHandler for IpQueryReceiverHandler {
                     let _ = writer.send(Bytes::from(data)).await;
                 }
                 None => {
-                    let _ = writer
-                        .send(Bytes::from("can't find ip, please wait"))
-                        .await;
+                    let _ = writer.send(Bytes::from("can't find ip, please wait")).await;
                 }
             },
             Err(e) => {

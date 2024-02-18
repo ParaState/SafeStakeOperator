@@ -38,8 +38,8 @@ pub static SELF_OPERATOR_ID: OnceCell<u32> = OnceCell::const_new();
 pub static DEFAULT_TRANSPORT_URL: OnceCell<String> = OnceCell::const_new();
 pub static REGISTRY_CONTRACT: OnceCell<String> = OnceCell::const_new();
 pub static NETWORK_CONTRACT: OnceCell<String> = OnceCell::const_new();
-const QUERY_LOGS_INTERVAL: u64 = 80;
-const QUERY_BLOCK_INTERVAL: u64 = 10;
+const QUERY_LOGS_INTERVAL: u64 = 60;
+const QUERY_BLOCK_INTERVAL: u64 = 100;
 #[derive(Debug)]
 pub enum ContractError {
     StoreError,

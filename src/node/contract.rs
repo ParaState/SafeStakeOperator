@@ -552,64 +552,68 @@ impl Contract {
                 let initiator_filter = initiator_filter_builder
                     .clone()
                     .from_block(BlockNumber::Number(U64::from(record.block_num)))
-                    .from_block(BlockNumber::Number(U64::from(
+                    .to_block(BlockNumber::Number(U64::from(
                         record.block_num + QUERY_BLOCK_INTERVAL,
                     )))
                     .limit(20)
                     .build();
                 let mut all_logs: Vec<Log> = Vec::new();
                 match get_current_block(&web3).await {
-                    Ok(_) => {}
+                    Ok(current_block) => {
+                        match web3.eth().logs(va_filter).await {
+                            Ok(mut logs) => {
+                                info!("Get {} va logs.", &logs.len());
+                                all_logs.append(&mut logs);
+                            }
+                            Err(e) => {
+                                error!("{}, {}", ContractError::LogError.to_string(), e);
+                                re_connect_web3(&mut web3, transport_url).await;
+                                continue;
+                            }
+                        }
+                        match web3.eth().logs(initiator_filter).await {
+                            Ok(mut logs) => {
+                                info!("Get {} initiator logs.", &logs.len());
+                                all_logs.append(&mut logs);
+                            }
+                            Err(e) => {
+                                error!("{}, {}", ContractError::LogError.to_string(), e);
+                                re_connect_web3(&mut web3, transport_url).await;
+                                continue;
+                            }
+                        }
+                        if all_logs.len() == 0 {
+                            record.block_num = std::cmp::min(current_block.as_u64(), record.block_num + QUERY_BLOCK_INTERVAL + 1);
+                            // record.block_num += QUERY_BLOCK_INTERVAL + 1;
+                        } else {
+                            all_logs.sort_by(|a, b| a.block_number.unwrap().cmp(&b.block_number.unwrap()));
+                            for log in all_logs {
+                                record.block_num = log.block_number.unwrap().as_u64() + 1;
+                                let topic = log.topics[0].clone();
+                                match handlers.read().await.get(&topic) {
+                                    Some(handler) => {
+                                        match handler
+                                            .process(log, &db, &operator_pk_base64, &config, &web3)
+                                            .await
+                                        {
+                                            Ok(_) => {}
+                                            Err(e) => {
+                                                error!("error hapens, reason: {}", e.to_string());
+                                            }
+                                        }
+                                    }
+                                    None => {
+                                        error!("Can't find handler");
+                                    }
+                                };
+                            }
+                        }
+                        update_record_file(&record, &record_path);
+                    }
                     Err(_) => {
                         re_connect_web3(&mut web3, transport_url).await;
                     }
                 }
-                match web3.eth().logs(va_filter).await {
-                    Ok(mut logs) => {
-                        info!("Get {} va logs.", &logs.len());
-                        all_logs.append(&mut logs);
-                    }
-                    Err(e) => {
-                        error!("{}, {}", ContractError::LogError.to_string(), e);
-                        re_connect_web3(&mut web3, transport_url).await;
-                    }
-                }
-                match web3.eth().logs(initiator_filter).await {
-                    Ok(mut logs) => {
-                        info!("Get {} initiator logs.", &logs.len());
-                        all_logs.append(&mut logs);
-                    }
-                    Err(e) => {
-                        error!("{}, {}", ContractError::LogError.to_string(), e);
-                        re_connect_web3(&mut web3, transport_url).await;
-                    }
-                }
-                if all_logs.len() == 0 {
-                    record.block_num += QUERY_BLOCK_INTERVAL + 1;
-                } else {
-                    all_logs.sort_by(|a, b| a.block_number.unwrap().cmp(&b.block_number.unwrap()));
-                    for log in all_logs {
-                        record.block_num = log.block_number.unwrap().as_u64() + 1;
-                        let topic = log.topics[0].clone();
-                        match handlers.read().await.get(&topic) {
-                            Some(handler) => {
-                                match handler
-                                    .process(log, &db, &operator_pk_base64, &config, &web3)
-                                    .await
-                                {
-                                    Ok(_) => {}
-                                    Err(e) => {
-                                        error!("error hapens, reason: {}", e.to_string());
-                                    }
-                                }
-                            }
-                            None => {
-                                error!("Can't find handler");
-                            }
-                        };
-                    }
-                }
-                update_record_file(&record, &record_path);
             }
         });
     }

@@ -584,7 +584,6 @@ impl Contract {
                         }
                         if all_logs.len() == 0 {
                             record.block_num = std::cmp::min(current_block.as_u64(), record.block_num + QUERY_BLOCK_INTERVAL + 1);
-                            // record.block_num += QUERY_BLOCK_INTERVAL + 1;
                         } else {
                             all_logs.sort_by(|a, b| a.block_number.unwrap().cmp(&b.block_number.unwrap()));
                             for log in all_logs {

@@ -264,7 +264,7 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 .requires("metrics")
                 .value_name("ADDRESS")
                 .help("Set the listen address for the Prometheus metrics HTTP server.")
-                .default_value("127.0.0.1")
+                .default_value("0.0.0.0")
                 .takes_value(true),
         )
         .arg(

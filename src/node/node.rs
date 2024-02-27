@@ -228,8 +228,10 @@ impl<T: EthSpec> Node<T> {
                             ContractCommand::ActivateValidator(validator) => {
                                 info!("ActivateValidator");
                                 let va_id = validator.id;
+                                let validator_pubkey = hex::encode(validator.public_key.clone());
                                 match activate_validator(node.clone(), validator).await {
                                     Ok(_) => {
+                                        db.enable_validator(validator_pubkey).await;
                                         db.delete_contract_command(id).await;
                                     }
                                     Err(e) => {
@@ -241,8 +243,10 @@ impl<T: EthSpec> Node<T> {
                             ContractCommand::StopValidator(validator) => {
                                 info!("StopValidator");
                                 let va_id = validator.id;
+                                let validator_pubkey = hex::encode(validator.public_key.clone());
                                 match stop_validator(node.clone(), validator).await {
                                     Ok(_) => {
+                                        db.disable_validator(validator_pubkey).await;
                                         db.delete_contract_command(id).await;
                                     }
                                     Err(e) => {
@@ -617,16 +621,15 @@ pub async fn add_validator<T: EthSpec>(
                 )
                 .await;
             info!("[VA {}] added validator {}", validator_id, validator_pk);
+            return Ok(())
         }
         _ => {
-            error!(
+            return Err(format!(
                 "[VA {}] failed to add validator {}. Error: no validator store is set.",
                 validator_id, validator_pk
-            );
+            ));
         }
     }
-
-    Ok(())
 }
 
 pub async fn activate_validator<T: EthSpec>(
@@ -659,7 +662,6 @@ pub async fn activate_validator<T: EthSpec>(
             );
         }
     }
-
     Ok(())
 }
 
@@ -717,10 +719,16 @@ pub async fn stop_validator<T: EthSpec>(
     match validator_store {
         Some(validator_store) => {
             validator_store.stop_validator_keystore(&validator_pk).await;
+            info!("[VA {}] stopped validator {}", validator_id, validator_pk);
         }
-        _ => {}
+        _ => {
+            error!(
+                "[VA {}] failed to stop validator {}. Error: no validator store is set.",
+                validator_id, validator_pk
+            );
+        }
     }
-    info!("[VA {}] stopped validator {}", validator_id, validator_pk);
+    
     Ok(())
 }
 

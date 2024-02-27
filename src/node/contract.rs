@@ -2,6 +2,7 @@ use super::db::Database;
 use super::utils::{convert_va_pk_to_u64, FromFile, ToFile};
 use async_trait::async_trait;
 use bls::{PublicKey as BlsPublickey, SecretKey as BlsSecretKey};
+use tokio::time::sleep;
 use core::panic;
 use hscrypto::PublicKey;
 use log::{error, info, warn};
@@ -38,8 +39,8 @@ pub static SELF_OPERATOR_ID: OnceCell<u32> = OnceCell::const_new();
 pub static DEFAULT_TRANSPORT_URL: OnceCell<String> = OnceCell::const_new();
 pub static REGISTRY_CONTRACT: OnceCell<String> = OnceCell::const_new();
 pub static NETWORK_CONTRACT: OnceCell<String> = OnceCell::const_new();
-const QUERY_LOGS_INTERVAL: u64 = 60 * 3;
-const QUERY_BLOCK_INTERVAL: u64 = 10;
+const QUERY_LOGS_INTERVAL: u64 = 60;
+const QUERY_BLOCK_INTERVAL: u64 = 100;
 #[derive(Debug)]
 pub enum ContractError {
     StoreError,
@@ -453,6 +454,7 @@ impl Contract {
         let web3 = Arc::clone(&self.web3);
         let url = DEFAULT_TRANSPORT_URL.get().unwrap();
         tokio::spawn(async move {
+            sleep(Duration::from_secs(30)).await;
             let mut query_interval = tokio::time::interval(Duration::from_secs(3600 * 1));
             loop {
                 query_interval.tick().await;
@@ -468,10 +470,6 @@ impl Contract {
                                             Ok(validators) => {
                                                 for va in validators {
                                                     if va.active {
-                                                        db.disable_validator(hex::encode(
-                                                            &va.public_key,
-                                                        ))
-                                                        .await;
                                                         let va_id = va.id;
                                                         let cmd =
                                                             ContractCommand::StopValidator(va);
@@ -492,10 +490,6 @@ impl Contract {
                                             Ok(validators) => {
                                                 for va in validators {
                                                     if !va.active {
-                                                        db.enable_validator(hex::encode(
-                                                            &va.public_key,
-                                                        ))
-                                                        .await;
                                                         let va_id = va.id;
                                                         let cmd =
                                                             ContractCommand::ActivateValidator(va);
@@ -558,64 +552,67 @@ impl Contract {
                 let initiator_filter = initiator_filter_builder
                     .clone()
                     .from_block(BlockNumber::Number(U64::from(record.block_num)))
-                    .from_block(BlockNumber::Number(U64::from(
+                    .to_block(BlockNumber::Number(U64::from(
                         record.block_num + QUERY_BLOCK_INTERVAL,
                     )))
                     .limit(20)
                     .build();
                 let mut all_logs: Vec<Log> = Vec::new();
                 match get_current_block(&web3).await {
-                    Ok(_) => {}
+                    Ok(current_block) => {
+                        match web3.eth().logs(va_filter).await {
+                            Ok(mut logs) => {
+                                info!("Get {} va logs.", &logs.len());
+                                all_logs.append(&mut logs);
+                            }
+                            Err(e) => {
+                                error!("{}, {}", ContractError::LogError.to_string(), e);
+                                re_connect_web3(&mut web3, transport_url).await;
+                                continue;
+                            }
+                        }
+                        match web3.eth().logs(initiator_filter).await {
+                            Ok(mut logs) => {
+                                info!("Get {} initiator logs.", &logs.len());
+                                all_logs.append(&mut logs);
+                            }
+                            Err(e) => {
+                                error!("{}, {}", ContractError::LogError.to_string(), e);
+                                re_connect_web3(&mut web3, transport_url).await;
+                                continue;
+                            }
+                        }
+                        if all_logs.len() == 0 {
+                            record.block_num = std::cmp::min(current_block.as_u64(), record.block_num + QUERY_BLOCK_INTERVAL + 1);
+                        } else {
+                            all_logs.sort_by(|a, b| a.block_number.unwrap().cmp(&b.block_number.unwrap()));
+                            for log in all_logs {
+                                record.block_num = log.block_number.unwrap().as_u64() + 1;
+                                let topic = log.topics[0].clone();
+                                match handlers.read().await.get(&topic) {
+                                    Some(handler) => {
+                                        match handler
+                                            .process(log, &db, &operator_pk_base64, &config, &web3)
+                                            .await
+                                        {
+                                            Ok(_) => {}
+                                            Err(e) => {
+                                                error!("error hapens, reason: {}", e.to_string());
+                                            }
+                                        }
+                                    }
+                                    None => {
+                                        error!("Can't find handler");
+                                    }
+                                };
+                            }
+                        }
+                        update_record_file(&record, &record_path);
+                    }
                     Err(_) => {
                         re_connect_web3(&mut web3, transport_url).await;
                     }
                 }
-                match web3.eth().logs(va_filter).await {
-                    Ok(mut logs) => {
-                        info!("Get {} va logs.", &logs.len());
-                        all_logs.append(&mut logs);
-                    }
-                    Err(e) => {
-                        error!("{}, {}", ContractError::LogError.to_string(), e);
-                        re_connect_web3(&mut web3, transport_url).await;
-                    }
-                }
-                match web3.eth().logs(initiator_filter).await {
-                    Ok(mut logs) => {
-                        info!("Get {} initiator logs.", &logs.len());
-                        all_logs.append(&mut logs);
-                    }
-                    Err(e) => {
-                        error!("{}, {}", ContractError::LogError.to_string(), e);
-                        re_connect_web3(&mut web3, transport_url).await;
-                    }
-                }
-                if all_logs.len() == 0 {
-                    record.block_num += QUERY_BLOCK_INTERVAL + 1;
-                } else {
-                    all_logs.sort_by(|a, b| a.block_number.unwrap().cmp(&b.block_number.unwrap()));
-                    for log in all_logs {
-                        record.block_num = log.block_number.unwrap().as_u64() + 1;
-                        let topic = log.topics[0].clone();
-                        match handlers.read().await.get(&topic) {
-                            Some(handler) => {
-                                match handler
-                                    .process(log, &db, &operator_pk_base64, &config, &web3)
-                                    .await
-                                {
-                                    Ok(_) => {}
-                                    Err(e) => {
-                                        error!("error hapens, reason: {}", e.to_string());
-                                    }
-                                }
-                            }
-                            None => {
-                                error!("Can't find handler");
-                            }
-                        };
-                    }
-                }
-                update_record_file(&record, &record_path);
             }
         });
     }

@@ -155,14 +155,14 @@ impl SigningMethod {
             fork,
             genesis_validators_root,
         });
-
+        let seconds_per_slot = spec.seconds_per_slot;
         self.get_signature_from_root(
             signable_message,
             signing_root,
             executor,
             fork_info,
             epoch,
-            spec,
+            seconds_per_slot,
         )
         .await
     }
@@ -175,7 +175,7 @@ impl SigningMethod {
         executor: &TaskExecutor,
         fork_info: Option<ForkInfo>,
         signing_epoch: Epoch,
-        spec: &ChainSpec,
+        seconds_per_slot: u64,
     ) -> Result<Signature, Error> {
         match self {
             SigningMethod::LocalKeystore { voting_keypair, .. } => {
@@ -293,17 +293,17 @@ impl SigningMethod {
                         // hence will NOT enter the corresponding phase of signing attestation.
                         (s, "SELECT", false)
                     }
-                    SignableMessage::SyncSelectionProof(_) => {
-                        (Slot::new(0 as u64), "SYNC_SELECT", false)
+                    SignableMessage::SyncSelectionProof(s) => {
+                        (s.slot, "SYNC_SELECT", false)
                     }
-                    SignableMessage::SyncCommitteeSignature { .. } => {
-                        (Slot::new(0 as u64), "SYNC_COMMITTEE", true)
+                    SignableMessage::SyncCommitteeSignature { beacon_block_root: _, slot } => {
+                        (slot, "SYNC_COMMITTEE", true)
                     }
-                    SignableMessage::SignedContributionAndProof(_) => {
-                        (Slot::new(0 as u64), "CONTRIB", true)
+                    SignableMessage::SignedContributionAndProof(c) => {
+                        (c.contribution.slot, "CONTRIB", true)
                     }
                     SignableMessage::ValidatorRegistration(_) => {
-                        (Slot::new(0 as u64), "VA_REG", false)
+                        (signing_epoch.start_slot(T::slots_per_epoch()), "VA_REG", false)
                     }
                     SignableMessage::VoluntaryExit(e) => {
                         (e.epoch.start_slot(T::slots_per_epoch()), "VA_EXIT", true)
@@ -342,7 +342,7 @@ impl SigningMethod {
                     // I set this to be the epoch remaining time for selection proof, so bad committee (VA) might take several mintues
                     // to timeout, making duties of other VAs outdated.)
                     // 2. most duties should complete in a slot
-                    let task_timeout = Duration::from_secs(spec.seconds_per_slot * 2 / 3);
+                    let task_timeout = Duration::from_secs(seconds_per_slot * 2 / 3);
                     let timeout = sleep(task_timeout);
                     let work = dvf_signer.threshold_sign(signing_root);
                     let dt: DateTime<Utc> = Utc::now();

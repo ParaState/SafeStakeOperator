@@ -389,15 +389,15 @@ impl Config {
             })
             .transpose()?;
 
-        if let Some(registration_timestamp_override) =
-            cli_args.value_of("builder-registration-timestamp-override")
-        {
-            config.builder_registration_timestamp_override = Some(
-                registration_timestamp_override
-                    .parse::<u64>()
-                    .map_err(|_| "builder-registration-timestamp-override is not a valid u64.")?,
-            );
-        }
+        // if let Some(registration_timestamp_override) =
+        //     cli_args.value_of("builder-registration-timestamp-override")
+        // {
+        //     config.builder_registration_timestamp_override = Some(
+        //         registration_timestamp_override
+        //             .parse::<u64>()
+        //             .map_err(|_| "builder-registration-timestamp-override is not a valid u64.")?,
+        //     );
+        // }
 
         config.enable_latency_measurement_service =
             parse_optional(cli_args, "latency-measurement-service")?.unwrap_or(true);

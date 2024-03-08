@@ -269,17 +269,19 @@ impl SigningMethod {
                 Ok(response.signature)
             }
             SigningMethod::DistributedKeystore { dvf_signer, .. } => {
-                let _timer =
-                    metrics::start_timer_vec(&metrics::SIGNING_TIMES, &[metrics::LOCAL_KEYSTORE]);
+                let _timer = metrics::start_timer_vec(
+                    &metrics::SIGNING_TIMES,
+                    &[metrics::DISTRIBUTED_KEYSTORE],
+                );
 
                 let (slot, duty, only_aggregator) = match signable_message {
-                    SignableMessage::RandaoReveal(_) => {
+                    SignableMessage::RandaoReveal(e) => {
                         // Every operator should be able to get randao signature,
                         // otherwise if, e.g, only 2 out of 4 gets the randao signature,
                         // then the committee wouldn't be able to get enough partial signatuers for
                         // aggregation, because the other 2 operations who don't get the randao
                         // will NOT enter the next phase of signing block.
-                        (Slot::new(0 as u64), "RANDAO", false)
+                        (e.start_slot(T::slots_per_epoch()), "RANDAO", false)
                     }
                     SignableMessage::AttestationData(a) => (a.slot, "ATTESTER", true),
                     SignableMessage::BeaconBlock(b) => (b.slot(), "PROPOSER", true),
@@ -293,18 +295,19 @@ impl SigningMethod {
                         // hence will NOT enter the corresponding phase of signing attestation.
                         (s, "SELECT", false)
                     }
-                    SignableMessage::SyncSelectionProof(s) => {
-                        (s.slot, "SYNC_SELECT", false)
-                    }
-                    SignableMessage::SyncCommitteeSignature { beacon_block_root: _, slot } => {
-                        (slot, "SYNC_COMMITTEE", true)
-                    }
+                    SignableMessage::SyncSelectionProof(s) => (s.slot, "SYNC_SELECT", false),
+                    SignableMessage::SyncCommitteeSignature {
+                        beacon_block_root: _,
+                        slot,
+                    } => (slot, "SYNC_COMMITTEE", true),
                     SignableMessage::SignedContributionAndProof(c) => {
                         (c.contribution.slot, "CONTRIB", true)
                     }
-                    SignableMessage::ValidatorRegistration(_) => {
-                        (signing_epoch.start_slot(T::slots_per_epoch()), "VA_REG", false)
-                    }
+                    SignableMessage::ValidatorRegistration(_) => (
+                        signing_epoch.start_slot(T::slots_per_epoch()),
+                        "VA_REG",
+                        false,
+                    ),
                     SignableMessage::VoluntaryExit(e) => {
                         (e.epoch.start_slot(T::slots_per_epoch()), "VA_EXIT", true)
                     }

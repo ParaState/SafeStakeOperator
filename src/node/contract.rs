@@ -2,7 +2,6 @@ use super::db::Database;
 use super::utils::{convert_va_pk_to_u64, FromFile, ToFile};
 use async_trait::async_trait;
 use bls::{PublicKey as BlsPublickey, SecretKey as BlsSecretKey};
-use tokio::time::sleep;
 use core::panic;
 use hscrypto::PublicKey;
 use log::{error, info, warn};
@@ -15,6 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::OnceCell;
 use tokio::sync::{Mutex, RwLock};
+use tokio::time::sleep;
 use web3::ethabi::{token, Event, EventParam, ParamType, RawLog};
 use web3::{
     contract::{Contract as EthContract, Options},
@@ -583,9 +583,14 @@ impl Contract {
                             }
                         }
                         if all_logs.len() == 0 {
-                            record.block_num = std::cmp::min(current_block.as_u64(), record.block_num + QUERY_BLOCK_INTERVAL + 1);
+                            record.block_num = std::cmp::min(
+                                current_block.as_u64(),
+                                record.block_num + QUERY_BLOCK_INTERVAL + 1,
+                            );
                         } else {
-                            all_logs.sort_by(|a, b| a.block_number.unwrap().cmp(&b.block_number.unwrap()));
+                            all_logs.sort_by(|a, b| {
+                                a.block_number.unwrap().cmp(&b.block_number.unwrap())
+                            });
                             for log in all_logs {
                                 record.block_num = log.block_number.unwrap().as_u64() + 1;
                                 let topic = log.topics[0].clone();

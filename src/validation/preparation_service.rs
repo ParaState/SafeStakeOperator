@@ -15,7 +15,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
 use types::{
-    Address, ChainSpec, Epoch, EthSpec, ProposerPreparationData, SignedValidatorRegistrationData, ValidatorRegistrationData
+    Address, ChainSpec, Epoch, EthSpec, ProposerPreparationData, SignedValidatorRegistrationData,
+    ValidatorRegistrationData,
 };
 
 /// Number of epochs before the Bellatrix hard fork to begin posting proposer preparations.
@@ -391,15 +392,24 @@ impl<T: SlotClock + 'static, E: EthSpec> PreparationService<T, E> {
             match registration_duration {
                 Some(duration) => {
                     let registartion_timestamp = duration.as_secs();
-                    if slot % (E::slots_per_epoch() * EPOCHS_PER_VALIDATOR_REGISTRATION_SUBMISSION) == 0 {
-                
-                        self.publish_validator_registration_data(registration_keys, registartion_timestamp, epoch)
-                            .await?;
+                    if slot % (E::slots_per_epoch() * EPOCHS_PER_VALIDATOR_REGISTRATION_SUBMISSION)
+                        == 0
+                    {
+                        self.publish_validator_registration_data(
+                            registration_keys,
+                            registartion_timestamp,
+                            epoch,
+                        )
+                        .await?;
                     } else if !changed_keys.is_empty() {
-                        self.publish_validator_registration_data(changed_keys, registartion_timestamp, epoch)
-                            .await?;
+                        self.publish_validator_registration_data(
+                            changed_keys,
+                            registartion_timestamp,
+                            epoch,
+                        )
+                        .await?;
                     }
-                },
+                }
                 _ => {
                     error!(
                         log,
@@ -407,7 +417,6 @@ impl<T: SlotClock + 'static, E: EthSpec> PreparationService<T, E> {
                     )
                 }
             }
-            
         }
 
         Ok(())
@@ -417,7 +426,7 @@ impl<T: SlotClock + 'static, E: EthSpec> PreparationService<T, E> {
         &self,
         registration_keys: Vec<ValidatorRegistrationKey>,
         registartion_timestamp: u64,
-        epoch: Epoch
+        epoch: Epoch,
     ) -> Result<(), String> {
         let log = self.context.log();
 
@@ -436,14 +445,14 @@ impl<T: SlotClock + 'static, E: EthSpec> PreparationService<T, E> {
                 signed_data
             } else {
                 let timestamp = registartion_timestamp;
-                    // if let Some(timestamp) = self.builder_registration_timestamp_override {
-                    //     timestamp
-                    // } else {
-                    //     SystemTime::now()
-                    //         .duration_since(UNIX_EPOCH)
-                    //         .map_err(|e| format!("{e:?}"))?
-                    //         .as_secs()
-                    // };
+                // if let Some(timestamp) = self.builder_registration_timestamp_override {
+                //     timestamp
+                // } else {
+                //     SystemTime::now()
+                //         .duration_since(UNIX_EPOCH)
+                //         .map_err(|e| format!("{e:?}"))?
+                //         .as_secs()
+                // };
 
                 let ValidatorRegistrationKey {
                     fee_recipient,
@@ -453,13 +462,15 @@ impl<T: SlotClock + 'static, E: EthSpec> PreparationService<T, E> {
 
                 let signed_data = match self
                     .validator_store
-                    .sign_validator_registration_data(ValidatorRegistrationData {
-                        fee_recipient,
-                        gas_limit,
-                        timestamp,
-                        pubkey,
-                    },
-                    epoch)
+                    .sign_validator_registration_data(
+                        ValidatorRegistrationData {
+                            fee_recipient,
+                            gas_limit,
+                            timestamp,
+                            pubkey,
+                        },
+                        epoch,
+                    )
                     .await
                 {
                     Ok(data) => data,

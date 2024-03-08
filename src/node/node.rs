@@ -22,13 +22,17 @@ use crate::node::utils::{
     ValidatorPkRequest,
 };
 use crate::utils::error::DvfError;
-use crate::validation::account_utils::default_keystore_share_password_path;
-use crate::validation::account_utils::default_keystore_share_path;
-use crate::validation::account_utils::default_operator_committee_definition_path;
-use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
-use crate::validation::operator_committee_definitions::OperatorCommitteeDefinition;
-use crate::validation::validator_dir::share_builder::{insecure_kdf, ShareBuilder};
-use crate::validation::validator_store::ValidatorStore;
+use crate::validation::{
+    account_utils::{
+        default_keystore_share_password_path, default_keystore_share_path,
+        default_operator_committee_definition_path,
+    },
+    eth2_keystore_share::keystore_share::KeystoreShare,
+    http_metrics::metrics::{self, set_int_gauge},
+    operator_committee_definitions::OperatorCommitteeDefinition,
+    validator_dir::share_builder::{insecure_kdf, ShareBuilder},
+    validator_store::ValidatorStore,
+};
 use bls::{Keypair as BlsKeypair, PublicKey as BlsPublicKey, SecretKey as BlsSecretKey};
 use consensus::ConsensusReceiverHandler;
 use eth2_keystore::KeystoreBuilder;
@@ -51,7 +55,8 @@ use web3::types::H160;
 
 const THRESHOLD: u64 = 3;
 pub const COMMITTEE_IP_HEARTBEAT_INTERVAL: u64 = 600;
-
+pub const BALANCE_USED_UP: i64 = 1;
+pub const BALANCE_STILL_AVAILABLE: i64 = 0;
 // type InitiatorStore =
 //     Arc<RwLock<HashMap<u32, (BlsKeypair, BlsPublicKey, HashMap<u64, BlsPublicKey>)>>>;
 
@@ -621,7 +626,12 @@ pub async fn add_validator<T: EthSpec>(
                 )
                 .await;
             info!("[VA {}] added validator {}", validator_id, validator_pk);
-            return Ok(())
+            set_int_gauge(
+                &metrics::DVT_VC_BALANCE_USED_UP,
+                &[&validator_pk.as_hex_string()],
+                BALANCE_STILL_AVAILABLE,
+            );
+            return Ok(());
         }
         _ => {
             return Err(format!(
@@ -654,6 +664,11 @@ pub async fn activate_validator<T: EthSpec>(
                 .start_validator_keystore(&validator_pk)
                 .await;
             info!("[VA {}] validator {} activated", validator_id, validator_pk);
+            set_int_gauge(
+                &metrics::DVT_VC_BALANCE_USED_UP,
+                &[&validator_pk.as_hex_string()],
+                BALANCE_STILL_AVAILABLE,
+            );
         }
         _ => {
             error!(
@@ -728,7 +743,12 @@ pub async fn stop_validator<T: EthSpec>(
             );
         }
     }
-    
+    set_int_gauge(
+        &metrics::DVT_VC_BALANCE_USED_UP,
+        &[&validator_pk.as_hex_string()],
+        BALANCE_USED_UP,
+    );
+
     Ok(())
 }
 

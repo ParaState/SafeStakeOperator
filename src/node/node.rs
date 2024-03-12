@@ -12,14 +12,15 @@ use crate::node::contract::{
     Contract, ContractCommand, EncryptedSecretKeys, Initiator, InitiatorStoreRecord, OperatorIds,
     OperatorPublicKeys, SharedPublicKeys, Validator, CONTRACT_DATABASE_FILE, SELF_OPERATOR_ID,
 };
-use crate::node::db;
-use crate::node::db::Database;
-use crate::node::discovery::Discovery;
-/// The default channel capacity for this module.
-use crate::node::dvfcore::DvfSignatureReceiverHandler;
-use crate::node::utils::{
-    convert_address_to_withdraw_crendentials, request_to_web_server, DepositRequest, SignDigest,
-    ValidatorPkRequest,
+use crate::node::{
+    db::{self, Database},
+    discovery::Discovery,
+    dvfcore::DvfSignatureReceiverHandler,
+    status_report::StatusReport,
+    utils::{
+        convert_address_to_withdraw_crendentials, request_to_web_server, DepositRequest,
+        SignDigest, ValidatorPkRequest,
+    },
 };
 use crate::utils::error::DvfError;
 use crate::validation::{
@@ -79,7 +80,9 @@ pub struct Node<T: EthSpec> {
 // impl Send for Node{}
 impl<T: EthSpec> Node<T> {
     pub async fn new(config: NodeConfig) -> Result<Arc<RwLock<Self>>, ConfigError> {
-        let self_address = config.base_address.ip();
+        let base_address = config.base_address.clone();
+        let self_ip = base_address.ip();
+
         let secret_dir = config.secrets_dir.clone();
         let secret = Node::<T>::open_or_create_secret(config.node_key_path.clone())?;
 
@@ -132,7 +135,7 @@ impl<T: EthSpec> Node<T> {
 
         let base_port = config.base_address.port();
         let discovery = Discovery::spawn(
-            self_address,
+            self_ip,
             base_port + DISCOVERY_PORT_OFFSET,
             secret.clone(),
             config.boot_enrs.clone(),
@@ -162,6 +165,12 @@ impl<T: EthSpec> Node<T> {
         Contract::spawn(base_dir, secret.name, db.clone());
         let node = Arc::new(RwLock::new(node));
         Node::process_contract_command(Arc::clone(&node), db);
+        StatusReport::spawn(
+            base_address,
+            *SELF_OPERATOR_ID.get().unwrap(),
+            secret.secret,
+        );
+
         info!("Node {} successfully booted", secret.name);
         Ok(node)
     }

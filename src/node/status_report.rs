@@ -1,15 +1,15 @@
+use crate::node::config::{API_ADDRESS, STATUS_REPORT_URL};
+use crate::node::utils::request_to_web_server;
 use crate::node::utils::SignDigest;
 use crate::validation::http_metrics::metrics;
 use hscrypto::SecretKey;
 use serde::Serialize;
 use std::net::SocketAddr;
 use std::time::Duration;
-use crate::node::config::{API_ADDRESS, STATUS_REPORT_URL};
-use crate::node::utils::request_to_web_server;
 #[derive(Debug, Serialize)]
 pub struct StatusReportRequest {
     #[serde(rename = "operatorId")]
-    pub operator_id: u64,
+    pub operator_id: u32,
     pub address: String,
     #[serde(rename = "validatorEnabled")]
     pub validator_enabled: usize,
@@ -28,10 +28,10 @@ pub struct StatusReportRequest {
 
 impl SignDigest for StatusReportRequest {}
 
-struct StatusReport {}
+pub struct StatusReport {}
 
 impl StatusReport {
-    pub async fn spawn(address: SocketAddr, operator_id: u64, secret: SecretKey) {
+    pub fn spawn(address: SocketAddr, operator_id: u32, secret: SecretKey) {
         tokio::spawn(async move {
             let mut report_interval = tokio::time::interval(Duration::from_secs(60 * 5));
             loop {
@@ -59,8 +59,7 @@ impl StatusReport {
                 log::info!("[Dvf Status Report] Body: {:?}", &report_body);
                 let url_str = API_ADDRESS.get().unwrap().to_owned() + STATUS_REPORT_URL;
                 tokio::spawn(async move {
-                    _ = request_to_web_server(report_body, &url_str)
-                        .await;
+                    _ = request_to_web_server(report_body, &url_str).await;
                 });
             }
         });

@@ -272,3 +272,26 @@ pub async fn gather_prometheus_metrics<T: EthSpec>(
 
     String::from_utf8(buffer).map_err(|e| format!("Failed to encode prometheus info: {:?}", e))
 }
+
+pub fn int_gauge(int_gauge: &Result<IntGauge>) -> i64 {
+    if let Ok(int_gauge) = int_gauge {
+        return int_gauge.get();
+    }
+    0
+}
+
+pub fn int_counter_vec(int_counter_vec: &Result<IntCounterVec>, name: &[&str]) -> u64 {
+    if let Ok(int_counter_vec) = int_counter_vec {
+        if let Ok(int_counter) = int_counter_vec.get_metric_with_label_values(name) {
+            return int_counter.get();
+        }
+    }
+    0
+}
+
+pub fn int_counter(int_counter: &Result<IntCounter>) -> u64 {
+    if let Ok(int_counter) = int_counter {
+        return int_counter.get();
+    }
+    0
+}

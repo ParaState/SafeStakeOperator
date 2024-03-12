@@ -469,8 +469,7 @@ impl Contract {
                                             if let Some(va) = validator {
                                                 if used_up && va.active {
                                                     let va_id = va.id;
-                                                    let cmd =
-                                                        ContractCommand::StopValidator(va);
+                                                    let cmd = ContractCommand::StopValidator(va);
                                                     db.insert_contract_command(
                                                         va_id,
                                                         serde_json::to_string(&cmd).unwrap(),
@@ -489,7 +488,10 @@ impl Contract {
                                             }
                                         }
                                         Err(e) => {
-                                            error!("failed to query validator by public keys {:?}", e);
+                                            error!(
+                                                "failed to query validator by public keys {:?}",
+                                                e
+                                            );
                                         }
                                     }
                                 }
@@ -1129,14 +1131,22 @@ pub async fn query_operator_from_contract(
             Err(ContractError::ContractParseError)
         })
         .unwrap();
-    let (name, pk, address, _, _, _, _, _): (String, Vec<u8>, Address, U256, U256, bool, bool, bool) =
-        contract
-            .query("_operators", (id,), None, Options::default(), None)
-            .await
-            .or_else(|e| {
-                error!("Can't query from contract {}", e);
-                Err(ContractError::QueryError)
-            })?;
+    let (name, pk, address, _, _, _, _, _): (
+        String,
+        Vec<u8>,
+        Address,
+        U256,
+        U256,
+        bool,
+        bool,
+        bool,
+    ) = contract
+        .query("_operators", (id,), None, Options::default(), None)
+        .await
+        .or_else(|e| {
+            error!("Can't query from contract {}", e);
+            Err(ContractError::QueryError)
+        })?;
     Ok(Operator {
         id,
         name,
@@ -1169,14 +1179,19 @@ pub async fn check_validators(
             Err(ContractError::ContractParseError)
         })
         .unwrap();
-    let (_, paid_block, _, _, _): (U256, U256, U256, U256, bool) =
-        contract
-            .query("_validatorDatas", (hex::decode(validator_public_keys.clone()).unwrap(),), None, Options::default(), None)
-            .await
-            .or_else(|e| {
-                error!("Can't getAccountPaidBlockNumber from contract {}", e);
-                Err(ContractError::QueryError)
-            })?;
+    let (_, paid_block, _, _, _): (U256, U256, U256, U256, bool) = contract
+        .query(
+            "_validatorDatas",
+            (hex::decode(validator_public_keys.clone()).unwrap(),),
+            None,
+            Options::default(),
+            None,
+        )
+        .await
+        .or_else(|e| {
+            error!("Can't getAccountPaidBlockNumber from contract {}", e);
+            Err(ContractError::QueryError)
+        })?;
     let current_block = get_current_block(web3).await?;
     info!(
         "current block {:?}, paid block {:?} , validator {}",

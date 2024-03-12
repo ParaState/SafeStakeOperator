@@ -41,7 +41,7 @@ pub enum DbCommand {
     DeleteInitiator(u32, oneshot::Sender<DbResult<Option<Initiator>>>),
     InsertInitiatorStore(InitiatorStoreRecord),
     QueryInitiatorStore(u32, oneshot::Sender<DbResult<Option<InitiatorStoreRecord>>>),
-    QueryAllValidatorPublicKeys(oneshot::Sender<DbResult<Vec<String>>>)
+    QueryAllValidatorPublicKeys(oneshot::Sender<DbResult<Vec<String>>>),
 }
 
 #[derive(Clone)]
@@ -563,9 +563,7 @@ impl Database {
             .expect("Failed to receive reply of query initiator store from db")
     }
 
-    pub async fn query_all_validator_publickeys(
-        &self,
-    ) -> DbResult<Vec<String>> {
+    pub async fn query_all_validator_publickeys(&self) -> DbResult<Vec<String>> {
         let (sender, receiver) = oneshot::channel();
         if let Err(e) = self
             .channel
@@ -1119,9 +1117,7 @@ pub fn query_validators_fee_recipient<P: AsRef<Path>>(path: P) -> DbResult<Vec<(
     Ok(res)
 }
 
-pub fn query_all_validator_publickeys(
-    conn: &Connection
-) -> DbResult<Vec<String>>{
+pub fn query_all_validator_publickeys(conn: &Connection) -> DbResult<Vec<String>> {
     let mut public_keys = Vec::new();
     match conn.prepare("select distinct public_key from validators") {
         Ok(mut stmt) => {

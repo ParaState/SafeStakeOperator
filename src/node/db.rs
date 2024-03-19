@@ -723,7 +723,7 @@ fn query_validator_by_public_key(
 ) -> DbResult<Option<Validator>> {
     // select releated operators
     let mut releated_operators: Vec<u32> = Vec::new();
-    match conn.prepare("SELECT operator_id from validator_operators_mapping where public_key = (?)")
+    match conn.prepare("SELECT operator_id from validator_operators_mapping where validator_pk = (?)")
     {
         Ok(mut stmt) => {
             let mut rows = stmt.query([validator_pk])?;
@@ -745,8 +745,8 @@ fn query_validator_by_public_key(
             match rows.next()? {
                 Some(row) => {
                     let public_key: String = row.get(0)?;
-                    let owner_address: String = row.get(2)?;
                     let id: String = row.get(1)?;
+                    let owner_address: String = row.get(2)?;
                     Ok(Some(Validator {
                         public_key: hex::decode(&public_key).unwrap().try_into().unwrap(),
                         id: id.parse().unwrap(),

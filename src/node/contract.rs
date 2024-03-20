@@ -455,7 +455,7 @@ impl Contract {
         let url = DEFAULT_TRANSPORT_URL.get().unwrap();
         tokio::spawn(async move {
             sleep(Duration::from_secs(30)).await;
-            let mut query_interval = tokio::time::interval(Duration::from_secs(3600 * 1));
+            let mut query_interval = tokio::time::interval(Duration::from_secs(60 * 10));
             loop {
                 query_interval.tick().await;
                 let mut web3 = web3.lock().await;

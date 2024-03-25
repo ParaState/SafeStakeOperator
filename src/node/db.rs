@@ -41,6 +41,7 @@ pub enum DbCommand {
     DeleteInitiator(u32, oneshot::Sender<DbResult<Option<Initiator>>>),
     InsertInitiatorStore(InitiatorStoreRecord),
     QueryInitiatorStore(u32, oneshot::Sender<DbResult<Option<InitiatorStoreRecord>>>),
+    QueryAllValidatorPublicKeys(oneshot::Sender<DbResult<Vec<String>>>),
 }
 
 #[derive(Clone)]
@@ -222,6 +223,10 @@ impl Database {
                     }
                     DbCommand::QueryInitiatorStore(initiator_id, sender) => {
                         let response = query_initiator_store(&mut conn, initiator_id);
+                        let _ = sender.send(response);
+                    }
+                    DbCommand::QueryAllValidatorPublicKeys(sender) => {
+                        let response = query_all_validator_publickeys(&mut conn);
                         let _ = sender.send(response);
                     }
                 }
@@ -504,7 +509,7 @@ impl Database {
     pub async fn updatetime_contract_command(&self, id: u32) {
         if let Err(e) = self
             .channel
-            .send(DbCommand::DeleteContractCommand(id))
+            .send(DbCommand::UpdatetimeContractCommand(id))
             .await
         {
             panic!("Failed to send insert validator command to store: {}", e);
@@ -556,6 +561,23 @@ impl Database {
         receiver
             .await
             .expect("Failed to receive reply of query initiator store from db")
+    }
+
+    pub async fn query_all_validator_publickeys(&self) -> DbResult<Vec<String>> {
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::QueryAllValidatorPublicKeys(sender))
+            .await
+        {
+            panic!(
+                "Failed to send query validators public keys command to store: {}",
+                e
+            );
+        }
+        receiver
+            .await
+            .expect("Failed to receive reply of query validators public keys from db")
     }
 }
 
@@ -701,7 +723,7 @@ fn query_validator_by_public_key(
 ) -> DbResult<Option<Validator>> {
     // select releated operators
     let mut releated_operators: Vec<u32> = Vec::new();
-    match conn.prepare("SELECT operator_id from validator_operators_mapping where public_key = (?)")
+    match conn.prepare("SELECT operator_id from validator_operators_mapping where validator_pk = (?)")
     {
         Ok(mut stmt) => {
             let mut rows = stmt.query([validator_pk])?;
@@ -723,8 +745,8 @@ fn query_validator_by_public_key(
             match rows.next()? {
                 Some(row) => {
                     let public_key: String = row.get(0)?;
-                    let owner_address: String = row.get(2)?;
                     let id: String = row.get(1)?;
+                    let owner_address: String = row.get(2)?;
                     Ok(Some(Validator {
                         public_key: hex::decode(&public_key).unwrap().try_into().unwrap(),
                         id: id.parse().unwrap(),
@@ -1093,6 +1115,24 @@ pub fn query_validators_fee_recipient<P: AsRef<Path>>(path: P) -> DbResult<Vec<(
         res.push((validator_publickey, address));
     }
     Ok(res)
+}
+
+pub fn query_all_validator_publickeys(conn: &Connection) -> DbResult<Vec<String>> {
+    let mut public_keys = Vec::new();
+    match conn.prepare("select distinct public_key from validators") {
+        Ok(mut stmt) => {
+            let mut rows = stmt.query([])?;
+            while let Some(row) = rows.next()? {
+                let public_key: String = row.get(0)?;
+                public_keys.push(public_key);
+            }
+        }
+        Err(e) => {
+            error!("Can't prepare statement {}", e);
+            return Err(e);
+        }
+    }
+    Ok(public_keys)
 }
 
 #[tokio::test]

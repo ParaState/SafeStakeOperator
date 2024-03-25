@@ -12,23 +12,28 @@ use crate::node::contract::{
     Contract, ContractCommand, EncryptedSecretKeys, Initiator, InitiatorStoreRecord, OperatorIds,
     OperatorPublicKeys, SharedPublicKeys, Validator, CONTRACT_DATABASE_FILE, SELF_OPERATOR_ID,
 };
-use crate::node::db;
-use crate::node::db::Database;
-use crate::node::discovery::Discovery;
-/// The default channel capacity for this module.
-use crate::node::dvfcore::DvfSignatureReceiverHandler;
-use crate::node::utils::{
-    convert_address_to_withdraw_crendentials, request_to_web_server, DepositRequest, SignDigest,
-    ValidatorPkRequest,
+use crate::node::{
+    db::{self, Database},
+    discovery::Discovery,
+    dvfcore::DvfSignatureReceiverHandler,
+    status_report::StatusReport,
+    utils::{
+        convert_address_to_withdraw_crendentials, request_to_web_server, DepositRequest,
+        SignDigest, ValidatorPkRequest,
+    },
 };
 use crate::utils::error::DvfError;
-use crate::validation::account_utils::default_keystore_share_password_path;
-use crate::validation::account_utils::default_keystore_share_path;
-use crate::validation::account_utils::default_operator_committee_definition_path;
-use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
-use crate::validation::operator_committee_definitions::OperatorCommitteeDefinition;
-use crate::validation::validator_dir::share_builder::{insecure_kdf, ShareBuilder};
-use crate::validation::validator_store::ValidatorStore;
+use crate::validation::{
+    account_utils::{
+        default_keystore_share_password_path, default_keystore_share_path,
+        default_operator_committee_definition_path,
+    },
+    eth2_keystore_share::keystore_share::KeystoreShare,
+    http_metrics::metrics::{self, set_int_gauge},
+    operator_committee_definitions::OperatorCommitteeDefinition,
+    validator_dir::share_builder::{insecure_kdf, ShareBuilder},
+    validator_store::ValidatorStore,
+};
 use bls::{Keypair as BlsKeypair, PublicKey as BlsPublicKey, SecretKey as BlsSecretKey};
 use consensus::ConsensusReceiverHandler;
 use eth2_keystore::KeystoreBuilder;
@@ -51,7 +56,8 @@ use web3::types::H160;
 
 const THRESHOLD: u64 = 3;
 pub const COMMITTEE_IP_HEARTBEAT_INTERVAL: u64 = 600;
-
+pub const BALANCE_USED_UP: i64 = 1;
+pub const BALANCE_STILL_AVAILABLE: i64 = 0;
 // type InitiatorStore =
 //     Arc<RwLock<HashMap<u32, (BlsKeypair, BlsPublicKey, HashMap<u64, BlsPublicKey>)>>>;
 
@@ -74,7 +80,9 @@ pub struct Node<T: EthSpec> {
 // impl Send for Node{}
 impl<T: EthSpec> Node<T> {
     pub async fn new(config: NodeConfig) -> Result<Arc<RwLock<Self>>, ConfigError> {
-        let self_address = config.base_address.ip();
+        let base_address = config.base_address.clone();
+        let self_ip = base_address.ip();
+
         let secret_dir = config.secrets_dir.clone();
         let secret = Node::<T>::open_or_create_secret(config.node_key_path.clone())?;
 
@@ -127,7 +135,7 @@ impl<T: EthSpec> Node<T> {
 
         let base_port = config.base_address.port();
         let discovery = Discovery::spawn(
-            self_address,
+            self_ip,
             base_port + DISCOVERY_PORT_OFFSET,
             secret.clone(),
             config.boot_enrs.clone(),
@@ -157,6 +165,12 @@ impl<T: EthSpec> Node<T> {
         Contract::spawn(base_dir, secret.name, db.clone());
         let node = Arc::new(RwLock::new(node));
         Node::process_contract_command(Arc::clone(&node), db);
+        StatusReport::spawn(
+            base_address,
+            *SELF_OPERATOR_ID.get().unwrap(),
+            secret.secret,
+        );
+
         info!("Node {} successfully booted", secret.name);
         Ok(node)
     }
@@ -621,7 +635,12 @@ pub async fn add_validator<T: EthSpec>(
                 )
                 .await;
             info!("[VA {}] added validator {}", validator_id, validator_pk);
-            return Ok(())
+            set_int_gauge(
+                &metrics::DVT_VC_BALANCE_USED_UP,
+                &[&validator_pk.as_hex_string()],
+                BALANCE_STILL_AVAILABLE,
+            );
+            return Ok(());
         }
         _ => {
             return Err(format!(
@@ -654,6 +673,11 @@ pub async fn activate_validator<T: EthSpec>(
                 .start_validator_keystore(&validator_pk)
                 .await;
             info!("[VA {}] validator {} activated", validator_id, validator_pk);
+            set_int_gauge(
+                &metrics::DVT_VC_BALANCE_USED_UP,
+                &[&validator_pk.as_hex_string()],
+                BALANCE_STILL_AVAILABLE,
+            );
         }
         _ => {
             error!(
@@ -728,7 +752,12 @@ pub async fn stop_validator<T: EthSpec>(
             );
         }
     }
-    
+    set_int_gauge(
+        &metrics::DVT_VC_BALANCE_USED_UP,
+        &[&validator_pk.as_hex_string()],
+        BALANCE_USED_UP,
+    );
+
     Ok(())
 }
 

@@ -1,7 +1,7 @@
 version: '3'
 services:
   geth:
-    image: ethereum/client-go:v1.13.11
+    image: ethereum/client-go:v1.13.14
     pull_policy: always
     restart: unless-stopped
     network_mode: "host"
@@ -38,7 +38,7 @@ services:
 
   lighthouse:
     network_mode: "host"
-    image: sigp/lighthouse:v4.6.0
+    image: sigp/lighthouse:v5.1.2
     pull_policy: always
     restart: unless-stopped
     volumes:
@@ -81,8 +81,7 @@ services:
       - /bin/sh
       - -c
       - |
-        node_ip=${NODE_IP:-$(curl -s ifconfig.me)}
-        dvf validator_client --metrics --debug-level=info --network=${OPERATOR_NETWORK} --beacon-nodes=${BEACON_NODE_ENDPOINT} --api=${API_SERVER} --ws-url=${WS_URL}  --ip=$$node_ip --id=${OPERATOR_ID} --registry-contract=${REGISTRY_CONTRACT_ADDRESS} --network-contract=${NETWORK_CONTRACT_ADDRESS} --base-port=26000 2>&1
+        dvf validator_client --metrics --debug-level=info --network=${OPERATOR_NETWORK} --beacon-nodes=${BEACON_NODE_ENDPOINT} --api=${API_SERVER} --ws-url=${WS_URL}  --ip=${NODE_IP} --id=${OPERATOR_ID} --registry-contract=${REGISTRY_CONTRACT_ADDRESS} --network-contract=${NETWORK_CONTRACT_ADDRESS} --base-port=26000 2>&1
     expose:
       - "26000"
       - "26001"
@@ -158,7 +157,7 @@ services:
       - "8546"
       - "30303"
   erigon:
-    image: thorax/erigon:v2.56.2
+    image: thorax/erigon:v2.59.0
     pull_policy: always
     restart: unless-stopped
     network_mode: "host"

@@ -509,7 +509,7 @@ impl Database {
     pub async fn updatetime_contract_command(&self, id: u32) {
         if let Err(e) = self
             .channel
-            .send(DbCommand::DeleteContractCommand(id))
+            .send(DbCommand::UpdatetimeContractCommand(id))
             .await
         {
             panic!("Failed to send insert validator command to store: {}", e);

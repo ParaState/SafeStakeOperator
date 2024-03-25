@@ -37,7 +37,7 @@ pub const ATTESTATION_SELECTION_PROOFS: &str = "attestation_selection_proofs";
 pub const SUBSCRIPTIONS: &str = "subscriptions";
 pub const LOCAL_KEYSTORE: &str = "local_keystore";
 pub const WEB3SIGNER: &str = "web3signer";
-
+pub const DISTRIBUTED_KEYSTORE: &str = "distributed_keystore";
 pub use lighthouse_metrics::*;
 
 lazy_static::lazy_static! {
@@ -201,6 +201,21 @@ lazy_static::lazy_static! {
         "vc_beacon_node_latency_primary_endpoint",
         "Round-trip latency for the primary BN endpoint",
     );
+
+    /*
+     * Distributed validator client
+     */
+    pub static ref DVT_VC_BALANCE_USED_UP: Result<IntGaugeVec> = try_create_int_gauge_vec(
+        "vc_balance_used_up",
+        "Set to 1 if the validator's balance is used up, otherwise set to 0",
+        &["validator"]
+    );
+
+    pub static ref DVT_VC_CONNECTED_NODES: Result<IntCounter> = try_create_int_counter(
+        "vc_connected_nodes",
+        "The number of connected nodes",
+    );
+
 }
 
 pub async fn gather_prometheus_metrics<T: EthSpec>(
@@ -256,4 +271,27 @@ pub async fn gather_prometheus_metrics<T: EthSpec>(
         .unwrap();
 
     String::from_utf8(buffer).map_err(|e| format!("Failed to encode prometheus info: {:?}", e))
+}
+
+pub fn int_gauge(int_gauge: &Result<IntGauge>) -> i64 {
+    if let Ok(int_gauge) = int_gauge {
+        return int_gauge.get();
+    }
+    0
+}
+
+pub fn int_counter_vec(int_counter_vec: &Result<IntCounterVec>, name: &[&str]) -> u64 {
+    if let Ok(int_counter_vec) = int_counter_vec {
+        if let Ok(int_counter) = int_counter_vec.get_metric_with_label_values(name) {
+            return int_counter.get();
+        }
+    }
+    0
+}
+
+pub fn int_counter(int_counter: &Result<IntCounter>) -> u64 {
+    if let Ok(int_counter) = int_counter {
+        return int_counter.get();
+    }
+    0
 }

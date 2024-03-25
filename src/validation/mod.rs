@@ -6,7 +6,7 @@ mod cli;
 mod config;
 mod duties_service;
 mod graffiti_file;
-mod http_metrics;
+pub mod http_metrics;
 mod key_cache;
 mod latency;
 mod notifier;

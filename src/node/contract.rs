@@ -2,7 +2,6 @@ use super::db::Database;
 use super::utils::{convert_va_pk_to_u64, FromFile, ToFile};
 use async_trait::async_trait;
 use bls::{PublicKey as BlsPublickey, SecretKey as BlsSecretKey};
-use tokio::time::sleep;
 use core::panic;
 use hscrypto::PublicKey;
 use log::{error, info, warn};
@@ -15,6 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::OnceCell;
 use tokio::sync::{Mutex, RwLock};
+use tokio::time::sleep;
 use web3::ethabi::{token, Event, EventParam, ParamType, RawLog};
 use web3::{
     contract::{Contract as EthContract, Options},
@@ -455,60 +455,48 @@ impl Contract {
         let url = DEFAULT_TRANSPORT_URL.get().unwrap();
         tokio::spawn(async move {
             sleep(Duration::from_secs(30)).await;
-            let mut query_interval = tokio::time::interval(Duration::from_secs(3600 * 1));
+            let mut query_interval = tokio::time::interval(Duration::from_secs(60 * 10));
             loop {
                 query_interval.tick().await;
                 let mut web3 = web3.lock().await;
-                match db.query_all_validator_address().await {
-                    Ok(owners) => {
-                        for owner in owners {
-                            match check_account(&config, owner, &web3).await {
-                                Ok(t) => {
-                                    if t {
-                                        // stop validators related to the block
-                                        match db.query_validator_by_address(owner).await {
-                                            Ok(validators) => {
-                                                for va in validators {
-                                                    if va.active {
-                                                        let va_id = va.id;
-                                                        let cmd =
-                                                            ContractCommand::StopValidator(va);
-                                                        db.insert_contract_command(
-                                                            va_id,
-                                                            serde_json::to_string(&cmd).unwrap(),
-                                                        )
-                                                        .await;
-                                                    }
+                match db.query_all_validator_publickeys().await {
+                    Ok(public_keys) => {
+                        for public_key in public_keys {
+                            match check_validators(&config, public_key.clone(), &web3).await {
+                                Ok(used_up) => {
+                                    match db.query_validator_by_public_key(public_key).await {
+                                        Ok(validator) => {
+                                            if let Some(va) = validator {
+                                                if used_up && va.active {
+                                                    let va_id = va.id;
+                                                    let cmd = ContractCommand::StopValidator(va);
+                                                    db.insert_contract_command(
+                                                        va_id,
+                                                        serde_json::to_string(&cmd).unwrap(),
+                                                    )
+                                                    .await;
+                                                } else if !used_up && !va.active {
+                                                    let va_id = va.id;
+                                                    let cmd =
+                                                        ContractCommand::ActivateValidator(va);
+                                                    db.insert_contract_command(
+                                                        va_id,
+                                                        serde_json::to_string(&cmd).unwrap(),
+                                                    )
+                                                    .await;
                                                 }
-                                            }
-                                            Err(e) => {
-                                                error!("query validator related to the address failed {:?}", e);
                                             }
                                         }
-                                    } else {
-                                        match db.query_validator_by_address(owner).await {
-                                            Ok(validators) => {
-                                                for va in validators {
-                                                    if !va.active {
-                                                        let va_id = va.id;
-                                                        let cmd =
-                                                            ContractCommand::ActivateValidator(va);
-                                                        db.insert_contract_command(
-                                                            va_id,
-                                                            serde_json::to_string(&cmd).unwrap(),
-                                                        )
-                                                        .await;
-                                                    }
-                                                }
-                                            }
-                                            Err(e) => {
-                                                error!("query validator related to the address failed {:?}", e);
-                                            }
+                                        Err(e) => {
+                                            error!(
+                                                "failed to query validator by public keys {:?}",
+                                                e
+                                            );
                                         }
                                     }
                                 }
                                 Err(e) => {
-                                    error!("check account failed {}", e.to_string());
+                                    error!("check validator failed {}", e.to_string());
                                     re_connect_web3(&mut web3, url).await;
                                 }
                             }
@@ -583,9 +571,14 @@ impl Contract {
                             }
                         }
                         if all_logs.len() == 0 {
-                            record.block_num = std::cmp::min(current_block.as_u64(), record.block_num + QUERY_BLOCK_INTERVAL + 1);
+                            record.block_num = std::cmp::min(
+                                current_block.as_u64(),
+                                record.block_num + QUERY_BLOCK_INTERVAL + 1,
+                            );
                         } else {
-                            all_logs.sort_by(|a, b| a.block_number.unwrap().cmp(&b.block_number.unwrap()));
+                            all_logs.sort_by(|a, b| {
+                                a.block_number.unwrap().cmp(&b.block_number.unwrap())
+                            });
                             for log in all_logs {
                                 record.block_num = log.block_number.unwrap().as_u64() + 1;
                                 let topic = log.topics[0].clone();
@@ -1138,14 +1131,22 @@ pub async fn query_operator_from_contract(
             Err(ContractError::ContractParseError)
         })
         .unwrap();
-    let (name, address, pk, _, _, _, _): (String, Address, Vec<u8>, U256, U256, U256, bool) =
-        contract
-            .query("getOperatorById", (id,), None, Options::default(), None)
-            .await
-            .or_else(|e| {
-                error!("Can't query from contract {}", e);
-                Err(ContractError::QueryError)
-            })?;
+    let (name, pk, address, _, _, _, _, _): (
+        String,
+        Vec<u8>,
+        Address,
+        U256,
+        U256,
+        bool,
+        bool,
+        bool,
+    ) = contract
+        .query("_operators", (id,), None, Options::default(), None)
+        .await
+        .or_else(|e| {
+            error!("Can't query from contract {}", e);
+            Err(ContractError::QueryError)
+        })?;
     Ok(Operator {
         id,
         name,
@@ -1154,10 +1155,10 @@ pub async fn query_operator_from_contract(
     })
 }
 
-// check the paid block number of address. If the block is behind the current block number, stop validators related to the address
-pub async fn check_account(
+// check the paid block number of validators. If the block is behind the current block number, stop the validator.
+pub async fn check_validators(
     config: &ContractConfig,
-    owner: Address,
+    validator_public_keys: String,
     web3: &Web3<WebSocket>,
 ) -> Result<bool, ContractError> {
     let raw_abi = std::fs::read_to_string(&config.safestake_network_abi_path)
@@ -1178,18 +1179,23 @@ pub async fn check_account(
             Err(ContractError::ContractParseError)
         })
         .unwrap();
-    let (_, _, _, _, _, _, _, paid_block): (U256, U256, U256, U256, U256, U256, bool, U256) =
-        contract
-            .query("_owners", (owner,), None, Options::default(), None)
-            .await
-            .or_else(|e| {
-                error!("Can't getAccountPaidBlockNumber from contract {}", e);
-                Err(ContractError::QueryError)
-            })?;
+    let (_, paid_block, _, _, _): (U256, U256, U256, U256, bool) = contract
+        .query(
+            "_validatorDatas",
+            (hex::decode(validator_public_keys.clone()).unwrap(),),
+            None,
+            Options::default(),
+            None,
+        )
+        .await
+        .or_else(|e| {
+            error!("Can't getAccountPaidBlockNumber from contract {}", e);
+            Err(ContractError::QueryError)
+        })?;
     let current_block = get_current_block(web3).await?;
     info!(
-        "current block {:?}, paid block {:?} , account {}",
-        current_block, paid_block, owner
+        "current block {:?}, paid block {:?} , validator {}",
+        current_block, paid_block, validator_public_keys
     );
     if current_block.as_u64() >= paid_block.as_u64() {
         Ok(true)

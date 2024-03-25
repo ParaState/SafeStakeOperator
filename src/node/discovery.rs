@@ -1,3 +1,4 @@
+use crate::validation::http_metrics::metrics::{self, inc_counter};
 use crate::DEFAULT_CHANNEL_CAPACITY;
 use bytes::Bytes;
 use dvf_version::VERSION;
@@ -22,7 +23,6 @@ use tokio::sync::RwLock;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::{timeout, Interval};
-
 pub const DEFAULT_DISCOVERY_IP_STORE: &str = "discovery_ip_store";
 pub const DISCOVER_HEARTBEAT_INTERVAL: u64 = 60;
 
@@ -133,6 +133,7 @@ impl Discovery {
                                     if let Some(ip) = enr.ip4() {
                                         // update public key ip
                                         store.write(enr.public_key().encode(), ip.octets().to_vec()).await;
+                                        set_metrics(&store, enr.public_key().encode()).await;
                                     };
                                 };
                             }
@@ -145,12 +146,14 @@ impl Discovery {
                                 if let Some(ip) = enr.ip4() {
                                     // update public key ip
                                     store.write(enr.public_key().encode(), ip.octets().to_vec()).await;
+                                    set_metrics(&store, enr.public_key().encode()).await;
                                 };
                             },
                             Event::SessionEstablished(enr, _addr) => {
                                 if let Some(ip) = enr.ip4() {
                                     // update public key ip
                                     store.write(enr.public_key().encode(), ip.octets().to_vec()).await;
+                                    set_metrics(&store, enr.public_key().encode()).await;
                                 };
                             },
                             Event::SocketUpdated(addr) => {
@@ -158,6 +161,7 @@ impl Discovery {
                                 match addr {
                                     V4(v4addr) => {
                                         store.write(local_enr.public_key().encode(), v4addr.ip().octets().to_vec()).await;
+                                        set_metrics(&store, local_enr.public_key().encode()).await;
                                     }
                                     V6(_) => {}
                                 }
@@ -334,6 +338,7 @@ impl Discovery {
                     } else {
                         info!("Get ip from boot node, pk {}, ip {:?}", &base64_pk, data);
                         self.store.write(pk.into(), data.to_vec()).await;
+                        set_metrics(&self.store, pk.to_vec()).await;
                         Some(IpAddr::V4(Ipv4Addr::new(
                             data[0], data[1], data[2], data[3],
                         )))
@@ -350,5 +355,24 @@ impl Discovery {
             }
         };
         ipaddr
+    }
+}
+
+async fn is_new_op(store: &Store, pk: Vec<u8>) -> bool {
+    match store.read(pk).await {
+        Ok(r) => match r {
+            Some(_) => false,
+            None => true,
+        },
+        Err(e) => {
+            error!("Failed to read from node {}", e);
+            false
+        }
+    }
+}
+
+async fn set_metrics(store: &Store, pk: Vec<u8>) {
+    if is_new_op(store, pk).await {
+        inc_counter(&metrics::DVT_VC_CONNECTED_NODES)
     }
 }

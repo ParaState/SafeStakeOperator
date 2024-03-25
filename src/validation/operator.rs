@@ -113,8 +113,8 @@ impl TOperator for RemoteOperator {
             return Err(DvfError::SocketAddrUnknown);
         }
 
-        let n_try: u64 = 3;
-        let timeout_mill: u64 = 600;
+        let n_try: u64 = 2;
+        let timeout_mill: u64 = 200;
         let dvf_message = DvfMessage {
             version: VERSION,
             validator_id: self.validator_id,

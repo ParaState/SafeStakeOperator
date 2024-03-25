@@ -729,6 +729,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
     pub async fn sign_validator_registration_data(
         &self,
         validator_registration_data: ValidatorRegistrationData,
+        epoch: Epoch,
     ) -> Result<SignedValidatorRegistrationData, Error> {
         let domain_hash = self.spec.get_builder_domain();
         let signing_root = validator_registration_data.signing_root(domain_hash);
@@ -742,8 +743,8 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
                 signing_root,
                 &self.task_executor,
                 None,
-                Epoch::new(0),
-                &self.spec,
+                epoch,
+                self.spec.seconds_per_slot,
             )
             .await?;
 

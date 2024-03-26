@@ -114,7 +114,7 @@ impl TOperator for RemoteOperator {
         }
 
         let n_try: u64 = 2;
-        let timeout_mill: u64 = 200;
+        let timeout_mill: u64 = 600;
         let dvf_message = DvfMessage {
             version: VERSION,
             validator_id: self.validator_id,

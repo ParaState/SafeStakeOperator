@@ -40,7 +40,7 @@ pub static DEFAULT_TRANSPORT_URL: OnceCell<String> = OnceCell::const_new();
 pub static REGISTRY_CONTRACT: OnceCell<String> = OnceCell::const_new();
 pub static NETWORK_CONTRACT: OnceCell<String> = OnceCell::const_new();
 const QUERY_LOGS_INTERVAL: u64 = 60;
-const QUERY_BLOCK_INTERVAL: u64 = 100;
+const QUERY_BLOCK_INTERVAL: u64 = 500;
 #[derive(Debug)]
 pub enum ContractError {
     StoreError,
@@ -529,25 +529,26 @@ impl Contract {
             loop {
                 query_interval.tick().await;
                 let mut web3 = web3.lock().await;
-                let va_filter = va_filter_builder
-                    .clone()
-                    .from_block(BlockNumber::Number(U64::from(record.block_num)))
-                    .to_block(BlockNumber::Number(U64::from(
-                        record.block_num + QUERY_BLOCK_INTERVAL,
-                    )))
-                    .limit(20)
-                    .build();
-                let initiator_filter = initiator_filter_builder
-                    .clone()
-                    .from_block(BlockNumber::Number(U64::from(record.block_num)))
-                    .to_block(BlockNumber::Number(U64::from(
-                        record.block_num + QUERY_BLOCK_INTERVAL,
-                    )))
-                    .limit(20)
-                    .build();
                 let mut all_logs: Vec<Log> = Vec::new();
                 match get_current_block(&web3).await {
                     Ok(current_block) => {
+                        let va_filter = va_filter_builder
+                            .clone()
+                            .from_block(BlockNumber::Number(U64::from(record.block_num)))
+                            .to_block(BlockNumber::Number(std::cmp::min(
+                                U64::from(record.block_num + QUERY_BLOCK_INTERVAL),
+                                current_block,
+                            )))
+                            .build();
+                        let initiator_filter = initiator_filter_builder
+                            .clone()
+                            .from_block(BlockNumber::Number(U64::from(record.block_num)))
+                            .to_block(BlockNumber::Number(std::cmp::min(
+                                U64::from(record.block_num + QUERY_BLOCK_INTERVAL),
+                                current_block,
+                            )))
+                            .build();
+
                         match web3.eth().logs(va_filter).await {
                             Ok(mut logs) => {
                                 info!("Get {} va logs.", &logs.len());

@@ -113,8 +113,9 @@ impl TOperator for RemoteOperator {
             return Err(DvfError::SocketAddrUnknown);
         }
 
-        let n_try: u64 = 2;
+        let n_try: u64 = 1;
         let timeout_mill: u64 = 600;
+        let sleep_mill: u64 = 200;
         let dvf_message = DvfMessage {
             version: VERSION,
             validator_id: self.validator_id,
@@ -122,7 +123,6 @@ impl TOperator for RemoteOperator {
         };
         let serialize_msg = bincode::serialize(&dvf_message).unwrap();
         for i in 0..n_try {
-            let next_try_instant = Instant::now() + Duration::from_millis(timeout_mill);
             let receiver = self
                 .network
                 .send(self.signature_address(), Bytes::from(serialize_msg.clone()))
@@ -159,6 +159,7 @@ impl TOperator for RemoteOperator {
                 }
             }
             if i < n_try - 1 {
+                let next_try_instant = Instant::now() + Duration::from_millis(sleep_mill);
                 sleep_until(next_try_instant).await;
             }
         }

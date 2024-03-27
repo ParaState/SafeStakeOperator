@@ -208,7 +208,7 @@ impl<T: EthSpec> Node<T> {
                                 info!("StartValidator");
                                 match add_validator(
                                     node.clone(),
-                                    validator,
+                                    validator.clone(),
                                     operator_pks,
                                     shared_pks,
                                     encrypted_sks,
@@ -222,6 +222,7 @@ impl<T: EthSpec> Node<T> {
                                         error!("Failed to add validator: {} {}", e, va_id);
                                         // save va information to database
                                         db.updatetime_contract_command(id).await;
+                                        let _ = remove_validator(node.clone(), validator).await;
                                     }
                                 }
                             }
@@ -510,13 +511,7 @@ pub async fn add_validator<T: EthSpec>(
     info!("[VA {}] adding validator {}", validator_id, validator_pk);
     let added_validator_dir = validator_dir.join(format!("{}", validator_pk));
     if added_validator_dir.exists() {
-        remove_dir_all(&added_validator_dir).map_err(|e| {
-            format!(
-                "[VA {}] Failed to delete validator dir ({})",
-                validator_id, e
-            )
-        })?;
-        // return Err("Validator exists".to_string());
+        return Err("Validator exists".to_string());
     }
 
     let operator_base_address: Vec<Option<SocketAddr>> = {

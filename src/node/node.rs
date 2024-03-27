@@ -510,7 +510,13 @@ pub async fn add_validator<T: EthSpec>(
     info!("[VA {}] adding validator {}", validator_id, validator_pk);
     let added_validator_dir = validator_dir.join(format!("{}", validator_pk));
     if added_validator_dir.exists() {
-        return Err("Validator exists".to_string());
+        remove_dir_all(&added_validator_dir).map_err(|e| {
+            format!(
+                "[VA {}] Failed to delete validator dir ({})",
+                validator_id, e
+            )
+        })?;
+        // return Err("Validator exists".to_string());
     }
 
     let operator_base_address: Vec<Option<SocketAddr>> = {

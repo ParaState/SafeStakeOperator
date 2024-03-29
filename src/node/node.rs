@@ -208,7 +208,7 @@ impl<T: EthSpec> Node<T> {
                                 info!("StartValidator");
                                 match add_validator(
                                     node.clone(),
-                                    validator,
+                                    validator.clone(),
                                     operator_pks,
                                     shared_pks,
                                     encrypted_sks,
@@ -222,6 +222,7 @@ impl<T: EthSpec> Node<T> {
                                         error!("Failed to add validator: {} {}", e, va_id);
                                         // save va information to database
                                         db.updatetime_contract_command(id).await;
+                                        let _ = remove_validator(node.clone(), validator).await;
                                     }
                                 }
                             }

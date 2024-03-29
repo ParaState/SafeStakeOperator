@@ -723,7 +723,8 @@ fn query_validator_by_public_key(
 ) -> DbResult<Option<Validator>> {
     // select releated operators
     let mut releated_operators: Vec<u32> = Vec::new();
-    match conn.prepare("SELECT operator_id from validator_operators_mapping where validator_pk = (?)")
+    match conn
+        .prepare("SELECT operator_id from validator_operators_mapping where validator_pk = (?)")
     {
         Ok(mut stmt) => {
             let mut rows = stmt.query([validator_pk])?;

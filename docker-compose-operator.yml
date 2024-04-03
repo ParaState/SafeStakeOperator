@@ -31,10 +31,11 @@ services:
       "--authrpc.jwtsecret=/data/jwt/jwtsecret"
     ]
     expose:
-      - "8545"
-      - "8546"
       - "8551"
-      - "30303"
+    ports:
+      - 8545:8545
+      - 8546:8546
+      - 30303:30303
 
   lighthouse:
     network_mode: "host"
@@ -65,10 +66,10 @@ services:
         "--validator-monitor-auto",
         "--checkpoint-sync-url=https://checkpoint-sync.holesky.ethpandaops.io",
       ]
-    expose:
-      - "5052"
-      - "9000"
-      - "5054"
+    ports:
+      - 5052:5052
+      - 9000:9000
+      - 5054:5004
 
   operator:
     network_mode: "host"
@@ -82,13 +83,13 @@ services:
       - -c
       - |
         dvf validator_client --metrics --debug-level=info --network=${OPERATOR_NETWORK} --beacon-nodes=${BEACON_NODE_ENDPOINT} --api=${API_SERVER} --ws-url=${WS_URL}  --ip=${NODE_IP} --id=${OPERATOR_ID} --registry-contract=${REGISTRY_CONTRACT_ADDRESS} --network-contract=${NETWORK_CONTRACT_ADDRESS} --base-port=26000 2>&1
-    expose:
-      - "26000"
-      - "26001"
-      - "26002"
-      - "26003"
-      - "26004"
-      - "26005"
+    ports:
+      - 26000:26000
+      - 26001:26001
+      - 26002:26002
+      - 26003:26003
+      - 26004:26004
+      - 26005:26005
       - "5064"
     deploy:
       resources:
@@ -129,9 +130,10 @@ services:
       "--datadir=/data/nethermind",
     ]
     expose:
-      - "8551"
-      - "8546"
-      - "30303"
+    - "8551"
+    ports:
+      - 8546:8546
+      - 30303:30303
   besu:
     image: hyperledger/besu
     pull_policy: always
@@ -153,9 +155,10 @@ services:
       "--data-path=/data/besu",
     ]
     expose:
-      - "8551"
-      - "8546"
-      - "30303"
+    - "8551"
+    ports:
+      - 8546:8546
+      - 30303:30303
   erigon:
     image: thorax/erigon:v2.59.0
     pull_policy: always
@@ -175,9 +178,10 @@ services:
       "--prune.r.before=4367322"
     ]
     expose:
-      - "8551"
-      - "8545"
-      - "30303"
+    - "8551"
+    ports:
+      - 8546:8546
+      - 30303:30303
 volumes:
   geth-data:
     driver: local

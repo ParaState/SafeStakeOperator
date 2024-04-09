@@ -157,6 +157,8 @@ services:
       "--rpc-ws-enabled",
       "--rpc-ws-host=0.0.0.0",
       "--rpc-ws-port=8546",
+      "--host-allowlist=*",
+      "--engine-host-allowlist=*",
       "--engine-jwt-secret=/data/jwt/jwtsecret",
       "--data-storage-format=BONSAI",
       "--data-path=/data/besu",

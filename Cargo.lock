@@ -3784,6 +3784,7 @@ dependencies = [
  "bincode",
  "consensus",
  "crypto",
+ "hex",
  "mempool",
  "rand 0.7.3",
  "serde",

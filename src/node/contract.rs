@@ -23,9 +23,6 @@ use web3::{
     Error as Web3Error, Web3,
 };
 
-// use super::db::Database;
-// use super::utils::{convert_va_pk_to_u64, FromFile, ToFile};
-
 const CONTRACT_CONFIG_FILE: &str = "contract_config/configs.yml";
 const CONTRACT_RECORD_FILE: &str = "contract_record.yml";
 pub const CONTRACT_DATABASE_FILE: &str = "contract_database.db";

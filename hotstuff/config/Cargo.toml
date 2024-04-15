@@ -14,4 +14,4 @@ thiserror = "1.0.21"
 crypto = { path = "../crypto" }
 consensus = { path = "../consensus" }
 mempool = { path = "../mempool" }
-
+hex = "0.4"

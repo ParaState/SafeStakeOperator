@@ -85,7 +85,7 @@ impl<T: EthSpec> Node<T> {
 
         let secret_dir = config.secrets_dir.clone();
         let secret = Node::<T>::open_or_create_secret(config.node_key_path.clone())?;
-
+        create_node_key_hex_backup(config.node_key_hex_path.clone(), &secret)?;
         info!("node public key {}", secret.name.encode_base64());
 
         let tx_handler_map = Arc::new(RwLock::new(HashMap::new()));
@@ -1159,6 +1159,14 @@ pub fn cleanup_password_dir(
                 );
             }
         }
+    }
+    Ok(())
+}
+
+pub fn create_node_key_hex_backup(path: PathBuf, secret: &Secret) -> Result<(), ConfigError> {
+    if !path.exists() {
+        info!("{:?}", path);
+        secret.write_hex(path.to_str().unwrap())?;
     }
     Ok(())
 }

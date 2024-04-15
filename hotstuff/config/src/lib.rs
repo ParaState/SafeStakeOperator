@@ -71,6 +71,31 @@ impl Secret {
         let (name, secret) = generate_secp256k_keypair();
         Self { name, secret }
     }
+
+    pub fn write_hex(&self, path: &str) -> Result<(), ConfigError> {
+        #[derive(Serialize)]
+        struct SecretHex {
+            name: String,
+            secret: String
+        }
+
+        let writer = || -> Result<(), std::io::Error> {
+            let file = OpenOptions::new().create(true).write(true).open(path)?;
+            let mut writer = BufWriter::new(file);
+            let secret_hex = SecretHex {
+                name: hex::encode(self.name.0),
+                secret: hex::encode(self.secret.0)
+            };
+            let data = serde_json::to_string_pretty(&secret_hex).unwrap();
+            writer.write_all(data.as_ref())?;
+            writer.write_all(b"\n")?;
+            Ok(())
+        };
+        writer().map_err(|e| ConfigError::WriteError {
+            file: path.to_string(),
+            message: e.to_string(),
+        })
+    }
 }
 
 impl Export for Secret {}

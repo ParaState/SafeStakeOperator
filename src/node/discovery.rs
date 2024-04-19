@@ -1,3 +1,4 @@
+use crate::node::config::DISCOVERY_PORT_OFFSET;
 use crate::validation::http_metrics::metrics::{self, inc_counter};
 use crate::DEFAULT_CHANNEL_CAPACITY;
 use bytes::Bytes;
@@ -13,7 +14,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::{
     net::{
-        IpAddr, Ipv4Addr,
+        IpAddr,
         SocketAddr::{self, V4, V6},
     },
     time::Duration,
@@ -81,7 +82,7 @@ impl Discovery {
             builder.seq(seq);
             builder.build(&enr_key).unwrap()
         };
-
+        let base_address = SocketAddr::new(ip, udp_port - DISCOVERY_PORT_OFFSET);
         info!("Node ENR ip: {}, port: {}", ip, udp_port);
         info!("Node public key: {}", secret.name.encode_base64());
         info!("Node id: {}", base64::encode(local_enr.node_id().raw()));
@@ -109,7 +110,7 @@ impl Discovery {
         store
             .write(
                 local_enr.public_key().encode(),
-                local_enr.ip4().unwrap().octets().to_vec(),
+                bincode::serialize(&base_address).unwrap(),
             )
             .await;
 
@@ -131,9 +132,11 @@ impl Discovery {
                                 // found a list of ENR's print their NodeIds
                                 for enr in v {
                                     if let Some(ip) = enr.ip4() {
-                                        // update public key ip
-                                        store.write(enr.public_key().encode(), ip.octets().to_vec()).await;
-                                        set_metrics(&store, enr.public_key().encode()).await;
+                                        if let Some(discv_port) = enr.udp4() {
+                                            // update public key socket address
+                                            store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(ip), discv_port - DISCOVERY_PORT_OFFSET)).unwrap()).await;
+                                            set_metrics(&store, enr.public_key().encode()).await;
+                                        }
                                     };
                                 };
                             }
@@ -145,22 +148,28 @@ impl Discovery {
                             Event::Discovered(enr) => {
                                 if let Some(ip) = enr.ip4() {
                                     // update public key ip
-                                    store.write(enr.public_key().encode(), ip.octets().to_vec()).await;
-                                    set_metrics(&store, enr.public_key().encode()).await;
+                                    if let Some(discv_port) = enr.udp4() {
+                                        // update public key socket address
+                                        store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(ip), discv_port - DISCOVERY_PORT_OFFSET)).unwrap()).await;
+                                        set_metrics(&store, enr.public_key().encode()).await;
+                                    }
                                 };
                             },
                             Event::SessionEstablished(enr, _addr) => {
                                 if let Some(ip) = enr.ip4() {
                                     // update public key ip
-                                    store.write(enr.public_key().encode(), ip.octets().to_vec()).await;
-                                    set_metrics(&store, enr.public_key().encode()).await;
+                                    if let Some(discv_port) = enr.udp4() {
+                                        // update public key socket address
+                                        store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(ip), discv_port - DISCOVERY_PORT_OFFSET)).unwrap()).await;
+                                        set_metrics(&store, enr.public_key().encode()).await;
+                                    }
                                 };
                             },
                             Event::SocketUpdated(addr) => {
                                 info!("Discv5Event::SocketUpdated: local ENR IP address has been updated, addr:{}", addr);
                                 match addr {
                                     V4(v4addr) => {
-                                        store.write(local_enr.public_key().encode(), v4addr.ip().octets().to_vec()).await;
+                                        store.write(local_enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(v4addr.ip().clone()), v4addr.port() - DISCOVERY_PORT_OFFSET)).unwrap()).await;
                                         set_metrics(&store, local_enr.public_key().encode()).await;
                                     }
                                     V6(_) => {}
@@ -200,7 +209,7 @@ impl Discovery {
         let _ = receiver.await;
     }
 
-    pub async fn update_ip(&self, pk: &[u8]) -> Option<IpAddr> {
+    pub async fn update_addr(&self, pk: &[u8]) -> Option<SocketAddr> {
         // let curve_pk = secp256k1::PublicKey::from_slice(pk);
         // if curve_pk.is_err() {
         //     error!("Failed to construct secp256k1 public key from the slice");
@@ -211,31 +220,23 @@ impl Discovery {
         self.discover(node_id).await;
         // Randomly pick a boot node
         let boot_idx = rand::random::<usize>() % self.boot_enrs.len();
-        self.query_ip_from_boot(boot_idx, pk).await;
+        self.query_addr_from_boot(boot_idx, pk).await;
 
-        self.query_ip_from_local_store(pk).await
+        self.query_addr_from_local_store(pk).await
     }
 
-    pub async fn query_addrs(&self, pks: &Vec<Vec<u8>>, base_port: u16) -> Vec<Option<SocketAddr>> {
-        self.query_ips(pks)
-            .await
-            .into_iter()
-            .map(|x| x.map(|ip| SocketAddr::new(ip, base_port)))
-            .collect()
-    }
-
-    pub async fn query_ips(&self, pks: &Vec<Vec<u8>>) -> Vec<Option<IpAddr>> {
-        let mut ips: Vec<Option<IpAddr>> = Default::default();
+    pub async fn query_addrs(&self, pks: &Vec<Vec<u8>>) -> Vec<Option<SocketAddr>> {
+        let mut socket_address: Vec<Option<SocketAddr>> = Default::default();
         for i in 0..pks.len() {
-            ips.push(self.query_ip(&pks[i]).await);
+            socket_address.push(self.query_addr(&pks[i]).await);
         }
-        ips
+        socket_address
     }
 
     /// This function may update local store with network searching.
     /// Use `query_ip_from_local_store` if you want the result immediately
     /// from local store without network searching.
-    pub async fn query_ip(&self, pk: &[u8]) -> Option<IpAddr> {
+    pub async fn query_addr(&self, pk: &[u8]) -> Option<SocketAddr> {
         // Three ways to query the ip:
         // 1. from local store
         // 2. initiate a discv5 find node
@@ -244,7 +245,7 @@ impl Discovery {
 
         // No need to update for self IP
         if self.secret.name.0.as_slice() == pk {
-            return self.query_ip_from_local_store(pk).await;
+            return self.query_addr_from_local_store(pk).await;
         }
 
         let curve_pk = secp256k1::PublicKey::from_slice(pk);
@@ -268,25 +269,24 @@ impl Discovery {
                 // Updating IP takes time, so we can release the hashmap lock here.
                 drop(heartbeats);
                 // only update when heartbeat is ready
-                self.update_ip(pk).await
+                self.update_addr(pk).await
             }
             _ = ready => {
-                self.query_ip_from_local_store(pk).await
+                self.query_addr_from_local_store(pk).await
             }
         }
     }
 
-    pub async fn query_ip_from_local_store(&self, pk: &[u8]) -> Option<IpAddr> {
+    pub async fn query_addr_from_local_store(&self, pk: &[u8]) -> Option<SocketAddr> {
         match self.store.read(pk.into()).await {
             Ok(value) => {
                 if let Some(data) = value {
-                    if data.len() != 4 {
-                        error!("Discovery database is corrupted");
-                        None
-                    } else {
-                        Some(IpAddr::V4(Ipv4Addr::new(
-                            data[0], data[1], data[2], data[3],
-                        )))
+                    match bincode::deserialize::<SocketAddr>(&data) {
+                        Ok(addr) => Some(addr),
+                        Err(_) => {
+                            error!("Discovery database is corrupted");
+                            None
+                        }
                     }
                 } else {
                     error!("Discovery database cannot find pk: empty IP for the pk");
@@ -300,7 +300,7 @@ impl Discovery {
         }
     }
 
-    pub async fn query_ip_from_boot(&self, boot_idx: usize, pk: &[u8]) -> Option<IpAddr> {
+    pub async fn query_addr_from_boot(&self, boot_idx: usize, pk: &[u8]) -> Option<SocketAddr> {
         if boot_idx >= self.boot_enrs.len() {
             error!("Invalid boot index");
             return None;
@@ -329,21 +329,27 @@ impl Discovery {
         let result = timeout(Duration::from_millis(timeout_mill), receiver).await;
 
         let base64_pk = base64::encode(pk);
-        let ipaddr: Option<IpAddr> = match result {
+        let addr: Option<SocketAddr> = match result {
             Ok(output) => match output {
-                Ok(data) => {
-                    if data.len() != 4 {
-                        error!("Boot node IP response is corrupted");
-                        None
-                    } else {
-                        info!("Get ip from boot node, pk {}, ip {:?}", &base64_pk, data);
-                        self.store.write(pk.into(), data.to_vec()).await;
-                        set_metrics(&self.store, pk.to_vec()).await;
-                        Some(IpAddr::V4(Ipv4Addr::new(
-                            data[0], data[1], data[2], data[3],
-                        )))
+                Ok(data) => match bincode::deserialize::<SocketAddr>(&data) {
+                    Ok(addr) => {
+                        info!(
+                            "Get base address from boot node, pk {}, socket address {:?}",
+                            &base64_pk, addr
+                        );
+                        self.store
+                            .write(pk.into(), bincode::serialize(&addr).unwrap())
+                            .await;
+                        Some(addr)
                     }
-                }
+                    Err(_) => {
+                        error!(
+                            "Boot node IP response is corrupted {:?}",
+                            String::from_utf8(data.to_vec())
+                        );
+                        None
+                    }
+                },
                 Err(_) => {
                     warn!("Boot node query is interrupted.");
                     None
@@ -354,7 +360,7 @@ impl Discovery {
                 None
             }
         };
-        ipaddr
+        addr
     }
 }
 

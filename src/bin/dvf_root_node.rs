@@ -166,7 +166,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         }
                     },
                     Event::SessionEstablished(enr,  _addr) => {
+
                         if let Some(enr_ip) =  enr.ip4() {
+                            info!("A peer has established session: public key: {}, port: {:?}",
+                                base64::encode(enr.public_key().encode()), enr.udp4());
                             if let Some(discv_port) = enr.udp4() {
                                 let socketaddr = SocketAddr::new(IpAddr::V4(enr_ip), discv_port - DISCOVERY_PORT_OFFSET);
                                 info!("A peer has established session: public key: {}, base addr: {:?}",

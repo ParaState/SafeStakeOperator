@@ -116,7 +116,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let local_enr = {
         let mut builder = Enr::builder();
         builder.ip(ip.into());
-        builder.udp4(port + DISCOVERY_PORT_OFFSET);
+        builder.udp4(port);
         builder.build(&enr_key).unwrap()
     };
 

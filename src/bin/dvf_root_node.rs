@@ -160,7 +160,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     loop {
         tokio::select! {
             _ = query_interval.tick() => {
-                info!("Searching for peers...");
                 // pick a random node target
                 let target_random_node_id = enr::NodeId::random();
                 // execute a FINDNODE query

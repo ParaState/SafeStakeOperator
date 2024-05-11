@@ -11,7 +11,7 @@ use futures::SinkExt;
 use hsconfig::{Committee as HotstuffCommittee, Parameters};
 use hscrypto::SignatureService;
 use hsutils::monitored_channel::{MonitoredChannel, MonitoredSender};
-use log::{error, info, warn};
+use log::{error, info, warn, debug};
 use mempool::Committee as MempoolCommittee;
 use mempool::{Mempool, MempoolMessage};
 use network::{MessageHandler, Writer};
@@ -385,7 +385,7 @@ impl DvfCore {
                     if block.payload.is_empty() {
                         continue;
                     }
-                    info!("[Dvf {}/{}] received a non-empty committed block", self.operator_id, self.validator_id);
+                    debug!("[Dvf {}/{}] received a non-empty committed block", self.operator_id, self.validator_id);
                     for payload in block.payload {
                         match self.store.read(payload.to_vec()).await {
                             Ok(value) => {

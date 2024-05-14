@@ -380,12 +380,9 @@ impl<T: EthSpec> Node<T> {
         exit: exit_future::Exit,
     ) {
         tokio::spawn(async move {
-            let (base_port, validator_dir) = {
+            let validator_dir = {
                 let node_ = node.read().await;
-                (
-                    node_.config.base_address.port(),
-                    node_.config.validator_dir.clone(),
-                )
+                node_.config.validator_dir.clone()
             };
             let mut query_interval =
                 tokio::time::interval(Duration::from_secs(COMMITTEE_IP_HEARTBEAT_INTERVAL));
@@ -399,15 +396,15 @@ impl<T: EthSpec> Node<T> {
                         // Query IP for each operator in this committee. If any of them changed, should restart the VA.
                         let mut restart = false;
                         for i in 0..committee_def.node_public_keys.len() {
-                            if let Some(ip) = node_lock.discovery.query_ip(&committee_def.node_public_keys[i].0).await {
+                            if let Some(addr) = node_lock.discovery.query_addr(&committee_def.node_public_keys[i].0).await {
                                 if let Some(socket) = committee_def.base_socket_addresses[i].as_mut() {
-                                    if socket.ip() != ip {
-                                        socket.set_ip(ip);
+                                    if *socket != addr {
+                                        *socket = addr;
                                         restart = true;
                                     }
                                 }
                                 else {
-                                    committee_def.base_socket_addresses[i] = Some(SocketAddr::new(ip, base_port));
+                                    committee_def.base_socket_addresses[i] = Some(addr);
                                     restart = true;
                                 }
                             }
@@ -496,7 +493,6 @@ pub async fn add_validator<T: EthSpec>(
     encrypted_secret_keys: EncryptedSecretKeys,
 ) -> Result<(), String> {
     let node = node.read().await;
-    let base_port = node.config.base_address.port();
     let validator_dir = node.config.validator_dir.clone();
     let secret_dir = node.config.secrets_dir.clone();
     let secret = node.secret.clone();
@@ -514,11 +510,8 @@ pub async fn add_validator<T: EthSpec>(
         return Err("Validator exists".to_string());
     }
 
-    let operator_base_address: Vec<Option<SocketAddr>> = {
-        node.discovery
-            .query_addrs(&operator_public_keys, base_port)
-            .await
-    };
+    let operator_base_address: Vec<Option<SocketAddr>> =
+        { node.discovery.query_addrs(&operator_public_keys).await };
 
     let operator_ids: Vec<u64> = validator
         .releated_operators
@@ -768,11 +761,11 @@ pub async fn start_initiator<T: EthSpec>(
     operator_public_keys: OperatorPublicKeys,
     db: &Database,
 ) -> Result<(), String> {
-    let (base_port, operator_ips, secret) = {
+    let (base_port, operator_addrs, secret) = {
         let node = node.read().await;
         (
             node.config.base_address.port(),
-            node.discovery.query_ips(&operator_public_keys).await,
+            node.discovery.query_addrs(&operator_public_keys).await,
             node.secret.secret.clone(),
         )
     };
@@ -780,14 +773,11 @@ pub async fn start_initiator<T: EthSpec>(
     let node_secret_key =
         secp256k1::SecretKey::from_slice(&secret.0).expect("Unable to load secret key");
     let node_public_key = secp256k1::PublicKey::from_secret_key(&secp, &node_secret_key);
-    if operator_ips.iter().any(|x| x.is_none()) {
+    if operator_addrs.iter().any(|x| x.is_none()) {
         sleep(Duration::from_secs(10)).await;
-        return Err("StartInitializer: Insufficient operators discovered for DKG".to_string());
+        return Err("StartInitiator: Insufficient operators discovered for DKG".to_string());
     }
-    let operator_ips: Vec<SocketAddr> = operator_ips
-        .iter()
-        .map(|x| SocketAddr::new(x.unwrap(), base_port + DKG_PORT_OFFSET))
-        .collect();
+    let operator_addrs: Vec<SocketAddr> = operator_addrs.iter().map(|x| x.unwrap()).collect();
 
     let self_op_id = *SELF_OPERATOR_ID
         .get()
@@ -801,8 +791,8 @@ pub async fn start_initiator<T: EthSpec>(
         SecureNetIOCommittee::new(
             self_op_id as u64,
             base_port + DKG_PORT_OFFSET,
-            op_ids.as_slice(),
-            operator_ips.as_slice(),
+            &op_ids,
+            &operator_addrs,
         )
         .await,
     );
@@ -862,19 +852,20 @@ pub async fn remove_initiator<T: EthSpec>(
     operator_public_keys: OperatorPublicKeys,
     db: &Database,
 ) -> Result<(), String> {
-    let (base_port, operator_ips, beacon_node_urls) = {
+    let (base_port, operator_addrs, beacon_node_urls) = {
         let node = node.read().await;
         (
             node.config.base_address.port(),
-            node.discovery.query_ips(&operator_public_keys).await,
+            node.discovery.query_addrs(&operator_public_keys).await,
             node.config.beacon_nodes.clone(),
         )
     };
     let initiator_id = initiator.id;
-    let operator_ips: Vec<SocketAddr> = operator_ips
-        .iter()
-        .map(|x| SocketAddr::new(x.unwrap(), base_port + DKG_PORT_OFFSET))
-        .collect();
+    if operator_addrs.iter().any(|x| x.is_none()) {
+        sleep(Duration::from_secs(10)).await;
+        return Err("RemoveInitiator: Insufficient operators discovered for DKG".to_string());
+    }
+    let operator_addrs: Vec<SocketAddr> = operator_addrs.iter().map(|x| x.unwrap()).collect();
     let self_op_id = *SELF_OPERATOR_ID
         .get()
         .ok_or("Self operator has not been set".to_string())?;
@@ -887,8 +878,8 @@ pub async fn remove_initiator<T: EthSpec>(
         SecureNetIOCommittee::new(
             self_op_id as u64,
             base_port + DKG_PORT_OFFSET,
-            op_ids.as_slice(),
-            operator_ips.as_slice(),
+            &op_ids,
+            &operator_addrs,
         )
         .await,
     );
@@ -941,26 +932,23 @@ pub async fn minipool_deposit<T: EthSpec>(
     db: &Database,
     amount: u64,
 ) -> Result<(), String> {
-    let (base_port, operator_ips, beacon_node_urls, secret) = {
+    let (base_port, operator_addrs, beacon_node_urls, secret) = {
         let node = node.read().await;
         (
             node.config.base_address.port(),
-            node.discovery.query_ips(&operator_public_keys).await,
+            node.discovery.query_addrs(&operator_public_keys).await,
             node.config.beacon_nodes.clone(),
             node.secret.secret.clone(),
         )
     };
-    if operator_ips.iter().any(|x| x.is_none()) {
+    if operator_addrs.iter().any(|x| x.is_none()) {
         error!("Some operators are not online, it's critical error, minipool exiting");
         return Err(
             "MinipoolDeposit: Insufficient operators discovered for distributed signing"
                 .to_string(),
         );
     }
-    let operator_ips: Vec<SocketAddr> = operator_ips
-        .iter()
-        .map(|x| SocketAddr::new(x.unwrap(), base_port + DKG_PORT_OFFSET))
-        .collect();
+    let operator_addrs: Vec<SocketAddr> = operator_addrs.iter().map(|x| x.unwrap()).collect();
 
     let op_ids: Vec<u64> = operator_ids.into_iter().map(|x| x as u64).collect();
     let self_op_id = *SELF_OPERATOR_ID
@@ -983,7 +971,7 @@ pub async fn minipool_deposit<T: EthSpec>(
             self_op_id as u64,
             base_port + DKG_PORT_OFFSET,
             &op_ids,
-            &operator_ips,
+            &operator_addrs,
         )
         .await,
     );

@@ -10,7 +10,7 @@ use crate::node::config::{
 };
 use crate::node::contract::{
     Contract, ContractCommand, EncryptedSecretKeys, Initiator, InitiatorStoreRecord, OperatorIds,
-    OperatorPublicKeys, SharedPublicKeys, Validator, CONTRACT_DATABASE_FILE, SELF_OPERATOR_ID,
+    OperatorPublicKeys, SharedPublicKeys, Validator, CONTRACT_DATABASE_FILE, SELF_OPERATOR_ID, THRESHOLD_MAP
 };
 use crate::node::{
     db::{self, Database},
@@ -593,7 +593,7 @@ pub async fn add_validator<T: EthSpec>(
     // generate keypair
     let def = OperatorCommitteeDefinition {
         total: total as u64,
-        threshold: THRESHOLD,
+        threshold: *THRESHOLD_MAP.get(&(total as u64)).unwrap(),
         validator_id: validator_id,
         validator_public_key: validator_pk.clone(),
         operator_ids: operator_ids,

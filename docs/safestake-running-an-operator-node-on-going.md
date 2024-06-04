@@ -227,7 +227,10 @@ vim .env
 OPERATOR_ID= #The Operator ID is the ID you receive after registering the operator on SafeStake website
 ```
 
-#### 13. Start operator service
+#### 13. (Optional) Customize the base port
+You are able to change the ports that will be exposed in case the default ports 26000-26005 conflict with the ports you are using. In the file `docker-compose-operator.yml`, change `--base-port=26000` to the port you want in the operator's start command.
+
+#### 14. Start operator service
 
 ```bash
 sudo docker compose -f docker-compose-operator.yml up --force-recreate -d operator

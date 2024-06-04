@@ -141,29 +141,6 @@ vim .env
 
 Now that we have open the `.env` file, we will update the values based on our own configuration.
 
-
-
-**Leave these variables unchanged now**:
-```bash
-GETH_NETWORK=holesky
-NETHERMIND_NETWORK=holesky
-BESU_NETWORK=holesky
-ERIGON_NETWORK=holesky
-LIGHTHOUSE_NETWORK=holesky
-OPERATOR_NETWORK=holesky
-IMAGE_TAG=v3.1-testnet
-REGISTRY_CONTRACT_ADDRESS=B4Afe3F48B8Bff3E5cE3d603B8cE9F87524581be
-NETWORK_CONTRACT_ADDRESS=a508E281d1FF048012A754505C92dF20C7e1Bc0e
-API_SERVER=https://api-testnet-holesky.safestake.xyz/api/op/
-# different chain has different ttd
-TTD=10790000
-# separated by ',' for multiple relays, such as MEV_BOOST_RELAYS=xxx,xxx,xxx
-MEV_BOOST_RELAYS=https://0xafa4c6985aa049fb79dd37010438cfebeb0f2bd42b115b89dd678dab0670c1de38da0c4e9138c9290a398ecd9a0b3110@boost-relay-holesky.flashbots.net
-#gas limit. [default: 30,000,000]
-GAS_LIMIT_INTEGER=30000000
-OPERATOR_ID=<YOUR_OPERATOR_ID>
-```
-
 **Update these variables with yours**
 
 ```bash
@@ -227,7 +204,10 @@ vim .env
 OPERATOR_ID= #The Operator ID is the ID you receive after registering the operator on SafeStake website
 ```
 
-#### 13. Start operator service
+#### 13. (Optional) Customize the base port
+You are able to change the ports that will be exposed in case the default ports 26000-26005 conflict with the ports you are using. In the file `docker-compose-operator.yml`, change `--base-port=26000` to the port you want in the operator's start command.
+
+#### 14. Start operator service
 
 ```bash
 sudo docker compose -f docker-compose-operator.yml up --force-recreate -d operator
@@ -290,3 +270,20 @@ graph TD;
     D --> |?| K["Failed to connect to {ip}:26000"];
     K --> |solution| L[need to open the port 26000 to the internet,\n also carefully check if other firewall rules shown\n in the doc are set correctly in your server];
 ```
+
+## Validator
+
+### Registration
+Before registering a validator in SafeStake website, users need to deposit a validator first and the wait the validator to become active. Then users need provide the keystore file and select either 4 operators which require at least 3 operators to do attestations or 7 operators which require at least 5 operators to do attestations. Finally, users need to deposit DVT to make operators start attestions for this validator.
+<figure><img src="imgs/committe-size.png" alt=""><figcaption></figcaption></figure>
+
+### Remove
+Users can remove their validator from SafeStake by clicking the remove button in the account page of SafeStake website. It will return the remaining DVT but will not withdraw ETH.
+
+### Voluntary Exits (Full Withdrawals)
+Users can exit their validator by clicking the exit button in the account page of SafeStake website and then upload the keystore file. 
+<figure><img src="imgs/validator-exit.png" alt=""><figcaption></figcaption></figure>
+<figure><img src="imgs/validator-exit-upload.png" alt=""><figcaption></figcaption></figure>
+
+Otherwise users need to connect their own beacon node and run commands to do exit, for example, reference the guide of lighthouse https://lighthouse-book.sigmaprime.io/voluntary-exit.html
+

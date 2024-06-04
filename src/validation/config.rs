@@ -190,6 +190,7 @@ impl Config {
             .set_secret_dir(config.secrets_dir.clone())
             .set_validator_dir(config.validator_dir.clone())
             .set_node_key_path(default_base_dir.clone())
+            .set_node_key_hex_path(default_base_dir.clone())
             .set_store_path(default_base_dir);
         if !config.validator_dir.exists() {
             fs::create_dir_all(&config.validator_dir)

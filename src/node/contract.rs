@@ -8,7 +8,7 @@ use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_derive::{Deserialize as DeriveDeserialize, Serialize as DeriveSerialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -22,9 +22,7 @@ use web3::{
     types::{Address, BlockNumber, FilterBuilder, Log, H256, U256, U64},
     Error as Web3Error, Web3,
 };
-
-// use super::db::Database;
-// use super::utils::{convert_va_pk_to_u64, FromFile, ToFile};
+use lazy_static::lazy_static;
 
 const CONTRACT_CONFIG_FILE: &str = "contract_config/configs.yml";
 const CONTRACT_RECORD_FILE: &str = "contract_record.yml";
@@ -41,6 +39,17 @@ pub static REGISTRY_CONTRACT: OnceCell<String> = OnceCell::const_new();
 pub static NETWORK_CONTRACT: OnceCell<String> = OnceCell::const_new();
 const QUERY_LOGS_INTERVAL: u64 = 60;
 const QUERY_BLOCK_INTERVAL: u64 = 500;
+lazy_static! {
+    pub static ref THRESHOLD_MAP: HashMap<u64, u64> = {
+        let mut threshold_map = HashMap::new();
+        threshold_map.insert(4, 3);
+        threshold_map.insert(7, 5);
+        threshold_map
+    };
+    static ref ALLOWED_COMMITTEE_SIZE: HashSet<u64> = {
+        HashSet::from([4, 7])
+    };
+}
 #[derive(Debug)]
 pub enum ContractError {
     StoreError,
@@ -717,6 +726,10 @@ pub async fn process_validator_registration(
         })
         .collect();
     info!("operator ids {:?}", op_ids);
+    if !ALLOWED_COMMITTEE_SIZE.contains(&(op_ids.len() as u64)) {
+        error!("unkown operator committee size {}", op_ids.len());
+        return Err(ContractError::InvalidArgumentError);
+    }
     let mut operator_pks: Vec<String> = Vec::new();
     // query local database first, if not existing, query from contract
     for op_id in &op_ids {
@@ -738,7 +751,6 @@ pub async fn process_validator_registration(
     if operator_pks.contains(operator_pk_base64) {
         let shared_pks = parse_bytes_token(log.params[3].value.clone())?;
         let encrypted_sks = parse_bytes_token(log.params[4].value.clone())?;
-        // TODO paid block should store for tokenomics
         let _paid_block_number = log.params[5]
             .value
             .clone()
@@ -747,6 +759,9 @@ pub async fn process_validator_registration(
             .as_u64();
         // check array length should be same
         if shared_pks.len() != encrypted_sks.len() {
+            return Err(ContractError::InvalidArgumentError);
+        }
+        if operator_pks.len() != shared_pks.len() {
             return Err(ContractError::InvalidArgumentError);
         }
         // binary operator publics

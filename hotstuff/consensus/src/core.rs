@@ -284,7 +284,7 @@ impl Core {
         while let Some(block) = to_commit.pop_back() {
 
             if !block.payload.is_empty() {
-                info!("[VA {}] Committed {}", self.validator_id, block);
+                debug!("[VA {}] Committed {}", self.validator_id, block);
 
                 #[cfg(feature = "benchmark")]
                 for x in &block.payload {

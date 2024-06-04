@@ -12,6 +12,7 @@ use std::fs::File;
 use tokio::sync::OnceCell;
 /// The file name for the serialized `OperatorCommitteeDefinition` struct.
 pub const NODE_KEY_FILENAME: &str = "node_key.json";
+pub const NODE_KEY_HEX_FILENAME: &str = "node_key_hex.json";
 pub const DB_FILENAME: &str = "dvf_node_db";
 
 pub const DEFAULT_BASE_PORT: u16 = 25_000;
@@ -86,6 +87,7 @@ pub struct NodeConfig {
     pub base_address: SocketAddr,
     pub base_store_path: PathBuf,
     pub node_key_path: PathBuf,
+    pub node_key_hex_path: PathBuf,
     pub validator_dir: PathBuf,
     pub secrets_dir: PathBuf,
     pub boot_enrs: Vec<Enr<CombinedKey>>,
@@ -119,6 +121,7 @@ impl NodeConfig {
 
         let base_store_path = base_dir.join(DB_FILENAME);
         let node_key_path = base_dir.join(NODE_KEY_FILENAME);
+        let node_key_hex_path = base_dir.join(NODE_KEY_HEX_FILENAME);
         let validator_dir = base_dir.join(DEFAULT_VALIDATOR_DIR);
         let secrets_dir = base_dir.join(DEFAULT_SECRET_DIR);
 
@@ -141,6 +144,7 @@ impl NodeConfig {
             base_address: SocketAddr::new(ip.clone(), base_port),
             base_store_path,
             node_key_path,
+            node_key_hex_path,
             validator_dir,
             secrets_dir,
             boot_enrs,
@@ -174,6 +178,11 @@ impl NodeConfig {
 
     pub fn set_node_key_path(mut self, base_dir: PathBuf) -> Self {
         self.node_key_path = base_dir.join(NODE_KEY_FILENAME);
+        self
+    }
+
+    pub fn set_node_key_hex_path(mut self, base_dir: PathBuf) -> Self {
+        self.node_key_hex_path = base_dir.join(NODE_KEY_HEX_FILENAME);
         self
     }
 

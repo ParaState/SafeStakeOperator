@@ -53,14 +53,14 @@ impl Store {
         options.create_if_missing(true);
         options.set_log_file_time_to_roll(60);
         options.set_log_level(LogLevel::Error);
-        options.set_keep_log_file_num(10);
-        options.set_max_log_file_size(1024 * 1024 * 5);
+        options.set_keep_log_file_num(5);
+        options.set_max_log_file_size(1024 * 1024 * 3);
         options.set_recycle_log_file_num(5);
-        options.set_max_total_wal_size(1024 * 1024 * 10);
+        options.set_max_total_wal_size(1024 * 1024 * 5);
         options.set_wal_size_limit_mb(10);
-        options.set_write_buffer_size(1024 * 1024 * 5);
-        options.set_max_write_buffer_number(2);
-        options.set_db_write_buffer_size(1024 * 1024 * 5);
+        options.set_write_buffer_size(1024 * 1024 * 2);
+        options.set_max_write_buffer_number(1);
+        options.set_db_write_buffer_size(1024 * 1024 * 2);
         
         let db = rocksdb::DB::open(&options, path).map_err(StoreError::RocksdbError)?;
         let mut obligations = HashMap::<_, VecDeque<oneshot::Sender<_>>>::new();

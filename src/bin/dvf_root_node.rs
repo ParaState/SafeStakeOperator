@@ -6,7 +6,6 @@ use hsconfig::Export as _;
 use hsconfig::Secret;
 use lighthouse_network::discv5::enr::EnrPublicKey;
 use lighthouse_network::discv5::{
-    enr,
     enr::{CombinedKey, Enr},
     ConfigBuilder, Discv5, Event, ListenConfig,
 };
@@ -15,12 +14,9 @@ use network::{MessageHandler, Receiver as NetworkReceiver, Writer as NetworkWrit
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::{
-    net::{Ipv4Addr, SocketAddr},
-    time::Duration,
-};
 use store::Store;
 use tokio::sync::RwLock;
 
@@ -28,6 +24,7 @@ pub const DEFAULT_SECRET_DIR: &str = "node_key.json";
 pub const DEFAULT_STORE_DIR: &str = "boot_store";
 pub const DEFAULT_ROOT_DIR: &str = ".lighthouse";
 pub const DEFAULT_PORT: u16 = 9005;
+pub const DISCOVERY_PORT_OFFSET: u16 = 4;
 
 #[derive(Clone)]
 pub struct IpQueryReceiverHandler {
@@ -49,7 +46,9 @@ impl MessageHandler for IpQueryReceiverHandler {
                     let _ = writer.send(Bytes::from(data)).await;
                 }
                 None => {
-                    let _ = writer.send(Bytes::from("can't find ip, please wait")).await;
+                    let _ = writer
+                        .send(Bytes::from("can't find address, please wait"))
+                        .await;
                 }
             },
             Err(e) => {
@@ -142,8 +141,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let listen_addr = SocketAddr::new("0.0.0.0".parse().expect("valid ip"), port);
     let _ = discv5.start().await;
 
-    // construct a 60 second interval to search for new peers.
-    let mut query_interval = tokio::time::interval(Duration::from_secs(60));
     let mut event_stream = discv5.event_stream().await.unwrap();
     let mut handler_map: HashMap<u64, IpQueryReceiverHandler> = HashMap::new();
     handler_map.insert(
@@ -159,30 +156,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     loop {
         tokio::select! {
-            _ = query_interval.tick() => {
-                info!("Searching for peers...");
-                // pick a random node target
-                let target_random_node_id = enr::NodeId::random();
-                // execute a FINDNODE query
-                match discv5.find_node(target_random_node_id).await {
-                    Err(e) => info!("Find Node result failed: {:?}", e),
-                    Ok(v) => {
-                        info!("Find Node result succeeded: {} nodes", v.len());
-                    }
-                }
-            }
             Some(event) = event_stream.recv() => {
                 match event {
                     Event::Discovered(enr) => {
                         if let Some(enr_ip) =  enr.ip4() {
-                            store.write(enr.public_key().encode(), enr_ip.octets().to_vec()).await;
+                            if let Some(discv_port) = enr.udp4() {
+                                store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(enr_ip), discv_port - DISCOVERY_PORT_OFFSET)).unwrap()).await;
+                            }
                         }
                     },
                     Event::SessionEstablished(enr,  _addr) => {
+
                         if let Some(enr_ip) =  enr.ip4() {
-                            info!("A peer has established session: public key: {}, ip: {:?}",
-                                base64::encode(enr.public_key().encode()), enr_ip);
-                            store.write(enr.public_key().encode(), enr_ip.octets().to_vec()).await;
+                            if let Some(discv_port) = enr.udp4() {
+                                let socketaddr = SocketAddr::new(IpAddr::V4(enr_ip), discv_port - DISCOVERY_PORT_OFFSET);
+                                info!("A peer has established session: public key: {}, base addr: {:?}",
+                                base64::encode(enr.public_key().encode()), socketaddr);
+                                store.write(enr.public_key().encode(), bincode::serialize(&socketaddr).unwrap()).await;
+                            }
                         }
                     },
                     Event::SocketUpdated(addr) => {

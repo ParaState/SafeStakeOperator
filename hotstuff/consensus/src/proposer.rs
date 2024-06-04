@@ -3,10 +3,10 @@ use crate::consensus::{ConsensusMessage, Round};
 use crate::messages::{Block, QC, TC};
 use bytes::Bytes;
 use crypto::{Digest, PublicKey, SignatureService};
-use log::{debug, info};
+use log::{debug};
 use network::{CancelHandler, SimpleSender, DvfMessage, VERSION};
 use std::collections::HashSet;
-use tokio::sync::mpsc::{Receiver};
+use tokio::sync::mpsc::Receiver;
 use crypto::Hash;
 use utils::monitored_channel::MonitoredSender;
 
@@ -92,7 +92,7 @@ impl Proposer {
         .await;
 
         if !block.payload.is_empty() {
-            info!("[VA {}] Created {} ({})", self.validator_id, block, block.digest());
+            debug!("[VA {}] Created {} ({})", self.validator_id, block, block.digest());
 
             #[cfg(feature = "benchmark")]
             for x in &block.payload {

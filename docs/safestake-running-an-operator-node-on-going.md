@@ -293,3 +293,20 @@ graph TD;
     D --> |?| K["Failed to connect to {ip}:26000"];
     K --> |solution| L[need to open the port 26000 to the internet,\n also carefully check if other firewall rules shown\n in the doc are set correctly in your server];
 ```
+
+## Validator
+
+### Registration
+Before registering a validator in SafeStake website, users need to deposit a validator first and the wait the validator to become active. Then users need provide the keystore file and select either 4 operators which require at least 3 operators to do attestations or 7 operators which require at least 5 operators to do attestations. Finally, users need to deposit DVT to make operators start attestions for this validator.
+<figure><img src="imgs/committe-size.png" alt=""><figcaption></figcaption></figure>
+
+### Remove
+Users can remove their validator from SafeStake by clicking the remove button in the account page of SafeStake website. It will return the remaining DVT but will not withdraw ETH.
+
+### Voluntary Exits (Full Withdrawals)
+Users can exit their validator by clicking the exit button in the account page of SafeStake website and then upload the keystore file. 
+<figure><img src="imgs/validator-exit.png" alt=""><figcaption></figcaption></figure>
+<figure><img src="imgs/validator-exit-upload.png" alt=""><figcaption></figcaption></figure>
+
+Otherwise users need to connect their own beacon node and run commands to do exit, for example, reference the guide of lighthouse https://lighthouse-book.sigmaprime.io/voluntary-exit.html
+

@@ -141,29 +141,6 @@ vim .env
 
 Now that we have open the `.env` file, we will update the values based on our own configuration.
 
-
-
-**Leave these variables unchanged now**:
-```bash
-GETH_NETWORK=holesky
-NETHERMIND_NETWORK=holesky
-BESU_NETWORK=holesky
-ERIGON_NETWORK=holesky
-LIGHTHOUSE_NETWORK=holesky
-OPERATOR_NETWORK=holesky
-IMAGE_TAG=v3.1-testnet
-REGISTRY_CONTRACT_ADDRESS=B4Afe3F48B8Bff3E5cE3d603B8cE9F87524581be
-NETWORK_CONTRACT_ADDRESS=a508E281d1FF048012A754505C92dF20C7e1Bc0e
-API_SERVER=https://api-testnet-holesky.safestake.xyz/api/op/
-# different chain has different ttd
-TTD=10790000
-# separated by ',' for multiple relays, such as MEV_BOOST_RELAYS=xxx,xxx,xxx
-MEV_BOOST_RELAYS=https://0xafa4c6985aa049fb79dd37010438cfebeb0f2bd42b115b89dd678dab0670c1de38da0c4e9138c9290a398ecd9a0b3110@boost-relay-holesky.flashbots.net
-#gas limit. [default: 30,000,000]
-GAS_LIMIT_INTEGER=30000000
-OPERATOR_ID=<YOUR_OPERATOR_ID>
-```
-
 **Update these variables with yours**
 
 ```bash

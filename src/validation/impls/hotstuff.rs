@@ -4,7 +4,7 @@ use crate::validation::{generic_operator_committee::TOperatorCommittee, operator
 use async_trait::async_trait;
 use bls::{Hash256, PublicKey, Signature};
 use futures::future::join_all;
-use log::info;
+use log::{debug, info};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
@@ -49,7 +49,7 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
             loop {
                 match rx_consensus.recv().await {
                     Some(value) => {
-                        info!("Consensus achieved for msg {}", value);
+                        debug!("Consensus achieved for msg {}", value);
                         let notes = consensus_notifications_clone.write().await;
                         if let Some(notify) = notes.get(&value) {
                             notify.notify_one();
@@ -160,7 +160,12 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
         let pks = results.iter().map(|x| &x.1).collect::<Vec<&PublicKey>>();
         let sigs = results.iter().map(|x| &x.2).collect::<Vec<&Signature>>();
 
-        info!("Received {} signatures", sigs.len());
+        info!(
+            "Received {} signatures from {:?} for {}",
+            sigs.len(),
+            ids,
+            self.validator_id
+        );
 
         let threshold_sig = ThresholdSignature::new(self.threshold());
         let sig = threshold_sig.threshold_aggregate(&sigs[..], &pks[..], &ids[..], msg)?;

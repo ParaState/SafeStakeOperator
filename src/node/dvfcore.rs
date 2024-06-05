@@ -11,7 +11,7 @@ use futures::SinkExt;
 use hsconfig::{Committee as HotstuffCommittee, Parameters};
 use hscrypto::SignatureService;
 use hsutils::monitored_channel::{MonitoredChannel, MonitoredSender};
-use log::{error, info, warn, debug};
+use log::{debug, error, info, warn};
 use mempool::Committee as MempoolCommittee;
 use mempool::{Mempool, MempoolMessage};
 use network::{MessageHandler, Writer};
@@ -402,7 +402,7 @@ impl DvfCore {
                                                         error!("Failed to notify consensus status: {}", e);
                                                     }
                                                     else {
-                                                        info!("[Dvf {}/{}] Sent out 1 consensus notification for msg: {}", self.operator_id, self.validator_id, msg);
+                                                        debug!("[Dvf {}/{}] Sent out 1 consensus notification for msg: {}", self.operator_id, self.validator_id, msg);
                                                     }
                                                 }
                                             }

@@ -318,7 +318,7 @@ impl Core {
     }
 
     async fn local_timeout_round(&mut self) -> ConsensusResult<()> {
-        warn!("[VA {}] Timeout reached for round {}", self.validator_id, self.round);
+        debug!("[VA {}] Timeout reached for round {}", self.validator_id, self.round);
 
         // if self.detect_dead_lock() {
         //     return Ok(());

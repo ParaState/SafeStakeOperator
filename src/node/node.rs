@@ -10,7 +10,8 @@ use crate::node::config::{
 };
 use crate::node::contract::{
     Contract, ContractCommand, EncryptedSecretKeys, Initiator, InitiatorStoreRecord, OperatorIds,
-    OperatorPublicKeys, SharedPublicKeys, Validator, CONTRACT_DATABASE_FILE, SELF_OPERATOR_ID, THRESHOLD_MAP
+    OperatorPublicKeys, SharedPublicKeys, Validator, CONTRACT_DATABASE_FILE, SELF_OPERATOR_ID,
+    THRESHOLD_MAP,
 };
 use crate::node::{
     db::{self, Database},

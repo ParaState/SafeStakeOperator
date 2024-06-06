@@ -75,20 +75,20 @@ Log in to your host cloud service provider, open the following firewall inbound 
 #### 4. Enable docker service and start it immediately.
 
 ```
- sudo systemctl enable docker
+sudo systemctl enable --now docker
 ```
 
 #### 5. Create local volume directory
 
 ```
- sudo mkdir -p /data/geth
- # OR, if you use Nethermind/Besu/Erigon:
- # sudo mkdir -p /data/nethermind
- # sudo mkdir -p /data/besu
- # sudo mkdir -p /data/erigon
- sudo mkdir -p /data/lighthouse
- sudo mkdir -p /data/jwt
- sudo mkdir -p /data/operator
+sudo mkdir -p /data/geth
+# OR, if you use Nethermind/Besu/Erigon:
+# sudo mkdir -p /data/nethermind
+# sudo mkdir -p /data/besu
+# sudo mkdir -p /data/erigon
+sudo mkdir -p /data/lighthouse
+sudo mkdir -p /data/jwt
+sudo mkdir -p /data/operator
 ```
 
 #### 6. Generate your jwt secret to jwt dirctory

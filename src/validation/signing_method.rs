@@ -312,31 +312,28 @@ impl SigningMethod {
                         (e.epoch.start_slot(T::slots_per_epoch()), "VA_EXIT", true)
                     }
                 };
-
+                let is_aggregator = dvf_signer
+                    .is_aggregator(
+                        signing_epoch.as_u64() + dvf_signer.operator_committee.validator_id(),
+                    )
+                    .await;
                 log::info!(
-                    "[Dvf {}/{}] Signing\t-\tSlot: {}.\tEpoch: {}.\tType: {}.\tRoot: {:?}.",
+                    "[Dvf {}/{}] Signing\t-\tSlot: {}.\tEpoch: {}.\tType: {}.\tRoot: {:?}. Is aggregator {}",
                     dvf_signer.operator_id,
                     dvf_signer.operator_committee.validator_id(),
                     slot,
                     signing_epoch.as_u64(),
                     duty,
-                    signing_root
+                    signing_root,
+                    is_aggregator
                 );
 
                 // Following LocalKeystore, if the code logic reaches here, then it has already passed all checks of this duty, and
                 // it is safe (from this operator's point of view) to sign it locally.
                 dvf_signer.local_sign_and_store(signing_root).await;
 
-                if !only_aggregator
-                    || (only_aggregator
-                        && dvf_signer
-                            .is_aggregator(
-                                signing_epoch.as_u64()
-                                    + dvf_signer.operator_committee.validator_id(),
-                            )
-                            .await)
-                {
-                    log::info!("[Dvf {}/{}] Leader trying to achieve duty consensus and aggregate duty signatures",
+                if !only_aggregator || (only_aggregator && is_aggregator) {
+                    log::debug!("[Dvf {}/{}] Leader trying to achieve duty consensus and aggregate duty signatures",
                         dvf_signer.operator_id,
                         dvf_signer.operator_committee.validator_id()
                     );
@@ -345,7 +342,7 @@ impl SigningMethod {
                     // I set this to be the epoch remaining time for selection proof, so bad committee (VA) might take several mintues
                     // to timeout, making duties of other VAs outdated.)
                     // 2. most duties should complete in a slot
-                    let task_timeout = Duration::from_secs(seconds_per_slot * 2 / 3);
+                    let task_timeout = Duration::from_secs(seconds_per_slot / 2);
                     let timeout = sleep(task_timeout);
                     let work = dvf_signer.threshold_sign(signing_root);
                     let dt: DateTime<Utc> = Utc::now();

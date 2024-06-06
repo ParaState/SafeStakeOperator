@@ -10,7 +10,7 @@ use crate::utils::error::DvfError;
 use async_trait::async_trait;
 use bytes::Bytes;
 use downcast_rs::DowncastSync;
-use log::{info, warn};
+use log::{debug, warn};
 use network::{DvfMessage, ReliableSender, SimpleSender, VERSION};
 use tokio::time::{sleep_until, timeout, Instant};
 use types::{Hash256, Keypair, PublicKey, Signature};
@@ -57,7 +57,7 @@ impl TOperator for LocalOperator {
     }
 
     async fn propose(&self, msg: Hash256) {
-        info!(
+        debug!(
             "[Dvf {}/{}] Proposing msg {}",
             self.operator_id, self.validator_id, msg
         );
@@ -132,7 +132,7 @@ impl TOperator for RemoteOperator {
                 Ok(output) => match output {
                     Ok(data) => match bincode::deserialize::<Signature>(&data) {
                         Ok(bls_signature) => {
-                            info!(
+                            debug!(
                                 "Received a signature from operator {}/{} ({:?})",
                                 self.operator_id,
                                 self.validator_id,

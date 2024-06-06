@@ -8,7 +8,7 @@ use lighthouse_network::discv5::{
     enr::{CombinedKey, Enr, EnrPublicKey, NodeId},
     ConfigBuilder, Discv5, Event, ListenConfig,
 };
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use network::{DvfMessage, ReliableSender};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -123,12 +123,11 @@ impl Discovery {
             loop {
                 tokio::select! {
                     Some((node_id, notification)) = rx.recv() => {
-                        info!("Searching for peers...");
                         // execute a FINDNODE query
                         match discv5.find_node(node_id).await {
                             Err(e) => error!("Find Node result failed: {:?}", e),
                             Ok(v) => {
-                                info!("Find Node result succeeded: {} nodes", v.len());
+                                debug!("Find Node result succeeded: {} nodes", v.len());
                                 // found a list of ENR's print their NodeIds
                                 for enr in v {
                                     if let Some(ip) = enr.ip4() {

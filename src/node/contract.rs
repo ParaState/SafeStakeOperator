@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use bls::{PublicKey as BlsPublickey, SecretKey as BlsSecretKey};
 use core::panic;
 use hscrypto::PublicKey;
+use lazy_static::lazy_static;
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_derive::{Deserialize as DeriveDeserialize, Serialize as DeriveSerialize};
@@ -22,7 +23,6 @@ use web3::{
     types::{Address, BlockNumber, FilterBuilder, Log, H256, U256, U64},
     Error as Web3Error, Web3,
 };
-use lazy_static::lazy_static;
 
 const CONTRACT_CONFIG_FILE: &str = "contract_config/configs.yml";
 const CONTRACT_RECORD_FILE: &str = "contract_record.yml";
@@ -46,9 +46,7 @@ lazy_static! {
         threshold_map.insert(7, 5);
         threshold_map
     };
-    static ref ALLOWED_COMMITTEE_SIZE: HashSet<u64> = {
-        HashSet::from([4, 7])
-    };
+    static ref ALLOWED_COMMITTEE_SIZE: HashSet<u64> = { HashSet::from([4, 7]) };
 }
 #[derive(Debug)]
 pub enum ContractError {

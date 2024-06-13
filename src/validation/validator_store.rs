@@ -25,13 +25,12 @@ use tokio::sync::{Mutex, RwLock};
 use types::{
     attestation::Error as AttestationError, graffiti::GraffitiString, AbstractExecPayload, Address,
     AggregateAndProof, Attestation, BeaconBlock, BlindedPayload, ChainSpec, ContributionAndProof,
-    Domain, Epoch, EthSpec, Fork, ForkName, Graffiti, Hash256, Keypair, PublicKey, PublicKeyBytes,
+    Domain, Epoch, EthSpec, Fork, ForkName, Graffiti, Hash256, PublicKey, PublicKeyBytes,
     SelectionProof, Signature, SignedAggregateAndProof, SignedBeaconBlock,
     SignedContributionAndProof, SignedRoot, SignedValidatorRegistrationData, SignedVoluntaryExit,
     Slot, SyncAggregatorSelectionData, SyncCommitteeContribution, SyncCommitteeMessage,
     SyncSelectionProof, SyncSubnetId, ValidatorRegistrationData, VoluntaryExit,
 };
-use validator_dir::ValidatorDir;
 
 pub use crate::validation::doppelganger_service::DoppelgangerStatus;
 
@@ -63,31 +62,6 @@ const SLASHING_PROTECTION_HISTORY_EPOCHS: u64 = 512;
 ///
 /// https://github.com/ethereum/builder-specs/issues/17
 pub const DEFAULT_GAS_LIMIT: u64 = 30_000_000;
-
-struct LocalValidator {
-    validator_dir: ValidatorDir,
-    voting_keypair: Keypair,
-}
-
-/// We derive our own `PartialEq` to avoid doing equality checks between secret keys.
-///
-/// It's nice to avoid secret key comparisons from a security perspective, but it's also a little
-/// risky when it comes to `HashMap` integrity (that's why we need `PartialEq`).
-///
-/// Currently, we obtain keypairs from keystores where we derive the `PublicKey` from a `SecretKey`
-/// via a hash function. In order to have two equal `PublicKey` with different `SecretKey` we would
-/// need to have either:
-///
-/// - A serious upstream integrity error.
-/// - A hash collision.
-///
-/// It seems reasonable to make these two assumptions in order to avoid the equality checks.
-impl PartialEq for LocalValidator {
-    fn eq(&self, other: &Self) -> bool {
-        self.validator_dir == other.validator_dir
-            && self.voting_keypair.pk == other.voting_keypair.pk
-    }
-}
 
 pub struct ValidatorStore<T, E: EthSpec> {
     validators: Arc<RwLock<InitializedValidators<E>>>,
@@ -409,7 +383,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
     fn signing_context(&self, domain: Domain, signing_epoch: Epoch) -> SigningContext {
         if domain == Domain::VoluntaryExit {
             match self.spec.fork_name_at_epoch(signing_epoch) {
-                ForkName::Base | ForkName::Altair | ForkName::Merge | ForkName::Capella => {
+                ForkName::Base | ForkName::Altair | ForkName::Bellatrix | ForkName::Capella => {
                     SigningContext {
                         domain,
                         epoch: signing_epoch,
@@ -418,7 +392,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
                     }
                 }
                 // EIP-7044
-                ForkName::Deneb => SigningContext {
+                ForkName::Deneb | ForkName::Electra => SigningContext {
                     domain,
                     epoch: signing_epoch,
                     fork: Fork {

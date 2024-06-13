@@ -1,5 +1,5 @@
-use aes_gcm::aead::{Aead, NewAead};
-use aes_gcm::{Aes128Gcm, Error, Key, Nonce};
+use aes_gcm::aead::Aead;
+use aes_gcm::{Aes128Gcm, Error, Key, Nonce, KeyInit};
 use rand::Rng;
 use secp256k1::{ecdh, All, PublicKey, Secp256k1, SecretKey};
 use sha256::digest;
@@ -77,7 +77,7 @@ where
         let point = ecdh::shared_secret_point(&pk, &other_sk);
         let secret = hex::decode(digest(&point)).unwrap();
 
-        let key = Key::from_slice(&secret.as_slice()[0..16]);
+        let key = Key::<Aes128Gcm>::from_slice(&secret.as_slice()[0..16]);
         let cipher = Aes128Gcm::new(key);
 
         let mut nonce_bytes = vec![0u8; 12]; // 96-bit nonce
@@ -110,7 +110,7 @@ where
         let point = ecdh::shared_secret_point(&ct.temp_pk, sk);
         let secret = hex::decode(digest(&point)).unwrap();
 
-        let key = Key::from_slice(&secret.as_slice()[0..16]);
+        let key = Key::<Aes128Gcm>::from_slice(&secret.as_slice()[0..16]);
         let cipher = Aes128Gcm::new(key);
 
         let nonce_bytes = &ct.aes_ct.as_slice()[0..12];

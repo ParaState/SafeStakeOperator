@@ -8,7 +8,7 @@ edition = "2021"
 dirs = "3.0.1"
 lighthouse_directory = { path = "../../lighthouse/common/directory", package = "directory" }
 dvf_version = { path = "../dvf_version" }
-clap = "2.33.3"
+clap = "4.5.4"
 
 
 [dev-dependencies]

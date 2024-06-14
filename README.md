@@ -46,4 +46,4 @@ Join our [Discord](http://discord.gg/zFS3Mnfpwj) chat channel!
 
 ## Beta Advisory
 
-Currently, the SafeStake project is in public testnet stage. In addition, the smart contracts have been reviewed by the Nethermind Team and fulfilled audit by PeckShield. Please check the detailed [audit report](https://github.com/peckshield/publications/blob/master/audit_reports/PeckShield-Audit-Report-SafeStake-v1.0.pdf). Stay tuned for the Stage1 mainnet launch!
+Currently, the SafeStake project is in public testnet stage. In addition, the smart contracts have been reviewed by the Nethermind Team and fulfilled audit by PeckShield. Please check the detailed [audit report](https://github.com/peckshield/publications/tree/master/audit_reports/PeckShield-Audit-Report-SafeStake-v1.0.pdf). Stay tuned for the Stage1 mainnet launch!

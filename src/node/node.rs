@@ -400,6 +400,7 @@ impl<T: EthSpec> Node<T> {
                             if let Some(addr) = node_lock.discovery.query_addr(&committee_def.node_public_keys[i].0).await {
                                 if let Some(socket) = committee_def.base_socket_addresses[i].as_mut() {
                                     if *socket != addr {
+                                        info!("op id: {}, local committee definition address {}, queried result {}", committee_def.operator_ids[i], socket, addr);
                                         *socket = addr;
                                         restart = true;
                                     }

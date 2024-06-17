@@ -463,10 +463,10 @@ impl Core {
 
     #[async_recursion]
     async fn generate_proposal(&mut self, tc: Option<TC>) {
-        self.tx_proposer
+        let _ = self.tx_proposer
             .send(ProposerMessage::Make(self.round, self.high_qc.clone(), tc))
-            .await
-            .expect("Failed to send message to proposer");
+            .await;
+            // .expect("Failed to send message to proposer");
     }
 
     async fn cleanup_proposer(&mut self, b0: &Block, b1: &Block, block: &Block) {

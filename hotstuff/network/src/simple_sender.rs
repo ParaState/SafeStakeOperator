@@ -36,6 +36,9 @@ pub struct SimpleSender {
     connections: Arc<RwLock<HashMap<SocketAddr, MonitoredSender<Command>>>>,
     /// Small RNG just used to shuffle nodes and randomize connections (not crypto related).
     rng: SmallRng,
+
+    signal: Option<exit_future::Signal>,
+    exit: exit_future::Exit,
 }
 
 impl std::default::Default for SimpleSender {
@@ -44,11 +47,22 @@ impl std::default::Default for SimpleSender {
     }
 }
 
+impl Drop for SimpleSender {
+    fn drop(&mut self) {
+        if let Some(signal) = self.signal.take() {
+            let _ = signal.fire();
+        } 
+    }
+}
+
 impl SimpleSender {
     pub fn new() -> Self {
+        let (signal, exit) = exit_future::signal();
         Self {
             connections: Arc::new(RwLock::new(HashMap::new())),
             rng: SmallRng::from_entropy(),
+            signal: Some(signal),
+            exit,
         }
     }
 
@@ -222,6 +236,10 @@ impl Connection {
                         }
                     }
                 },
+                () = exit => {
+                    info!();
+                    break;
+                }
             }
         }
     }

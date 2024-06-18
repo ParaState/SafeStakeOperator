@@ -123,7 +123,6 @@ impl Discovery {
             loop {
                 tokio::select! {
                     Some((node_id, notification)) = rx.recv() => {
-                        // execute a FINDNODE query
                         match discv5.find_node(node_id).await {
                             Err(e) => error!("Find Node result failed: {:?}", e),
                             Ok(v) => {

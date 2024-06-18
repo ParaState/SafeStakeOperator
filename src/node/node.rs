@@ -12,6 +12,7 @@ use crate::node::contract::{
     Contract, ContractCommand, EncryptedSecretKeys, Initiator, InitiatorStoreRecord, OperatorIds,
     OperatorPublicKeys, SharedPublicKeys, Validator, CONTRACT_DATABASE_FILE, SELF_OPERATOR_ID,
     THRESHOLD_MAP,
+    DATABASE
 };
 use crate::node::{
     db::{self, Database},
@@ -153,7 +154,7 @@ impl<T: EthSpec> Node<T> {
                 message: "can't create contract database".to_string(),
             }
         })?;
-
+        DATABASE.set(db.clone()).unwrap();
         let node = Self {
             config,
             secret: secret.clone(),
@@ -1179,4 +1180,8 @@ pub fn create_node_key_hex_backup(path: PathBuf, secret: &Secret) -> Result<(), 
         secret.write_hex(path.to_str().unwrap())?;
     }
     Ok(())
+}
+
+pub async fn query_validator_registration_timestamp(public_key: &[u8]) -> u64 {
+    DATABASE.get().unwrap().query_validator_registration_timestamp(hex::encode(public_key)).await.unwrap()
 }

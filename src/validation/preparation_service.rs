@@ -18,7 +18,7 @@ use types::{
     Address, ChainSpec, Epoch, EthSpec, ProposerPreparationData, SignedValidatorRegistrationData,
     ValidatorRegistrationData,
 };
-
+use crate::node::node::query_validator_registration_timestamp;
 /// Number of epochs before the Bellatrix hard fork to begin posting proposer preparations.
 const PROPOSER_PREPARATION_LOOKAHEAD_EPOCHS: u64 = 2;
 
@@ -367,7 +367,6 @@ impl<T: SlotClock + 'static, E: EthSpec> PreparationService<T, E> {
 
     /// Register validators with builders, used in the blinded block proposal flow.
     async fn register_validators(&self) -> Result<(), String> {
-        let log = self.context.log();
         let registration_keys = self.collect_validator_registration_keys().await;
 
         let mut changed_keys = vec![];
@@ -386,36 +385,44 @@ impl<T: SlotClock + 'static, E: EthSpec> PreparationService<T, E> {
 
         // Check if any have changed or it's been `EPOCHS_PER_VALIDATOR_REGISTRATION_SUBMISSION`.
         if let Some(slot) = self.slot_clock.now() {
+            // let epoch = slot.epoch(E::slots_per_epoch());
+            // let start_slot = epoch.start_slot(E::slots_per_epoch());
+            // let registration_duration = self.slot_clock.start_of(start_slot);
+            // match registration_duration {
+            //     Some(duration) => {
+            //         let registartion_timestamp = duration.as_secs();
+            //         if slot % (E::slots_per_epoch() * EPOCHS_PER_VALIDATOR_REGISTRATION_SUBMISSION)
+            //             == 0
+            //         {
+            //             self.publish_validator_registration_data(
+            //                 registration_keys,
+            //                 registartion_timestamp,
+            //                 epoch,
+            //             )
+            //             .await?;
+            //         } else if !changed_keys.is_empty() {
+            //             self.publish_validator_registration_data(
+            //                 changed_keys,
+            //                 registartion_timestamp,
+            //                 epoch,
+            //             )
+            //             .await?;
+            //         }
+            //     }
+            //     _ => {
+            //         error!(
+            //             log,
+            //             "Unable to calculate the regitration timestamp";
+            //         )
+            //     }
+            // }
             let epoch = slot.epoch(E::slots_per_epoch());
-            let start_slot = epoch.start_slot(E::slots_per_epoch());
-            let registration_duration = self.slot_clock.start_of(start_slot);
-            match registration_duration {
-                Some(duration) => {
-                    let registartion_timestamp = duration.as_secs();
-                    if slot % (E::slots_per_epoch() * EPOCHS_PER_VALIDATOR_REGISTRATION_SUBMISSION)
-                        == 0
-                    {
-                        self.publish_validator_registration_data(
-                            registration_keys,
-                            registartion_timestamp,
-                            epoch,
-                        )
-                        .await?;
-                    } else if !changed_keys.is_empty() {
-                        self.publish_validator_registration_data(
-                            changed_keys,
-                            registartion_timestamp,
-                            epoch,
-                        )
-                        .await?;
-                    }
-                }
-                _ => {
-                    error!(
-                        log,
-                        "Unable to calculate the regitration timestamp";
-                    )
-                }
+            if slot % (E::slots_per_epoch() * EPOCHS_PER_VALIDATOR_REGISTRATION_SUBMISSION) == 0 {
+                self.publish_validator_registration_data(registration_keys, epoch)
+                    .await?;
+            } else if !changed_keys.is_empty() {
+                self.publish_validator_registration_data(changed_keys, epoch)
+                    .await?;
             }
         }
 
@@ -425,7 +432,6 @@ impl<T: SlotClock + 'static, E: EthSpec> PreparationService<T, E> {
     async fn publish_validator_registration_data(
         &self,
         registration_keys: Vec<ValidatorRegistrationKey>,
-        registartion_timestamp: u64,
         epoch: Epoch,
     ) -> Result<(), String> {
         let log = self.context.log();
@@ -444,15 +450,8 @@ impl<T: SlotClock + 'static, E: EthSpec> PreparationService<T, E> {
             let signed_data = if let Some(signed_data) = cached_registration_opt {
                 signed_data
             } else {
-                let timestamp = registartion_timestamp;
-                // if let Some(timestamp) = self.builder_registration_timestamp_override {
-                //     timestamp
-                // } else {
-                //     SystemTime::now()
-                //         .duration_since(UNIX_EPOCH)
-                //         .map_err(|e| format!("{e:?}"))?
-                //         .as_secs()
-                // };
+                
+                let timestamp = query_validator_registration_timestamp(key.pubkey.as_serialized()).await;
 
                 let ValidatorRegistrationKey {
                     fee_recipient,

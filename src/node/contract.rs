@@ -20,7 +20,7 @@ use web3::ethabi::{token, Event, EventParam, ParamType, RawLog};
 use web3::{
     contract::{Contract as EthContract, Options},
     transports::WebSocket,
-    types::{Address, BlockNumber, FilterBuilder, Log, H256, U256, U64},
+    types::{Address, BlockId, BlockNumber, FilterBuilder, Log, H256, U256, U64},
     Error as Web3Error, Web3,
 };
 
@@ -37,8 +37,10 @@ pub static SELF_OPERATOR_ID: OnceCell<u32> = OnceCell::const_new();
 pub static DEFAULT_TRANSPORT_URL: OnceCell<String> = OnceCell::const_new();
 pub static REGISTRY_CONTRACT: OnceCell<String> = OnceCell::const_new();
 pub static NETWORK_CONTRACT: OnceCell<String> = OnceCell::const_new();
+pub static DATABASE: OnceCell<Database> = OnceCell::const_new();
 const QUERY_LOGS_INTERVAL: u64 = 60;
 const QUERY_BLOCK_INTERVAL: u64 = 500;
+pub const DEFAULT_REGISTRATION_TIMESTAMP: u64 = 1718640000;
 lazy_static! {
     pub static ref THRESHOLD_MAP: HashMap<u64, u64> = {
         let mut threshold_map = HashMap::new();
@@ -775,8 +777,10 @@ pub async fn process_validator_registration(
             releated_operators: op_ids,
             active: true,
         };
+        let block_number = raw_log.block_number.unwrap();
+        let registration_timestamp = query_block_number_timestamp(block_number, web3).await?;
         // save validator in local database
-        db.insert_validator(validator.clone()).await;
+        db.insert_validator(validator.clone(), registration_timestamp).await;
         let cmd = ContractCommand::StartValidator(validator, op_pk_bn, shared_pks, encrypted_sks);
         db.insert_contract_command(validator_id, serde_json::to_string(&cmd).unwrap())
             .await;
@@ -820,9 +824,8 @@ pub async fn process_validator_removal(raw_log: Log, db: &Database) -> Result<()
         .ok_or(ContractError::LogParseError)?;
     let id = convert_va_pk_to_u64(&va_pk);
 
-    // let va_str = hex::encode(&va_pk);
-
-    // db.delete_validator(va_str).await;
+    let va_str = hex::encode(&va_pk);
+    db.delete_validator(va_str).await;
 
     let cmd = ContractCommand::RemoveValidator(Validator {
         id,
@@ -1119,6 +1122,16 @@ pub async fn process_minipool_ready(raw_log: Log, db: &Database) -> Result<(), C
             None => Ok(()),
         },
         Err(_) => Err(ContractError::DatabaseError),
+    }
+}
+
+pub async fn query_block_number_timestamp(block_number: U64, web3: &Web3<WebSocket>) -> Result<u64, ContractError>{
+    match web3.eth().block(BlockId::Number(BlockNumber::Number(block_number))).await.unwrap() {
+        Some(block) => {
+            let timestamp = block.timestamp.as_u64();
+            Ok(timestamp)
+        },
+        None => Ok(DEFAULT_REGISTRATION_TIMESTAMP)
     }
 }
 

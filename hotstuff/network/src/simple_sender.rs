@@ -200,6 +200,7 @@ impl Connection {
         // Transmit messages once we have established a connection.
         loop {
             // Check if there are any new messages to send or if we get an ACK for messages we already sent.
+            let exit = self.exit.clone();
             tokio::select! {
                 Some(data) = self.receiver.recv() => {
                     match data {
@@ -237,7 +238,7 @@ impl Connection {
                     }
                 },
                 () = exit => {
-                    info!();
+                    info!("connection closed {}", self.address);
                     break;
                 }
             }

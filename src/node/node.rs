@@ -56,7 +56,7 @@ use validator_dir::insecure_keys::INSECURE_PASSWORD;
 use web3::types::H160;
 
 const THRESHOLD: u64 = 3;
-pub const COMMITTEE_IP_HEARTBEAT_INTERVAL: u64 = 600;
+pub const COMMITTEE_IP_HEARTBEAT_INTERVAL: u64 = 1800;
 pub const BALANCE_USED_UP: i64 = 1;
 pub const BALANCE_STILL_AVAILABLE: i64 = 0;
 // type InitiatorStore =

@@ -234,13 +234,13 @@ impl Connection {
                         },
                         _ => {
                             // Something has gone wrong (either the channel dropped or we failed to read from it).
-                            warn!("{}", NetworkError::FailedToReceiveAck(self.address));
+                            debug!("{}", NetworkError::FailedToReceiveAck(self.address));
                             return;
                         }
                     }
                 },
                 () = exit => {
-                    info!("connection closed {}", self.address);
+                    debug!("connection closed {}", self.address);
                     break;
                 }
             }

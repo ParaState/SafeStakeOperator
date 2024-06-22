@@ -397,7 +397,7 @@ impl SigningMethod {
                     .sign_digest(secret)
                     .map_err(|e| Error::SignDigestFailed(e))?,
             );
-            log::info!("[Dvf Request] Body: {:?}", &request_body);
+            log::debug!("[Dvf Request] Body: {:?}", &request_body);
             let url_str = API_ADDRESS.get().unwrap().to_owned() + COLLECT_PERFORMANCE_URL;
             tokio::spawn(async move {
                 _ = request_to_web_server(request_body, &url_str)

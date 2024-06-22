@@ -90,10 +90,6 @@ services:
       - "26004"
       - "26005"
       - "5064"
-    deploy:
-      resources:
-        limits:
-          memory: 5G
 
   dvf_key_tool:
     network_mode: "host"
@@ -106,10 +102,6 @@ services:
       - -c
       - |
         dvf_key_tool ${OPERATOR_NETWORK}
-    deploy:
-      resources:
-        limits:
-          memory: 5G
 
   nethermind:
     image: nethermind/nethermind

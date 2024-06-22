@@ -3,14 +3,14 @@ use crate::error::NetworkError;
 use bytes::Bytes;
 use futures::sink::SinkExt as _;
 use futures::stream::StreamExt as _;
-use log::{warn, debug};
+use log::{warn, debug, info};
 use rand::prelude::SliceRandom as _;
 use rand::rngs::SmallRng;
 use rand::SeedableRng as _;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
-use tokio::sync::mpsc::{Receiver};
+use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
@@ -36,6 +36,9 @@ pub struct SimpleSender {
     connections: Arc<RwLock<HashMap<SocketAddr, MonitoredSender<Command>>>>,
     /// Small RNG just used to shuffle nodes and randomize connections (not crypto related).
     rng: SmallRng,
+
+    signal: Option<exit_future::Signal>,
+    exit: exit_future::Exit,
 }
 
 impl std::default::Default for SimpleSender {
@@ -44,18 +47,29 @@ impl std::default::Default for SimpleSender {
     }
 }
 
+impl Drop for SimpleSender {
+    fn drop(&mut self) {
+        if let Some(signal) = self.signal.take() {
+            let _ = signal.fire();
+        } 
+    }
+}
+
 impl SimpleSender {
     pub fn new() -> Self {
+        let (signal, exit) = exit_future::signal();
         Self {
             connections: Arc::new(RwLock::new(HashMap::new())),
             rng: SmallRng::from_entropy(),
+            signal: Some(signal),
+            exit,
         }
     }
 
     /// Helper function to spawn a new connection.
-    fn spawn_connection(address: SocketAddr) -> MonitoredSender<Command> {
+    fn spawn_connection(address: SocketAddr, exit: exit_future::Exit ) -> MonitoredSender<Command> {
         let (tx, rx) = MonitoredChannel::new(CHANNEL_CAPACITY, format!("simple-{}", address), "debug");
-        Connection::spawn(address, rx);
+        Connection::spawn(address, rx, exit);
         tx
     }
 
@@ -69,7 +83,7 @@ impl SimpleSender {
 
         debug!("[Simple] Openning a new connection to {}", address);
         // Otherwise make a new connection.
-        let tx = Self::spawn_connection(address);
+        let tx = Self::spawn_connection(address, self.exit.clone());
         if tx.send(cmd).await.is_ok() {
             self.connections.write().await.insert(address, tx);
         }
@@ -156,12 +170,14 @@ struct Connection {
     address: SocketAddr,
     /// Channel from which the connection receives its commands.
     receiver: Receiver<Command>,
+
+    exit: exit_future::Exit,
 }
 
 impl Connection {
-    fn spawn(address: SocketAddr, receiver: Receiver<Command>) {
+    fn spawn(address: SocketAddr, receiver: Receiver<Command>, exit: exit_future::Exit) {
         tokio::spawn(async move {
-            Self { address, receiver }.run().await;
+            Self { address, receiver, exit }.run().await;
         });
     }
 
@@ -186,6 +202,7 @@ impl Connection {
         // Transmit messages once we have established a connection.
         loop {
             // Check if there are any new messages to send or if we get an ACK for messages we already sent.
+            let exit = self.exit.clone();
             tokio::select! {
                 Some(data) = self.receiver.recv() => {
                     match data {
@@ -217,11 +234,15 @@ impl Connection {
                         },
                         _ => {
                             // Something has gone wrong (either the channel dropped or we failed to read from it).
-                            warn!("{}", NetworkError::FailedToReceiveAck(self.address));
+                            debug!("{}", NetworkError::FailedToReceiveAck(self.address));
                             return;
                         }
                     }
                 },
+                () = exit => {
+                    debug!("connection closed {}", self.address);
+                    break;
+                }
             }
         }
     }

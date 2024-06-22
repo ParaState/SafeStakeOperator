@@ -178,7 +178,7 @@ impl Connection {
                     // Try to transmit all messages in the buffer and keep transmitting incoming messages.
                     // The following function only returns if there is an error.
                     let error = self.keep_alive(stream).await;
-                    warn!("{}", error);
+                    debug!("{}", error);
                     match error {
                         NetworkError::TokioChannelClosed(_) => {
                             return;

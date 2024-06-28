@@ -124,15 +124,16 @@ where
 #[cfg(test)]
 mod tests {
     use super::{Ciphertext, Elgamal};
-    use aes_gcm::aead::{Aead, NewAead};
+    use aes_gcm::aead::Aead;
     use aes_gcm::{Aes128Gcm, Key, Nonce};
     use secp256k1::SecretKey;
     use sha256::digest;
+    use aes_gcm::KeyInit;
 
     #[test]
     fn test_aes() {
         let key_bytes = hex::decode("c4c7c5b5f76482c78f667a277c8bfacb").unwrap();
-        let key = Key::from_slice(key_bytes.as_slice());
+        let key = Key::<Aes128Gcm>::from_slice(key_bytes.as_slice());
         let cipher = Aes128Gcm::new(key);
 
         let nonce_bytes = hex::decode("e3cf46d03a3239c65c2d50a1").unwrap();

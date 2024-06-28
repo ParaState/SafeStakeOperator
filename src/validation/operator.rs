@@ -113,9 +113,9 @@ impl TOperator for RemoteOperator {
             return Err(DvfError::SocketAddrUnknown);
         }
 
-        let n_try: u64 = 1;
+        let n_try: u64 = 2;
         let timeout_mill: u64 = 600;
-        let sleep_mill: u64 = 200;
+        let sleep_mill: u64 = 300;
         let dvf_message = DvfMessage {
             version: VERSION,
             validator_id: self.validator_id,
@@ -198,4 +198,18 @@ impl RemoteOperator {
             network: ReliableSender::new(),
         }
     }
+}
+
+
+#[tokio::test]
+async fn remote_operator_test() {
+    let mut logger =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
+    logger.format_timestamp_millis();
+    logger.init();
+    let validator_id = 16483247431692435623;
+    let operator_id = 25;
+    let operator_public_key = PublicKey::deserialize(&hex::decode("b4bff9720f8de96ab06d1eafc4ec5ff7bd3b8a0f5e194cc7e1678ca29802ad59005c250159af1e6001818c6652eaa619").unwrap()).unwrap();
+    let remote_operator = RemoteOperator::new(validator_id, operator_id, operator_public_key, "45.153.35.148:26000".parse().unwrap());
+    remote_operator.sign(Hash256::from_slice(&hex::decode("855908843796b0ccc2d2e0666b13a3bb87fb83191362cbf644a4d15ff3ae7752").unwrap())).await.unwrap();
 }

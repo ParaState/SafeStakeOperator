@@ -48,7 +48,11 @@ lazy_static! {
         threshold_map.insert(7, 5);
         threshold_map
     };
+<<<<<<< HEAD
     static ref ALLOWED_COMMITTEE_SIZE: HashSet<u64> = HashSet::from([4, 7]) ;
+=======
+    static ref ALLOWED_COMMITTEE_SIZE: HashSet<u64> = HashSet::from([4, 7]);
+>>>>>>> dev
 }
 #[derive(Debug)]
 pub enum ContractError {

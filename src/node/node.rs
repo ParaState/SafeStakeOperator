@@ -57,7 +57,7 @@ use validator_dir::insecure_keys::INSECURE_PASSWORD;
 use web3::types::H160;
 
 const THRESHOLD: u64 = 3;
-pub const COMMITTEE_IP_HEARTBEAT_INTERVAL: u64 = 600;
+pub const COMMITTEE_IP_HEARTBEAT_INTERVAL: u64 = 1800;
 pub const BALANCE_USED_UP: i64 = 1;
 pub const BALANCE_STILL_AVAILABLE: i64 = 0;
 // type InitiatorStore =
@@ -406,7 +406,7 @@ impl<T: EthSpec> Node<T> {
                         // Query IP for each operator in this committee. If any of them changed, should restart the VA.
                         let mut restart = false;
                         for i in 0..committee_def.node_public_keys.len() {
-                            if let Some(addr) = node_lock.discovery.query_addr(&committee_def.node_public_keys[i].0).await {
+                            if let Some(addr) = node_lock.discovery.query_addr_from_boot(0, &committee_def.node_public_keys[i].0).await {
                                 if let Some(socket) = committee_def.base_socket_addresses[i].as_mut() {
                                     if *socket != addr {
                                         info!("op id: {}, local committee definition address {}, queried result {}", committee_def.operator_ids[i], socket, addr);

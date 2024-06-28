@@ -380,3 +380,66 @@ async fn set_metrics(store: &Store, pk: Vec<u8>) {
         inc_counter(&metrics::DVT_VC_CONNECTED_NODES)
     }
 }
+
+#[tokio::test]
+async fn test_query_boot() {
+    let pk = base64::decode("AkEZigGJb511ZJLHTp6tSL5jbnPQHQ1FboeMy7IBMe88").unwrap();
+    let dvf_message = DvfMessage {
+        version: VERSION,
+        validator_id: 0,
+        message: pk.clone(),
+    };
+    let timeout_mill: u64 = 3000;
+    let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+    let network_sender = ReliableSender::new();
+    let file = std::fs::File::options()
+        .read(true)
+        .write(false)
+        .create(false)
+        .open("boot_config/boot_enrs.yaml")
+        .expect(
+            format!(
+                "Unable to open the boot enrs config file: {:?}",
+                "boot_config/boot_enrs.yaml"
+            )
+            .as_str(),
+        );
+    let boot_enrs: Vec<Enr<CombinedKey>> =
+        serde_yaml::from_reader(file).expect("Unable to parse boot enr");
+    let socketaddr = SocketAddr::new(
+        IpAddr::V4(boot_enrs[1].ip4().expect("boot enr ip should not be empty")),
+        boot_enrs[1]
+            .udp4()
+            .expect("boot enr port should not be empty"),
+    );
+    let receiver = network_sender
+        .send(socketaddr, Bytes::from(serialized_msg))
+        .await;
+    let result = timeout(Duration::from_millis(timeout_mill), receiver).await;
+
+    let base64_pk = base64::encode(pk);
+    match result {
+        Ok(output) => match output {
+            Ok(data) => match bincode::deserialize::<SocketAddr>(&data) {
+                Ok(addr) => {
+                    println!(
+                        "Get base address from boot node, pk {}, socket address {:?}",
+                        &base64_pk, addr
+                    );
+                }
+                Err(_) => {
+                    println!(
+                        "Boot node IP response is corrupted {:?}",
+                        String::from_utf8(data.to_vec())
+                    );
+                }
+            },
+            Err(_) => {
+                println!("Boot node query is interrupted.");
+            }
+        },
+        Err(_) => {
+            println!("Timeout for querying ip from boot for op {}", &base64_pk);
+        }
+    };
+}

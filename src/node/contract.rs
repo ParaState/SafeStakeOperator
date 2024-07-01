@@ -780,7 +780,8 @@ pub async fn process_validator_registration(
         let block_number = raw_log.block_number.unwrap();
         let registration_timestamp = query_block_number_timestamp(block_number, web3).await?;
         // save validator in local database
-        db.insert_validator(validator.clone(), registration_timestamp).await;
+        db.insert_validator(validator.clone(), registration_timestamp)
+            .await;
         let cmd = ContractCommand::StartValidator(validator, op_pk_bn, shared_pks, encrypted_sks);
         db.insert_contract_command(validator_id, serde_json::to_string(&cmd).unwrap())
             .await;
@@ -1125,13 +1126,21 @@ pub async fn process_minipool_ready(raw_log: Log, db: &Database) -> Result<(), C
     }
 }
 
-pub async fn query_block_number_timestamp(block_number: U64, web3: &Web3<WebSocket>) -> Result<u64, ContractError>{
-    match web3.eth().block(BlockId::Number(BlockNumber::Number(block_number))).await.unwrap() {
+pub async fn query_block_number_timestamp(
+    block_number: U64,
+    web3: &Web3<WebSocket>,
+) -> Result<u64, ContractError> {
+    match web3
+        .eth()
+        .block(BlockId::Number(BlockNumber::Number(block_number)))
+        .await
+        .unwrap()
+    {
         Some(block) => {
             let timestamp = block.timestamp.as_u64();
             Ok(timestamp)
-        },
-        None => Ok(DEFAULT_REGISTRATION_TIMESTAMP)
+        }
+        None => Ok(DEFAULT_REGISTRATION_TIMESTAMP),
     }
 }
 

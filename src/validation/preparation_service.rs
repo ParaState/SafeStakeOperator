@@ -1,5 +1,6 @@
 //! Reference: lighthouse/validator_client/preparation_service.rs
 
+use crate::node::node::query_validator_registration_timestamp;
 use crate::validation::beacon_node_fallback::{
     ApiTopic, BeaconNodeFallback, OfflineOnFailure, RequireSynced,
 };
@@ -18,7 +19,6 @@ use types::{
     Address, ChainSpec, Epoch, EthSpec, ProposerPreparationData, SignedValidatorRegistrationData,
     ValidatorRegistrationData,
 };
-use crate::node::node::query_validator_registration_timestamp;
 /// Number of epochs before the Bellatrix hard fork to begin posting proposer preparations.
 const PROPOSER_PREPARATION_LOOKAHEAD_EPOCHS: u64 = 2;
 
@@ -450,8 +450,8 @@ impl<T: SlotClock + 'static, E: EthSpec> PreparationService<T, E> {
             let signed_data = if let Some(signed_data) = cached_registration_opt {
                 signed_data
             } else {
-                
-                let timestamp = query_validator_registration_timestamp(key.pubkey.as_serialized()).await;
+                let timestamp =
+                    query_validator_registration_timestamp(key.pubkey.as_serialized()).await;
 
                 let ValidatorRegistrationKey {
                     fee_recipient,

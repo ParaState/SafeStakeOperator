@@ -15,7 +15,7 @@ use dvf_directory::get_default_base_dir;
 use eth2::types::Graffiti;
 use sensitive_url::SensitiveUrl;
 use serde_derive::{Deserialize, Serialize};
-use slog::{info, warn, Logger};
+use slog::{info, Logger};
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
@@ -208,13 +208,13 @@ impl Config {
             .dvf_node_config
             .set_beacon_nodes(config.beacon_nodes.clone());
 
-        if let Some(proposer_nodes) = parse_optional::<String>(cli_args, "proposer_nodes")? {
-            config.proposer_nodes = proposer_nodes
-                .split(',')
-                .map(SensitiveUrl::parse)
-                .collect::<Result<_, _>>()
-                .map_err(|e| format!("Unable to parse proposer node URL: {:?}", e))?;
-        }
+        // if let Some(proposer_nodes) = parse_optional::<String>(cli_args, "proposer_nodes")? {
+        //     config.proposer_nodes = proposer_nodes
+        //         .split(',')
+        //         .map(SensitiveUrl::parse)
+        //         .collect::<Result<_, _>>()
+        //         .map_err(|e| format!("Unable to parse proposer node URL: {:?}", e))?;
+        // }
 
         config.disable_auto_discover = cli_args.get_flag("disable-auto-discover");
         config.init_slashing_protection = cli_args.get_flag("init-slashing-protection");
@@ -248,24 +248,16 @@ impl Config {
             }
         }
 
-        if let Some(input_fee_recipient) =
-            parse_optional::<Address>(cli_args, "suggested-fee-recipient")?
-        {
-            config.fee_recipient = Some(input_fee_recipient);
-        }
+        // if let Some(input_fee_recipient) =
+        //     parse_optional::<Address>(cli_args, "suggested-fee-recipient")?
+        // {
+        //     config.fee_recipient = Some(input_fee_recipient);
+        // }
 
         if let Some(tls_certs) = parse_optional::<String>(cli_args, "beacon-nodes-tls-certs")? {
             config.beacon_nodes_tls_certs = Some(tls_certs.split(',').map(PathBuf::from).collect());
         }
 
-        if cli_args.get_flag("disable-run-on-all") {
-            warn!(
-                log,
-                "The --disable-run-on-all flag is deprecated";
-                "msg" => "please use --broadcast instead"
-            );
-            config.broadcast_topics = vec![];
-        }
         if let Some(broadcast_topics) = cli_args.get_one::<String>("broadcast") {
             config.broadcast_topics = broadcast_topics
                 .split(',')

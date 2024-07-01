@@ -4,7 +4,7 @@ use crate::utils::blst_utils::{
 };
 use crate::DEFAULT_CHANNEL_CAPACITY;
 use aes_gcm::aead::Aead;
-use aes_gcm::{Aes128Gcm, Key, Nonce, KeyInit};
+use aes_gcm::{Aes128Gcm, Key, KeyInit, Nonce};
 use async_trait::async_trait;
 use blst::min_pk::Signature;
 use blst::{blst_p1, blst_scalar, BLST_ERROR};

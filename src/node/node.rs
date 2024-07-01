@@ -10,9 +10,8 @@ use crate::node::config::{
 };
 use crate::node::contract::{
     Contract, ContractCommand, EncryptedSecretKeys, Initiator, InitiatorStoreRecord, OperatorIds,
-    OperatorPublicKeys, SharedPublicKeys, Validator, CONTRACT_DATABASE_FILE, SELF_OPERATOR_ID,
-    THRESHOLD_MAP,
-    DATABASE
+    OperatorPublicKeys, SharedPublicKeys, Validator, CONTRACT_DATABASE_FILE, DATABASE,
+    SELF_OPERATOR_ID, THRESHOLD_MAP,
 };
 use crate::node::{
     db::{self, Database},
@@ -77,7 +76,7 @@ pub struct Node<T: EthSpec> {
     pub signature_handler_map: Arc<RwLock<HashMap<u64, DvfSignatureReceiverHandler>>>,
     pub validator_store: Option<Arc<ValidatorStore<SystemTimeSlotClock, T>>>,
     pub discovery: Arc<Discovery>,
-    pub db: Database
+    pub db: Database,
 }
 
 // impl Send for Node{}
@@ -164,10 +163,9 @@ impl<T: EthSpec> Node<T> {
             signature_handler_map: Arc::clone(&signature_handler_map),
             validator_store: None,
             discovery: Arc::new(discovery),
-            db: db.clone()
+            db: db.clone(),
         };
 
-        
         Contract::spawn(base_dir, secret.name, db.clone());
         let node = Arc::new(RwLock::new(node));
         Node::process_contract_command(Arc::clone(&node), db);
@@ -1183,5 +1181,10 @@ pub fn create_node_key_hex_backup(path: PathBuf, secret: &Secret) -> Result<(), 
 }
 
 pub async fn query_validator_registration_timestamp(public_key: &[u8]) -> u64 {
-    DATABASE.get().unwrap().query_validator_registration_timestamp(hex::encode(public_key)).await.unwrap()
+    DATABASE
+        .get()
+        .unwrap()
+        .query_validator_registration_timestamp(hex::encode(public_key))
+        .await
+        .unwrap()
 }

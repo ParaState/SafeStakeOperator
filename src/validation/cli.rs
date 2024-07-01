@@ -157,6 +157,7 @@ pub fn cli_app() -> Command {
         .arg(
             Arg::new("init-slashing-protection")
                 .long("init-slashing-protection")
+                .action(ArgAction::SetTrue)
                 .help(
                     "If present, do not require the slashing protection database to exist before \
                      running. You SHOULD NOT use this flag unless you're certain that a new \
@@ -168,6 +169,7 @@ pub fn cli_app() -> Command {
         .arg(
             Arg::new("disable-auto-discover")
             .long("disable-auto-discover")
+            .action(ArgAction::SetTrue)
             .help(
                 "If present, do not attempt to discover new validators in the validators-dir. Validators \
                 will need to be manually added to the validator_definitions.yml file."
@@ -176,6 +178,7 @@ pub fn cli_app() -> Command {
         .arg(
             Arg::new("use-long-timeouts")
                 .long("use-long-timeouts")
+                .action(ArgAction::SetTrue)
                 .help("If present, the validator client will use longer timeouts for requests \
                         made to the beacon node. This flag is generally not recommended, \
                         longer timeouts can cause missed duties when fallbacks are used.")
@@ -205,6 +208,17 @@ pub fn cli_app() -> Command {
                 .value_name("GRAFFITI-FILE")
                 .action(ArgAction::Set)
                 .conflicts_with("graffiti")
+        )
+        .arg(
+            Arg::new("produce-block-v3")
+                .long("produce-block-v3")
+                .help("Enable block production via the block v3 endpoint for this validator client. \
+                       This should only be enabled when paired with a beacon node \
+                       that has this endpoint implemented. This flag will be enabled by default in \
+                       future.")
+                .action(ArgAction::SetTrue)
+                .help_heading(FLAG_HEADER)
+                .display_order(0)
         )
         /* REST API related arguments */
         .arg(
@@ -300,6 +314,17 @@ pub fn cli_app() -> Command {
                     address of this server (e.g., http://localhost:5064).")
                     .action(ArgAction::Set)
                     .display_order(0),
+        )
+        .arg(
+            Arg::new("enable-high-validator-count-metrics")
+                .long("enable-high-validator-count-metrics")
+                .help("Enable per validator metrics for > 64 validators. \
+                    Note: This flag is automatically enabled for <= 64 validators. \
+                    Enabling this metric for higher validator counts will lead to higher volume \
+                    of prometheus metrics being collected.")
+                .action(ArgAction::SetTrue)
+                .help_heading(FLAG_HEADER)
+                .display_order(0)
         )
         /*
          * Explorer metrics

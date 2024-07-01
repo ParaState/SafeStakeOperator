@@ -3,7 +3,9 @@ mod metrics;
 
 use chrono::Local;
 use clap::{Arg, ArgAction, ArgMatches, Command};
-use clap_utils::{flags::DISABLE_MALLOC_TUNING_FLAG, get_color_style, get_eth2_network_config, FLAG_HEADER};
+use clap_utils::{
+    flags::DISABLE_MALLOC_TUNING_FLAG, get_color_style, get_eth2_network_config, FLAG_HEADER,
+};
 use directory::DEFAULT_VALIDATOR_DIR;
 use dvf::validation::ProductionValidatorClient;
 use dvf_directory::get_default_base_dir;
@@ -160,6 +162,7 @@ fn main() {
         .arg(
             Arg::new("logfile-compress")
                 .long("logfile-compress")
+                .action(ArgAction::SetTrue)
                 .help(
                     "If present, compress old log files. This can help reduce the space needed \
                     to store old logs.")
@@ -386,7 +389,6 @@ fn main() {
         .subcommand(dvf::validation::cli_app())
         .get_matches();
 
-
     let result = get_eth2_network_config(&matches).and_then(|eth2_network_config| {
         let eth_spec_id = eth2_network_config.eth_spec_id()?;
 
@@ -435,7 +437,7 @@ fn run<E: EthSpec>(
     }
 
     let debug_level = matches
-    .get_one::<String>("debug-level")
+        .get_one::<String>("debug-level")
         .ok_or("Expected --debug-level flag")?;
 
     let _logger = env_logger::Builder::from_env(Env::default().default_filter_or(debug_level))
@@ -464,17 +466,17 @@ fn run<E: EthSpec>(
     let disable_log_timestamp = matches.get_flag("disable-log-timestamp");
 
     let logfile_debug_level = matches
-    .get_one::<String>("logfile-debug-level")
+        .get_one::<String>("logfile-debug-level")
         .ok_or("Expected --logfile-debug-level flag")?;
 
     let logfile_max_size: u64 = matches
-    .get_one::<String>("logfile-max-size")
+        .get_one::<String>("logfile-max-size")
         .ok_or("Expected --logfile-max-size flag")?
         .parse()
         .map_err(|e| format!("Failed to parse `logfile-max-size`: {:?}", e))?;
 
     let logfile_max_number: usize = matches
-    .get_one::<String>("logfile-max-number")
+        .get_one::<String>("logfile-max-number")
         .ok_or("Expected --logfile-max-number flag")?
         .parse()
         .map_err(|e| format!("Failed to parse `logfile-max-number`: {:?}", e))?;
@@ -501,9 +503,7 @@ fn run<E: EthSpec>(
     }
 
     let sse_logging = {
-        if let Some(bn_matches) = matches.subcommand_matches("beacon_node") {
-            bn_matches.get_flag("gui")
-        } else if let Some(vc_matches) = matches.subcommand_matches("validator_client") {
+        if let Some(vc_matches) = matches.subcommand_matches("validator_client") {
             vc_matches.get_flag("http")
         } else {
             false

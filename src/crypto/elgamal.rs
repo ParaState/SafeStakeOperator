@@ -1,5 +1,5 @@
 use aes_gcm::aead::Aead;
-use aes_gcm::{Aes128Gcm, Error, Key, Nonce, KeyInit};
+use aes_gcm::{Aes128Gcm, Error, Key, KeyInit, Nonce};
 use rand::Rng;
 use secp256k1::{ecdh, All, PublicKey, Secp256k1, SecretKey};
 use sha256::digest;
@@ -125,10 +125,10 @@ where
 mod tests {
     use super::{Ciphertext, Elgamal};
     use aes_gcm::aead::Aead;
+    use aes_gcm::KeyInit;
     use aes_gcm::{Aes128Gcm, Key, Nonce};
     use secp256k1::SecretKey;
     use sha256::digest;
-    use aes_gcm::KeyInit;
 
     #[test]
     fn test_aes() {

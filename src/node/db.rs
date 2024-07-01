@@ -1160,7 +1160,7 @@ fn query_initiator_store(
 
 fn query_validator_registration_timestamp(conn: &Connection, validator_pk: &str) -> DbResult<u64> {
     match conn
-        .prepare("select validators_registration_timestamp from validators where public_key = (?)")
+        .prepare("select registration_timestamp from validators_registration_timestamp where public_key = (?)")
     {
         Ok(mut stmt) => {
             let mut rows = stmt.query([validator_pk])?;

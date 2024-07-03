@@ -693,15 +693,15 @@ pub async fn activate_validator<T: EthSpec>(
                 &[&validator_pk.as_hex_string()],
                 BALANCE_STILL_AVAILABLE,
             );
+            Ok(())
         }
         _ => {
-            error!(
-                "[VA {}] failed to activate validator {}. Error: no validator store is set.",
+            Err(format!(
+                "[VA {}] failed to activate validator {}. Error: no validator store is set. please wait",
                 validator_id, validator_pk
-            );
+            ))
         }
     }
-    Ok(())
 }
 
 pub async fn remove_validator<T: EthSpec>(
@@ -761,10 +761,10 @@ pub async fn stop_validator<T: EthSpec>(
             info!("[VA {}] stopped validator {}", validator_id, validator_pk);
         }
         _ => {
-            error!(
-                "[VA {}] failed to stop validator {}. Error: no validator store is set.",
+            return Err(format!(
+                "[VA {}] failed to stop validator {}. Error: no validator store is set. please wait, please wait",
                 validator_id, validator_pk
-            );
+            ));
         }
     }
     set_int_gauge(

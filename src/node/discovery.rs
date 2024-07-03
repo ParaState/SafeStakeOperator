@@ -383,7 +383,7 @@ async fn set_metrics(store: &Store, pk: Vec<u8>) {
 
 #[tokio::test]
 async fn test_query_boot() {
-    let pk = base64::decode("AkEZigGJb511ZJLHTp6tSL5jbnPQHQ1FboeMy7IBMe88").unwrap();
+    let pk = base64::decode("AuZflDDCAZbSolMUaw3QnJGHBu/42/hbO2SM03GSgpEX").unwrap();
     let dvf_message = DvfMessage {
         version: VERSION,
         validator_id: 0,

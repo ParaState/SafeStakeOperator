@@ -11,6 +11,7 @@ use lighthouse_network::discv5::{
 use log::{debug, error, info, warn};
 use network::{DvfMessage, ReliableSender};
 use std::collections::HashMap;
+use std::net::Ipv4Addr;
 use std::path::PathBuf;
 use std::{
     net::{
@@ -383,7 +384,7 @@ async fn set_metrics(store: &Store, pk: Vec<u8>) {
 
 #[tokio::test]
 async fn test_query_boot() {
-    let pk = base64::decode("AuZflDDCAZbSolMUaw3QnJGHBu/42/hbO2SM03GSgpEX").unwrap();
+    let pk = base64::decode("Av/+7HJeNbQu6UD2eT7p0/afUUukMOuUPDtygSDx8wQO").unwrap();
     let dvf_message = DvfMessage {
         version: VERSION,
         validator_id: 0,
@@ -442,4 +443,72 @@ async fn test_query_boot() {
             println!("Timeout for querying ip from boot for op {}", &base64_pk);
         }
     };
+}
+
+#[tokio::test]
+async fn test_connect_boot() {
+    let mut logger =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
+    logger.format_timestamp_millis();
+    logger.init();
+    let ip: IpAddr = IpAddr::V4(Ipv4Addr::new(124, 90, 93, 210));
+    let udp_port = 9000;
+    let seq = 1;
+
+    let mut secret = Secret::new();
+    let enr_key = CombinedKey::secp256k1_from_bytes(&mut secret.secret.0).unwrap();
+
+    let local_enr = {
+        let mut builder = Enr::builder();
+        builder.ip(ip);
+        builder.udp4(udp_port);
+        builder.seq(seq);
+        builder.build(&enr_key).unwrap()
+    };
+
+    let config = ConfigBuilder::new(ListenConfig::Ipv4 {
+        ip: "0.0.0.0".parse().unwrap(),
+        port: udp_port,
+    })
+    .build();
+
+    // construct the discv5 server
+    let mut discv5: Discv5 = Discv5::new(local_enr.clone(), enr_key, config).unwrap();
+
+    let file = std::fs::File::options()
+        .read(true)
+        .write(false)
+        .create(false)
+        .open("boot_config/boot_enrs.yaml")
+        .expect(
+            format!(
+                "Unable to open the boot enrs config file: {:?}",
+                "boot_config/boot_enrs.yaml"
+            )
+            .as_str(),
+        );
+    let boot_enrs: Vec<Enr<CombinedKey>> =
+    serde_yaml::from_reader(file).expect("Unable to parse boot enr");
+    for boot_enr in &boot_enrs {
+        if let Err(e) = discv5.add_enr(boot_enr.clone()) {
+            panic!("Boot ENR was not added: {}", e);
+        }
+        info!("Added boot enr: {:?}", boot_enr.to_base64());
+    }
+    let _ = discv5.start().await;
+    
+
+    for boot_enr in &boot_enrs {
+        let res = discv5.find_node(boot_enr.node_id()).await;
+        match res {
+            Ok(nodes) => {
+                info!("Boot ENR was added successfully, finds nodes: {}", nodes.len());
+            }
+            Err(e) => {
+                error!("Can't connect to boot and run query: {}", e);
+            }
+        }
+    }
+
+    
 }

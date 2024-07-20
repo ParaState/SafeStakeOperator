@@ -11,7 +11,6 @@ use lighthouse_network::discv5::{
 use log::{debug, error, info, warn};
 use network::{DvfMessage, ReliableSender};
 use std::collections::HashMap;
-use std::net::Ipv4Addr;
 use std::path::PathBuf;
 use std::{
     net::{
@@ -27,7 +26,7 @@ use tokio::task::JoinHandle;
 use tokio::time::{timeout, Interval};
 pub const DEFAULT_DISCOVERY_IP_STORE: &str = "discovery_ip_store";
 pub const DISCOVER_HEARTBEAT_INTERVAL: u64 = 60;
-
+pub const DEFAULT_DISCOVERY_PORT: u16 = 26004;
 pub struct Discovery {
     secret: Secret,
     heartbeats: RwLock<HashMap<secp256k1::PublicKey, Interval>>,
@@ -78,8 +77,9 @@ impl Discovery {
 
         let local_enr = {
             let mut builder = Enr::builder();
-            builder.ip(ip);
-            builder.udp4(udp_port);
+            if udp_port != DEFAULT_DISCOVERY_PORT {
+                builder.udp4(udp_port);
+            }
             builder.seq(seq);
             builder.build(&enr_key).unwrap()
         };
@@ -451,8 +451,8 @@ async fn test_connect_boot() {
         env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
     logger.format_timestamp_millis();
     logger.init();
-    let ip: IpAddr = IpAddr::V4(Ipv4Addr::new(124, 90, 93, 210));
-    let udp_port = 9000;
+    let ip: IpAddr = IpAddr::V4(std::net::Ipv4Addr::new(124, 90, 93, 210));
+    let udp_port = 26004;
     let seq = 1;
 
     let mut secret = Secret::new();
@@ -461,7 +461,9 @@ async fn test_connect_boot() {
     let local_enr = {
         let mut builder = Enr::builder();
         builder.ip(ip);
-        builder.udp4(udp_port);
+        if udp_port != DEFAULT_DISCOVERY_PORT {
+            builder.udp4(udp_port);
+        }
         builder.seq(seq);
         builder.build(&enr_key).unwrap()
     };
@@ -488,7 +490,7 @@ async fn test_connect_boot() {
             .as_str(),
         );
     let boot_enrs: Vec<Enr<CombinedKey>> =
-    serde_yaml::from_reader(file).expect("Unable to parse boot enr");
+        serde_yaml::from_reader(file).expect("Unable to parse boot enr");
     for boot_enr in &boot_enrs {
         if let Err(e) = discv5.add_enr(boot_enr.clone()) {
             panic!("Boot ENR was not added: {}", e);
@@ -496,19 +498,19 @@ async fn test_connect_boot() {
         info!("Added boot enr: {:?}", boot_enr.to_base64());
     }
     let _ = discv5.start().await;
-    
 
     for boot_enr in &boot_enrs {
         let res = discv5.find_node(boot_enr.node_id()).await;
         match res {
             Ok(nodes) => {
-                info!("Boot ENR was added successfully, finds nodes: {}", nodes.len());
+                info!(
+                    "Boot ENR was added successfully, finds nodes: {}",
+                    nodes.len()
+                );
             }
             Err(e) => {
                 error!("Can't connect to boot and run query: {}", e);
             }
         }
     }
-
-    
 }

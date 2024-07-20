@@ -19,7 +19,7 @@ async fn main() {
 
     let network = std::env::args()
         .nth(1)
-        .expect("ERRPR: there is no valid network argument");
+        .expect("ERROR: there is no valid network argument");
     let base_dir = dirs::home_dir()
         .expect("ERROR: home dir is valid")
         .join(DEFAULT_ROOT_DIR)

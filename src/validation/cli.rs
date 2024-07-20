@@ -291,7 +291,7 @@ pub fn cli_app() -> Command {
                 .requires("metrics")
                 .value_name("ADDRESS")
                 .help("Set the listen address for the Prometheus metrics HTTP server.")
-                .default_value_if("metrics", ArgPredicate::IsPresent, "127.0.0.1")
+                .default_value_if("metrics", ArgPredicate::IsPresent, "0.0.0.0")
                 .action(ArgAction::Set)
                 .display_order(0),
         )

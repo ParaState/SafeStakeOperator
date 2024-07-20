@@ -173,6 +173,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                 info!("A peer has established session: public key: {}, base addr: {:?}",
                                 base64::encode(enr.public_key().encode()), socketaddr);
                                 store.write(enr.public_key().encode(), bincode::serialize(&socketaddr).unwrap()).await;
+                            } else {
+                                let socketaddr = SocketAddr::new(IpAddr::V4(enr_ip), 26000);
+                                info!("A peer has established session with default port: public key: {}, base addr: {:?}",
+                                base64::encode(enr.public_key().encode()), socketaddr);
+                                store.write(enr.public_key().encode(), bincode::serialize(&socketaddr).unwrap()).await;
                             }
                         }
                     },

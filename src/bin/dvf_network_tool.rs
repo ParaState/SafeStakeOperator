@@ -11,7 +11,7 @@ pub const DEFAULT_DISCOVERY_PORT: u16 = 26004;
 #[tokio::main]
 async fn main() {
     let mut logger =
-        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("error"));
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
     logger.format_timestamp_millis();
     logger.init();
     log::info!("------dvf_network_tool------");

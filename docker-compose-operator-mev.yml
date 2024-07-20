@@ -112,6 +112,16 @@ services:
       - |
         dvf_key_tool ${OPERATOR_NETWORK}
 
+  dvf_network_tool:
+    network_mode: "host"
+    image: parastate/dvf-operator:${IMAGE_TAG}
+    pull_policy: always
+    command:
+      - /bin/sh
+      - -c
+      - |
+        dvf_network_tool ${OPERATOR_NETWORK}
+
   nethermind:
     image: nethermind/nethermind
     pull_policy: always

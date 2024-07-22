@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::{
     net::{
-        IpAddr,
+        IpAddr, Ipv4Addr,
         SocketAddr::{self, V4, V6},
     },
     time::Duration,
@@ -34,6 +34,7 @@ pub struct Discovery {
     store: Store,
     boot_enrs: Vec<Enr<CombinedKey>>,
     discv5_service_handle: JoinHandle<()>,
+    base_port: u16,
 }
 
 impl Drop for Discovery {
@@ -191,6 +192,7 @@ impl Discovery {
             store: store_clone,
             boot_enrs,
             discv5_service_handle,
+            base_port: udp_port - DISCOVERY_PORT_OFFSET,
         };
 
         // immediately initiate a discover request to annouce ourself
@@ -227,6 +229,13 @@ impl Discovery {
     pub async fn query_addrs(&self, pks: &Vec<Vec<u8>>) -> Vec<Option<SocketAddr>> {
         let mut socket_address: Vec<Option<SocketAddr>> = Default::default();
         for i in 0..pks.len() {
+            if pks[i] == self.secret.name.0 {
+                socket_address.push(Some(SocketAddr::new(
+                    IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+                    self.base_port,
+                )));
+                continue;
+            }
             socket_address.push(self.query_addr(&pks[i]).await);
         }
         socket_address

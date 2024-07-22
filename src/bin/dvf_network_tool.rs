@@ -71,7 +71,6 @@ async fn main() {
         info!("Added boot enr: {:?}", boot_enr.to_base64());
     }
 
-    
     match discv5.start().await {
         Ok(_) => {
             for boot_enr in &boot_enrs {
@@ -94,5 +93,4 @@ async fn main() {
             error!("Can't start discv5: {}", e);
         }
     }
-    
 }

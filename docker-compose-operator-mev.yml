@@ -120,7 +120,7 @@ services:
       - /bin/sh
       - -c
       - |
-        dvf_network_tool ${OPERATOR_NETWORK}
+        dvf_network_tool ${NODE_IP} 26000
 
   nethermind:
     image: nethermind/nethermind

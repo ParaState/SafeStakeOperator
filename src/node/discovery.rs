@@ -229,13 +229,6 @@ impl Discovery {
     pub async fn query_addrs(&self, pks: &Vec<Vec<u8>>) -> Vec<Option<SocketAddr>> {
         let mut socket_address: Vec<Option<SocketAddr>> = Default::default();
         for i in 0..pks.len() {
-            if pks[i] == self.secret.name.0 {
-                socket_address.push(Some(SocketAddr::new(
-                    IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
-                    self.base_port,
-                )));
-                continue;
-            }
             socket_address.push(self.query_addr(&pks[i]).await);
         }
         socket_address
@@ -253,7 +246,10 @@ impl Discovery {
 
         // No need to update for self IP
         if self.secret.name.0.as_slice() == pk {
-            return self.query_addr_from_local_store(pk).await;
+            return Some(SocketAddr::new(
+                IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+                self.base_port,
+            ));
         }
 
         let curve_pk = secp256k1::PublicKey::from_slice(pk);
@@ -393,7 +389,7 @@ async fn set_metrics(store: &Store, pk: Vec<u8>) {
 
 #[tokio::test]
 async fn test_query_boot() {
-    let pk = base64::decode("Av/+7HJeNbQu6UD2eT7p0/afUUukMOuUPDtygSDx8wQO").unwrap();
+    let pk = base64::decode("AgrzJyU1v8vG+KTphzaWmlFnh395S0GofSoj51gp6z4k").unwrap();
     let dvf_message = DvfMessage {
         version: VERSION,
         validator_id: 0,

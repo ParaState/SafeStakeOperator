@@ -247,7 +247,7 @@ impl Discovery {
         // No need to update for self IP
         if self.secret.name.0.as_slice() == pk {
             return Some(SocketAddr::new(
-                IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+                IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
                 self.base_port,
             ));
         }

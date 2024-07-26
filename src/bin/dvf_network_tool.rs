@@ -5,9 +5,12 @@ use lighthouse_network::discv5::{
 };
 use log::{error, info};
 use std::net::IpAddr;
+use hsconfig::Export as _;
 pub const DISCOVERY_PORT_OFFSET: u16 = 4;
 pub const DEFAULT_DISCOVERY_PORT: u16 = 26004;
-
+pub const DEFAULT_SECRET_DIR: &str = "node_key.json";
+pub const DEFAULT_ROOT_DIR: &str = ".lighthouse";
+use dvf_version::ROOT_VERSION;
 #[tokio::main]
 async fn main() {
     let mut logger =
@@ -16,19 +19,40 @@ async fn main() {
     logger.init();
     log::info!("------dvf_network_tool------");
 
-    let ip = std::env::args()
+    let network = std::env::args()
         .nth(1)
+        .expect("ERROR: there is no valid network argument");
+    let base_dir = dirs::home_dir()
+        .expect("ERROR: home dir is valid")
+        .join(DEFAULT_ROOT_DIR)
+        .join(format!("v{}", ROOT_VERSION))
+        .join(&network);
+    let secret_dir = base_dir.join(DEFAULT_SECRET_DIR);
+
+    let ip = std::env::args()
+        .nth(2)
         .expect("ERROR: there is no valid network argument");
 
     let port: u16 = std::env::args()
-        .nth(2)
+        .nth(3)
         .expect("ERROR: there is no valid port argument")
         .parse()
         .unwrap();
 
     let udp_port = port + DISCOVERY_PORT_OFFSET;
     let ip_addr = IpAddr::V4(ip.parse().unwrap());
-    let mut secret = Secret::new();
+    let mut secret = {
+        if secret_dir.exists() {
+            let secret = Secret::read(secret_dir.to_str().unwrap())
+                .expect("ERROR: can't read secret file, unexpect error happened.");
+            info!("INFO: node public key {}", secret.name.encode_base64());
+            secret
+        } else {
+            let secret = Secret::new();
+            info!("INFO: node public key {}", secret.name.encode_base64());
+            secret
+        }
+    };
     let enr_key = CombinedKey::secp256k1_from_bytes(&mut secret.secret.0).unwrap();
     let file = std::fs::File::options()
         .read(true)

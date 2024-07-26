@@ -78,6 +78,7 @@ impl Discovery {
 
         let local_enr = {
             let mut builder = Enr::builder();
+            builder.ip(ip);
             if udp_port != DEFAULT_DISCOVERY_PORT {
                 builder.udp4(udp_port);
             }
@@ -389,7 +390,7 @@ async fn set_metrics(store: &Store, pk: Vec<u8>) {
 
 #[tokio::test]
 async fn test_query_boot() {
-    let pk = base64::decode("AgrzJyU1v8vG+KTphzaWmlFnh395S0GofSoj51gp6z4k").unwrap();
+    let pk = base64::decode("AlHMbjSr1CfYquNBvPz0mNTiKN71YRbmGV5RvCeKT95p").unwrap();
     let dvf_message = DvfMessage {
         version: VERSION,
         validator_id: 0,
@@ -413,8 +414,8 @@ async fn test_query_boot() {
     let boot_enrs: Vec<Enr<CombinedKey>> =
         serde_yaml::from_reader(file).expect("Unable to parse boot enr");
     let socketaddr = SocketAddr::new(
-        IpAddr::V4(boot_enrs[1].ip4().expect("boot enr ip should not be empty")),
-        boot_enrs[1]
+        IpAddr::V4(boot_enrs[0].ip4().expect("boot enr ip should not be empty")),
+        boot_enrs[0]
             .udp4()
             .expect("boot enr port should not be empty"),
     );

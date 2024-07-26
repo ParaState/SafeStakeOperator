@@ -106,6 +106,8 @@ services:
 
   dvf_network_tool:
     network_mode: "host"
+    volumes:
+      - operator-data:/root/.lighthouse
     image: parastate/dvf-operator:${IMAGE_TAG}
     pull_policy: always
     command:

@@ -3,8 +3,8 @@ use crate::utils::blst_utils::{
     blst_sk_to_pk, bytes_to_blst_p1, random_blst_scalar,
 };
 use crate::DEFAULT_CHANNEL_CAPACITY;
-use aes_gcm::aead::{Aead, NewAead};
-use aes_gcm::{Aes128Gcm, Key, Nonce};
+use aes_gcm::aead::Aead;
+use aes_gcm::{Aes128Gcm, Key, KeyInit, Nonce};
 use async_trait::async_trait;
 use blst::min_pk::Signature;
 use blst::{blst_p1, blst_scalar, BLST_ERROR};
@@ -483,7 +483,7 @@ impl PrivateChannel for SecureNetIOChannel {
     fn encrypt_with_key(message: Bytes, key: Bytes) -> Bytes {
         let secret = hex::decode(digest(key.as_ref())).unwrap();
 
-        let key = Key::from_slice(&secret.as_slice()[0..16]);
+        let key = Key::<Aes128Gcm>::from_slice(&secret.as_slice()[0..16]);
         let cipher = Aes128Gcm::new(key);
 
         let mut nonce_bytes = vec![0u8; 12]; // 96-bit nonce
@@ -508,7 +508,7 @@ impl PrivateChannel for SecureNetIOChannel {
     fn decrypt_with_key(enc_msg: Bytes, key: Bytes) -> Bytes {
         let secret = hex::decode(digest(key.as_ref())).unwrap();
 
-        let key = Key::from_slice(&secret.as_slice()[0..16]);
+        let key = Key::<Aes128Gcm>::from_slice(&secret.as_slice()[0..16]);
         let cipher = Aes128Gcm::new(key);
 
         let nonce_bytes = &enc_msg.as_ref()[0..12];

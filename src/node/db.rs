@@ -1,21 +1,19 @@
-use std::collections::HashMap;
-use std::path::Path;
-
-use crate::node::contract::{Initiator, Operator, Validator};
+use crate::node::contract::{
+    Initiator, InitiatorStoreRecord, Operator, Validator, DEFAULT_REGISTRATION_TIMESTAMP,
+};
 use log::{debug, error};
 use rusqlite::{params, Connection, DropBehavior, Result};
+use std::collections::HashMap;
+use std::path::Path;
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::oneshot;
 use web3::types::Address;
 
-use super::contract::InitiatorStoreRecord;
-
 pub type DbError = rusqlite::Error;
 type DbResult<T> = Result<T, DbError>;
-
 pub enum DbCommand {
     InsertOperator(Operator),
-    InsertValidator(Validator),
+    InsertValidator(Validator, u64),
     DeleteOperator(u32),
     // delete operator by id
     DeleteValidator(String),
@@ -42,9 +40,10 @@ pub enum DbCommand {
     InsertInitiatorStore(InitiatorStoreRecord),
     QueryInitiatorStore(u32, oneshot::Sender<DbResult<Option<InitiatorStoreRecord>>>),
     QueryAllValidatorPublicKeys(oneshot::Sender<DbResult<Vec<String>>>),
+    QueryValidatorRegistrationTimestamp(String, oneshot::Sender<DbResult<u64>>),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Database {
     channel: Sender<DbCommand>,
 }
@@ -69,6 +68,12 @@ impl Database {
             id CHARACTER(32) NOT NULL, 
             owner_address CHARACTER(40) NOT NULL,
             active INTEGER DEFAULT 1 NOT NULL
+        )";
+
+        let create_validators_registration_timestamp_sql =
+            "CREATE TABLE IF NOT EXISTS validators_registration_timestamp(
+            public_key CHARACTER(96) PRIMARY KEY,
+            registration_timestamp INTEGER
         )";
 
         let create_releation_sql = "CREATE TABLE IF NOT EXISTS validator_operators_mapping(
@@ -139,6 +144,7 @@ impl Database {
         conn.execute(create_update_time_trigger_sql, [])?;
         conn.execute(create_initiator_store_sql, [])?;
         conn.execute(create_initiator_store_oppk_sql, [])?;
+        conn.execute(create_validators_registration_timestamp_sql, [])?;
         let (tx, mut rx) = channel(1000);
 
         tokio::spawn(async move {
@@ -147,7 +153,9 @@ impl Database {
                     DbCommand::InsertOperator(operator) => {
                         insert_operator(&conn, operator);
                     }
-                    DbCommand::InsertValidator(validator) => insert_validator(&mut conn, validator),
+                    DbCommand::InsertValidator(validator, timestamp) => {
+                        insert_validator(&mut conn, validator, timestamp)
+                    }
                     DbCommand::DeleteOperator(operator_id) => delete_operator(&conn, operator_id),
                     DbCommand::DeleteValidator(validator_pk) => {
                         delete_validator(&conn, &validator_pk);
@@ -229,6 +237,11 @@ impl Database {
                         let response = query_all_validator_publickeys(&mut conn);
                         let _ = sender.send(response);
                     }
+                    DbCommand::QueryValidatorRegistrationTimestamp(public_key, sender) => {
+                        let response =
+                            query_validator_registration_timestamp(&mut conn, &public_key);
+                        let _ = sender.send(response);
+                    }
                 }
             }
         });
@@ -241,10 +254,13 @@ impl Database {
         }
     }
 
-    pub async fn insert_validator(&self, validator: Validator) {
+    pub async fn insert_validator(&self, validator: Validator, registration_timestamp: u64) {
         if let Err(e) = self
             .channel
-            .send(DbCommand::InsertValidator(validator))
+            .send(DbCommand::InsertValidator(
+                validator,
+                registration_timestamp,
+            ))
             .await
         {
             panic!("Failed to send command to store: {}", e);
@@ -579,6 +595,28 @@ impl Database {
             .await
             .expect("Failed to receive reply of query validators public keys from db")
     }
+
+    pub async fn query_validator_registration_timestamp(
+        &self,
+        public_key: String,
+    ) -> DbResult<u64> {
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::QueryValidatorRegistrationTimestamp(
+                public_key, sender,
+            ))
+            .await
+        {
+            panic!(
+                "Failed to send query validators registration timestamp to store: {}",
+                e
+            );
+        }
+        receiver
+            .await
+            .expect("Failed to receive reply of query validators registration timestamp from db")
+    }
 }
 
 fn insert_operator(conn: &Connection, operator: Operator) {
@@ -634,7 +672,7 @@ fn update_initiator(
     )
 }
 
-fn insert_validator(conn: &mut Connection, validator: Validator) {
+fn insert_validator(conn: &mut Connection, validator: Validator, registration_timestamp: u64) {
     match conn.transaction() {
         Ok(mut tx) => {
             tx.set_drop_behavior(DropBehavior::Commit);
@@ -656,6 +694,13 @@ fn insert_validator(conn: &mut Connection, validator: Validator) {
                     let _ = &tx.set_drop_behavior(DropBehavior::Rollback);
                     break;
                 }
+            }
+            if let Err(e) = tx.execute("INSERT INTO validators_registration_timestamp(public_key, registration_timestamp) values(?1, ?2)", params![
+                hex::encode(&validator.public_key),
+                registration_timestamp
+            ]) {
+                error!("Can't insert into validators_registration_timestamp, error: {}", e);
+                let _ = &tx.set_drop_behavior(DropBehavior::Rollback);
             }
             if let Err(e) = tx.finish() {
                 error!("Can't finish the transaction {}", e);
@@ -686,6 +731,15 @@ fn delete_validator(conn: &Connection, validator_pk: &str) {
     ) {
         error!(
             "Can't delete from validators {} validator_pk {}",
+            e, validator_pk
+        );
+    }
+    if let Err(e) = conn.execute(
+        "DELETE FROM validators_registration_timestamp where public_key = ?1",
+        params![validator_pk],
+    ) {
+        error!(
+            "Can't delete from validators_registration_timestamp {} validator_pk {}",
             e, validator_pk
         );
     }
@@ -1100,6 +1154,25 @@ fn query_initiator_store(
         Err(e) => {
             error!("Can't prepare statement {}", e);
             Err(e)
+        }
+    }
+}
+
+fn query_validator_registration_timestamp(conn: &Connection, validator_pk: &str) -> DbResult<u64> {
+    match conn
+        .prepare("select registration_timestamp from validators_registration_timestamp where public_key = (?)")
+    {
+        Ok(mut stmt) => {
+            let mut rows = stmt.query([validator_pk])?;
+            while let Some(row) = rows.next()? {
+                let registration_timestamp: u64 = row.get(0)?;
+                return Ok(registration_timestamp);
+            }
+            return Ok(DEFAULT_REGISTRATION_TIMESTAMP);
+        }
+        Err(e) => {
+            error!("Can't prepare statement {}", e);
+            return Err(e);
         }
     }
 }

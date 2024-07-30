@@ -10,8 +10,8 @@ use crate::node::config::{
 };
 use crate::node::contract::{
     Contract, ContractCommand, EncryptedSecretKeys, Initiator, InitiatorStoreRecord, OperatorIds,
-    OperatorPublicKeys, SharedPublicKeys, Validator, CONTRACT_DATABASE_FILE, SELF_OPERATOR_ID,
-    THRESHOLD_MAP,
+    OperatorPublicKeys, SharedPublicKeys, Validator, CONTRACT_DATABASE_FILE, DATABASE,
+    SELF_OPERATOR_ID, THRESHOLD_MAP,
 };
 use crate::node::{
     db::{self, Database},
@@ -56,7 +56,7 @@ use validator_dir::insecure_keys::INSECURE_PASSWORD;
 use web3::types::H160;
 
 const THRESHOLD: u64 = 3;
-pub const COMMITTEE_IP_HEARTBEAT_INTERVAL: u64 = 1800;
+pub const COMMITTEE_IP_HEARTBEAT_INTERVAL: u64 = 600;
 pub const BALANCE_USED_UP: i64 = 1;
 pub const BALANCE_STILL_AVAILABLE: i64 = 0;
 // type InitiatorStore =
@@ -76,6 +76,7 @@ pub struct Node<T: EthSpec> {
     pub signature_handler_map: Arc<RwLock<HashMap<u64, DvfSignatureReceiverHandler>>>,
     pub validator_store: Option<Arc<ValidatorStore<SystemTimeSlotClock, T>>>,
     pub discovery: Arc<Discovery>,
+    pub db: Database,
 }
 
 // impl Send for Node{}
@@ -144,6 +145,15 @@ impl<T: EthSpec> Node<T> {
         )
         .await;
 
+        let base_dir = secret_dir.parent().unwrap().to_path_buf();
+        let db = Database::new(base_dir.join(CONTRACT_DATABASE_FILE)).map_err(|e| {
+            error!("can't create contract database {:?}", e);
+            ConfigError::ReadError {
+                file: CONTRACT_DATABASE_FILE.to_string(),
+                message: "can't create contract database".to_string(),
+            }
+        })?;
+        DATABASE.set(db.clone()).unwrap();
         let node = Self {
             config,
             secret: secret.clone(),
@@ -153,16 +163,9 @@ impl<T: EthSpec> Node<T> {
             signature_handler_map: Arc::clone(&signature_handler_map),
             validator_store: None,
             discovery: Arc::new(discovery),
+            db: db.clone(),
         };
 
-        let base_dir = secret_dir.parent().unwrap().to_path_buf();
-        let db = Database::new(base_dir.join(CONTRACT_DATABASE_FILE)).map_err(|e| {
-            error!("can't create contract database {:?}", e);
-            ConfigError::ReadError {
-                file: CONTRACT_DATABASE_FILE.to_string(),
-                message: "can't create contract database".to_string(),
-            }
-        })?;
         Contract::spawn(base_dir, secret.name, db.clone());
         let node = Arc::new(RwLock::new(node));
         Node::process_contract_command(Arc::clone(&node), db);
@@ -385,6 +388,10 @@ impl<T: EthSpec> Node<T> {
                 let node_ = node.read().await;
                 node_.config.validator_dir.clone()
             };
+            let db = {
+                let node_ = node.read().await;
+                node_.db.clone()
+            };
             let mut query_interval =
                 tokio::time::interval(Duration::from_secs(COMMITTEE_IP_HEARTBEAT_INTERVAL));
             query_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -397,7 +404,7 @@ impl<T: EthSpec> Node<T> {
                         // Query IP for each operator in this committee. If any of them changed, should restart the VA.
                         let mut restart = false;
                         for i in 0..committee_def.node_public_keys.len() {
-                            if let Some(addr) = node_lock.discovery.query_addr_from_boot(0, &committee_def.node_public_keys[i].0).await {
+                            if let Some(addr) = node_lock.discovery.query_addr(&   committee_def.node_public_keys[i].0).await {
                                 if let Some(socket) = committee_def.base_socket_addresses[i].as_mut() {
                                     if *socket != addr {
                                         info!("op id: {}, local committee definition address {}, queried result {}", committee_def.operator_ids[i], socket, addr);
@@ -421,28 +428,40 @@ impl<T: EthSpec> Node<T> {
                                 error!("Unable to save committee definition. Error: {:?}", e);
                                 continue;
                             }
-
-                            loop {
-                                match restart_validator(node.clone(), committee_def.validator_id, committee_def.validator_public_key.clone()).await {
-                                    Ok(_) => {
-                                        info!("Successfully restart validator: {}, pk: {}",
-                                            committee_def.validator_id, committee_def.validator_public_key);
-                                        break;
-                                    }
-                                    Err(DvfError::ValidatorStoreNotReady) => {
-                                        error!("Failed to restart validator: {}, pk: {}. Error:
-                                            validator store is not ready yet, will try again in 1 minute.",
-                                            committee_def.validator_id, committee_def.validator_public_key);
-                                        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-                                        continue;
-                                    }
-                                    Err(e) => {
-                                        error!("Failed to restart validator: {}, pk: {}. Error: {:?}",
-                                            committee_def.validator_id, committee_def.validator_public_key, e);
-                                        break;
-                                    }
-                                };
+                            let va = db.query_validator_by_public_key(hex::encode(validator_pk.serialize().to_vec())).await.unwrap();
+                            match va {
+                                Some(va) => {
+                                    let va_id = va.id;
+                                    let cmd = ContractCommand::StopValidator(va.clone());
+                                    db.insert_contract_command(va_id, serde_json::to_string(&cmd).unwrap()).await;
+                                    let cmd = ContractCommand::ActivateValidator(va);
+                                    db.insert_contract_command(va_id, serde_json::to_string(&cmd).unwrap()).await;
+                                },
+                                None => {
+                                    error!("Unable to find validator with public key {:?}", validator_pk);
+                                }
                             }
+                            // loop {
+                            //     match restart_validator(node.clone(), committee_def.validator_id, committee_def.validator_public_key.clone()).await {
+                            //         Ok(_) => {
+                            //             info!("Successfully restart validator: {}, pk: {}",
+                            //                 committee_def.validator_id, committee_def.validator_public_key);
+                            //             break;
+                            //         }
+                            //         Err(DvfError::ValidatorStoreNotReady) => {
+                            //             error!("Failed to restart validator: {}, pk: {}. Error:
+                            //                 validator store is not ready yet, will try again in 1 minute.",
+                            //                 committee_def.validator_id, committee_def.validator_public_key);
+                            //             tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                            //             continue;
+                            //         }
+                            //         Err(e) => {
+                            //             error!("Failed to restart validator: {}, pk: {}. Error: {:?}",
+                            //                 committee_def.validator_id, committee_def.validator_public_key, e);
+                            //             break;
+                            //         }
+                            //     };
+                            // }
                         }
                     }
                     () = exit_clone => {
@@ -674,15 +693,15 @@ pub async fn activate_validator<T: EthSpec>(
                 &[&validator_pk.as_hex_string()],
                 BALANCE_STILL_AVAILABLE,
             );
+            Ok(())
         }
         _ => {
-            error!(
-                "[VA {}] failed to activate validator {}. Error: no validator store is set.",
+            Err(format!(
+                "[VA {}] failed to activate validator {}. Error: no validator store is set. please wait",
                 validator_id, validator_pk
-            );
+            ))
         }
     }
-    Ok(())
 }
 
 pub async fn remove_validator<T: EthSpec>(
@@ -742,10 +761,10 @@ pub async fn stop_validator<T: EthSpec>(
             info!("[VA {}] stopped validator {}", validator_id, validator_pk);
         }
         _ => {
-            error!(
-                "[VA {}] failed to stop validator {}. Error: no validator store is set.",
+            return Err(format!(
+                "[VA {}] failed to stop validator {}. Error: no validator store is set. please wait, please wait",
                 validator_id, validator_pk
-            );
+            ));
         }
     }
     set_int_gauge(
@@ -1159,4 +1178,13 @@ pub fn create_node_key_hex_backup(path: PathBuf, secret: &Secret) -> Result<(), 
         secret.write_hex(path.to_str().unwrap())?;
     }
     Ok(())
+}
+
+pub async fn query_validator_registration_timestamp(public_key: &[u8]) -> u64 {
+    DATABASE
+        .get()
+        .unwrap()
+        .query_validator_registration_timestamp(hex::encode(public_key))
+        .await
+        .unwrap()
 }

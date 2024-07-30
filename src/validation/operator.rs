@@ -199,3 +199,27 @@ impl RemoteOperator {
         }
     }
 }
+
+#[tokio::test]
+async fn remote_operator_test() {
+    let mut logger =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
+    logger.format_timestamp_millis();
+    logger.init();
+    let validator_id = 1888062277302860207;
+    let operator_id = 3;
+    let operator_public_key = PublicKey::deserialize(&hex::decode("86b85f1340b60b7f0c0fc73ef9ca59ce6ea8efc82c8d8d6590d2bf4fc34c9936779090932f19484b6a6942eb93d5e1c5").unwrap()).unwrap();
+    let remote_operator = RemoteOperator::new(
+        validator_id,
+        operator_id,
+        operator_public_key,
+        "13.228.88.177:26000".parse().unwrap(),
+    );
+    remote_operator
+        .sign(Hash256::from_slice(
+            &hex::decode("6524c8437429bbb3fe6490a57a604986481d9f52d0ea72ddd08fd131ac6d0ffc")
+                .unwrap(),
+        ))
+        .await
+        .unwrap();
+}

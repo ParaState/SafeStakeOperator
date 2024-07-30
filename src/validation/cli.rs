@@ -1,34 +1,46 @@
-use clap::{App, Arg};
+use clap::{builder::ArgPredicate, Arg, ArgAction, Command};
+use clap_utils::{get_color_style, FLAG_HEADER};
 
-pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
-    App::new("validator_client")
-        .visible_aliases(&["v", "vc", "validator"])
-        .setting(clap::AppSettings::ColoredHelp)
+pub fn cli_app() -> Command {
+    Command::new("validator_client")
+        .visible_aliases(["v", "vc", "validator"])
+        .styles(get_color_style())
+        .display_order(0)
         .about(
             "When connected to a beacon node, performs the duties of a staked \
                 validator (e.g., proposing blocks and attestations).",
         )
         .arg(
-            Arg::with_name("beacon-nodes")
+            Arg::new("help")
+                .long("help")
+                .short('h')
+                .help("Prints help information")
+                .action(ArgAction::HelpLong)
+                .display_order(0)
+                .help_heading(FLAG_HEADER)
+        )
+        .arg(
+            Arg::new("beacon-nodes")
                 .long("beacon-nodes")
                 .value_name("NETWORK_ADDRESSES")
                 .help("Comma-separated addresses to one or more beacon node HTTP APIs. \
                        Default is http://localhost:5052."
                 )
-                .takes_value(true)
-                .required(true)
+                .action(ArgAction::Set)
+                .display_order(0)
         )
         .arg(
-            Arg::with_name("proposer-nodes")
+            Arg::new("proposer-nodes")
                 .long("proposer-nodes")
                 .value_name("NETWORK_ADDRESSES")
                 .help("Comma-separated addresses to one or more beacon node HTTP APIs. \
                 These specify nodes that are used to send beacon block proposals. A failure will revert back to the standard beacon nodes specified in --beacon-nodes."
                 )
-                .takes_value(true),
+                .action(ArgAction::Set)
+                .display_order(0),
         )
         .arg(
-            Arg::with_name("broadcast")
+            Arg::new("broadcast")
                 .long("broadcast")
                 .value_name("API_TOPICS")
                 .help("Comma-separated list of beacon API topics to broadcast to all beacon nodes. \
@@ -36,10 +48,11 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                        sync-committee. Default (when flag is omitted) is to broadcast \
                        subscriptions only."
                 )
-                .takes_value(true),
+                .action(ArgAction::Set)
+                .display_order(0),
         )
         .arg(
-            Arg::with_name("validators-dir")
+            Arg::new("validators-dir")
                 .long("validators-dir")
                 .alias("validator-dir")
                 .value_name("VALIDATORS_DIR")
@@ -48,11 +61,12 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                     each validator along with the common slashing protection database \
                     and the validator_definitions.yml"
                 )
-                .takes_value(true)
+                .action(ArgAction::Set)
                 .conflicts_with("datadir")
+                .display_order(0)
         )
         .arg(
-            Arg::with_name("secrets-dir")
+            Arg::new("secrets-dir")
                 .long("secrets-dir")
                 .value_name("SECRETS_DIRECTORY")
                 .help(
@@ -61,86 +75,89 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                     name is the 0x-prefixed hex representation of the validators voting public \
                     key. Defaults to ~/.lighthouse/{network}/secrets.",
                 )
-                .takes_value(true)
+                .action(ArgAction::Set)
                 .conflicts_with("datadir")
+                .display_order(0)
         )
         .arg(
-            Arg::with_name("ip")
+            Arg::new("ip")
                 .long("ip")
                 .value_name("NODE_IP")
                 .help(
                     "This node's ip which is used for connections with other nodes"
                 )
-                .takes_value(true)
+                .action(ArgAction::Set)
+                .display_order(0)
                 .required(true)
         )
         .arg(
-            Arg::with_name("id")
+            Arg::new("id")
             .long("id")
             .value_name("NODE_ID")
             .help(
                 "This node's id in smart contract"
             )
-            .takes_value(true)
+            .action(ArgAction::Set)
+            .display_order(0)
             .required(true)
         )
         .arg(
-            Arg::with_name("api")
+            Arg::new("api")
                 .long("api")
                 .value_name("API")
                 .help(
                     "The api where the operator to send performance request"
-                ).takes_value(true)
+                )
+                .action(ArgAction::Set)
+                .display_order(0)
                 .required(true)
         )
         .arg(
-            Arg::with_name("base-port")
+            Arg::new("base-port")
                 .long("base-port")
                 .value_name("BASE_PORT")
                 .help(
                     "This node's BASE_PORT"
                 )
-                .takes_value(true)
+                .action(ArgAction::Set)
+                .display_order(0)
                 .required(true)
         )
         .arg(
-            Arg::with_name("ws-url")
+            Arg::new("ws-url")
             .long("ws-url")
             .value_name("WS_URL")
             .help("web socket url of infura to listen contract event")
-            .takes_value(true)
+            .action(ArgAction::Set)
+            .display_order(0)
             .required(true)
         )
         .arg(
-            Arg::with_name("registry-contract")
+            Arg::new("registry-contract")
                 .long("registry-contract")
                 .value_name("REGISTRY_CONTRACT")
                 .help(
                     "This is the address of registry contract"
                 )
-                .takes_value(true)
+                .action(ArgAction::Set)
+                .display_order(0)
                 .required(true)
         )
         .arg(
-            Arg::with_name("network-contract")
+            Arg::new("network-contract")
                 .long("network-contract")
                 .value_name("NETWORK_CONTRACT")
                 .help(
                     "This is the address of network contract"
                 )
-                .takes_value(true)
+                .action(ArgAction::Set)
+                .display_order(0)
                 .required(true)
         )
         .arg(
-            Arg::with_name("delete-lockfiles")
-            .long("delete-lockfiles")
-            .help(
-                "DEPRECATED. This flag does nothing and will be removed in a future release."
-            )
-        )
-        .arg(
-            Arg::with_name("init-slashing-protection")
+            Arg::new("init-slashing-protection")
                 .long("init-slashing-protection")
+                .action(ArgAction::SetTrue)
                 .help(
                     "If present, do not require the slashing protection database to exist before \
                      running. You SHOULD NOT use this flag unless you're certain that a new \
@@ -150,25 +167,27 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 )
         )
         .arg(
-            Arg::with_name("disable-auto-discover")
+            Arg::new("disable-auto-discover")
             .long("disable-auto-discover")
+            .action(ArgAction::SetTrue)
             .help(
                 "If present, do not attempt to discover new validators in the validators-dir. Validators \
                 will need to be manually added to the validator_definitions.yml file."
             )
         )
         .arg(
-            Arg::with_name("use-long-timeouts")
+            Arg::new("use-long-timeouts")
                 .long("use-long-timeouts")
+                .action(ArgAction::SetTrue)
                 .help("If present, the validator client will use longer timeouts for requests \
                         made to the beacon node. This flag is generally not recommended, \
                         longer timeouts can cause missed duties when fallbacks are used.")
         )
         .arg(
-            Arg::with_name("beacon-nodes-tls-certs")
+            Arg::new("beacon-nodes-tls-certs")
                 .long("beacon-nodes-tls-certs")
                 .value_name("CERTIFICATE-FILES")
-                .takes_value(true)
+                .action(ArgAction::Set)
                 .help("Comma-separated paths to custom TLS certificates to use when connecting \
                         to a beacon node. These certificates must be in PEM format and are used \
                         in addition to the OS trust store. Commas must only be used as a \
@@ -176,36 +195,39 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
         )
         // This overwrites the graffiti configured in the beacon node.
         .arg(
-            Arg::with_name("graffiti")
+            Arg::new("graffiti")
                 .long("graffiti")
                 .help("Specify your custom graffiti to be included in blocks.")
                 .value_name("GRAFFITI")
-                .takes_value(true)
+                .action(ArgAction::Set)
         )
         .arg(
-            Arg::with_name("graffiti-file")
+            Arg::new("graffiti-file")
                 .long("graffiti-file")
                 .help("Specify a graffiti file to load validator graffitis from.")
                 .value_name("GRAFFITI-FILE")
-                .takes_value(true)
+                .action(ArgAction::Set)
                 .conflicts_with("graffiti")
         )
-        // abandon the suggested-fee-recipient parameter
-        // .arg(
-        //     Arg::with_name("suggested-fee-recipient")
-        //         .long("suggested-fee-recipient")
-        //         .help("Once the merge has happened, this address will receive transaction fees \
-        //                from blocks proposed by this validator client. If a fee recipient is \
-        //                configured in the validator definitions it takes priority over this value.")
-        //         .value_name("FEE-RECIPIENT")
-        //         .takes_value(true)
-        // )
+        .arg(
+            Arg::new("produce-block-v3")
+                .long("produce-block-v3")
+                .help("Enable block production via the block v3 endpoint for this validator client. \
+                       This should only be enabled when paired with a beacon node \
+                       that has this endpoint implemented. This flag will be enabled by default in \
+                       future.")
+                .action(ArgAction::SetTrue)
+                .help_heading(FLAG_HEADER)
+                .display_order(0)
+        )
         /* REST API related arguments */
         .arg(
-            Arg::with_name("http")
+            Arg::new("http")
                 .long("http")
                 .help("Enable the RESTful HTTP API server. Disabled by default.")
-                .takes_value(false),
+                .action(ArgAction::SetTrue)
+                .help_heading(FLAG_HEADER)
+                .display_order(0),
         )
         /*
          * Note: The HTTP server is **not** encrypted (i.e., not HTTPS) and therefore it is
@@ -215,7 +237,7 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
          * must also be used in order to make it clear to the user that this is unsafe.
          */
          .arg(
-             Arg::with_name("http-address")
+             Arg::new("http-address")
                  .long("http-address")
                  .value_name("ADDRESS")
                  .help("Set the address for the HTTP address. The HTTP server is not encrypted \
@@ -224,72 +246,91 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                         `--unencrypted-http-transport` flag to ensure the user is aware of the \
                         risks involved. For access via the Internet, users should apply \
                         transport-layer security like a HTTPS reverse-proxy or SSH tunnelling.")
-                .requires("unencrypted-http-transport"),
+                    .requires("unencrypted-http-transport")
+                        .display_order(0),
          )
          .arg(
-             Arg::with_name("unencrypted-http-transport")
+             Arg::new("unencrypted-http-transport")
                  .long("unencrypted-http-transport")
                  .help("This is a safety flag to ensure that the user is aware that the http \
                         transport is unencrypted and using a custom HTTP address is unsafe.")
                  .requires("http-address"),
          )
         .arg(
-            Arg::with_name("http-port")
+            Arg::new("http-port")
                 .long("http-port")
                 .value_name("PORT")
                 .help("Set the listen TCP port for the RESTful HTTP API server.")
-                .default_value("5062")
-                .takes_value(true),
+                .default_value_if("http", ArgPredicate::IsPresent, "5062")
+                .action(ArgAction::Set)
+                .display_order(0),
         )
         .arg(
-            Arg::with_name("http-allow-origin")
+            Arg::new("http-allow-origin")
                 .long("http-allow-origin")
                 .value_name("ORIGIN")
                 .help("Set the value of the Access-Control-Allow-Origin response HTTP header. \
                     Use * to allow any origin (not recommended in production). \
                     If no value is supplied, the CORS allowed origin is set to the listen \
                     address of this server (e.g., http://localhost:5062).")
-                .takes_value(true),
+                    .action(ArgAction::Set)
+                    .display_order(0),
         )
         /* Prometheus metrics HTTP server related arguments */
         .arg(
-            Arg::with_name("metrics")
+            Arg::new("metrics")
                 .long("metrics")
                 .help("Enable the Prometheus metrics HTTP server. Disabled by default.")
-                .takes_value(false),
+                .action(ArgAction::SetTrue)
+                .help_heading(FLAG_HEADER)
+                .display_order(0),
         )
         .arg(
-            Arg::with_name("metrics-address")
+            Arg::new("metrics-address")
                 .long("metrics-address")
                 .requires("metrics")
                 .value_name("ADDRESS")
                 .help("Set the listen address for the Prometheus metrics HTTP server.")
-                .default_value("0.0.0.0")
-                .takes_value(true),
+                .default_value_if("metrics", ArgPredicate::IsPresent, "0.0.0.0")
+                .action(ArgAction::Set)
+                .display_order(0),
         )
         .arg(
-            Arg::with_name("metrics-port")
+            Arg::new("metrics-port")
                 .long("metrics-port")
                 .value_name("PORT")
                 .help("Set the listen TCP port for the Prometheus metrics HTTP server.")
-                .default_value("5064")
-                .takes_value(true),
+                .default_value_if("metrics", ArgPredicate::IsPresent, "5064")
+                .action(ArgAction::Set)
+                .display_order(0),
         )
         .arg(
-            Arg::with_name("metrics-allow-origin")
+            Arg::new("metrics-allow-origin")
                 .long("metrics-allow-origin")
                 .value_name("ORIGIN")
                 .help("Set the value of the Access-Control-Allow-Origin response HTTP header. \
                     Use * to allow any origin (not recommended in production). \
                     If no value is supplied, the CORS allowed origin is set to the listen \
                     address of this server (e.g., http://localhost:5064).")
-                .takes_value(true),
+                    .action(ArgAction::Set)
+                    .display_order(0),
+        )
+        .arg(
+            Arg::new("enable-high-validator-count-metrics")
+                .long("enable-high-validator-count-metrics")
+                .help("Enable per validator metrics for > 64 validators. \
+                    Note: This flag is automatically enabled for <= 64 validators. \
+                    Enabling this metric for higher validator counts will lead to higher volume \
+                    of prometheus metrics being collected.")
+                .action(ArgAction::SetTrue)
+                .help_heading(FLAG_HEADER)
+                .display_order(0)
         )
         /*
          * Explorer metrics
          */
          .arg(
-            Arg::with_name("monitoring-endpoint")
+            Arg::new("monitoring-endpoint")
                 .long("monitoring-endpoint")
                 .value_name("ADDRESS")
                 .help("Enables the monitoring service for sending system metrics to a remote endpoint. \
@@ -298,19 +339,21 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 Note: This will send information to a remote sever which may identify and associate your \
                 validators, IP address and other personal information. Always use a HTTPS connection \
                 and never provide an untrusted URL.")
-                .takes_value(true),
+                .action(ArgAction::Set)
+                .display_order(0),
         )
         .arg(
-            Arg::with_name("monitoring-endpoint-period")
+            Arg::new("monitoring-endpoint-period")
                 .long("monitoring-endpoint-period")
                 .value_name("SECONDS")
                 .help("Defines how many seconds to wait between each message sent to \
                        the monitoring-endpoint. Default: 60s")
                 .requires("monitoring-endpoint")
-                .takes_value(true),
+                .action(ArgAction::Set)
+                .display_order(0),
         )
         .arg(
-            Arg::with_name("enable-doppelganger-protection")
+            Arg::new("enable-doppelganger-protection")
                 .long("enable-doppelganger-protection")
                 .value_name("ENABLE_DOPPELGANGER_PROTECTION")
                 .help("If this flag is set, Lighthouse will delay startup for three epochs and \
@@ -322,52 +365,41 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                     to avoid potentially committing a slashable offense. Use this flag in order to \
                     ENABLE this functionality, without this flag Lighthouse will begin attesting \
                     immediately.")
-                .takes_value(false),
+                    .action(ArgAction::SetTrue)
+                    .help_heading(FLAG_HEADER)
+                    .display_order(0),
         )
         .arg(
-            Arg::with_name("builder-proposals")
+            Arg::new("builder-proposals")
                 .long("builder-proposals")
                 .alias("private-tx-proposals")
                 .help("If this flag is set, Lighthouse will query the Beacon Node for only block \
                     headers during proposals and will sign over headers. Useful for outsourcing \
                     execution payload construction during proposals.")
-                .takes_value(false),
+                    .action(ArgAction::SetTrue)
+                    .help_heading(FLAG_HEADER)
+                    .display_order(0),
         )
-        // .arg(
-        //     Arg::with_name("builder-registration-timestamp-override")
-        //         .long("builder-registration-timestamp-override")
-        //         .alias("builder-registration-timestamp-override")
-        //         .help("This flag takes a unix timestamp value that will be used to override the \
-        //             timestamp used in the builder api registration")
-        //         .takes_value(true),
-        // )
         .arg(
-            Arg::with_name("gas-limit")
+            Arg::new("gas-limit")
                 .long("gas-limit")
                 .value_name("INTEGER")
-                .takes_value(true)
+                .action(ArgAction::Set)
                 .help("The gas limit to be used in all builder proposals for all validators managed \
                     by this validator client. Note this will not necessarily be used if the gas limit \
                     set here moves too far from the previous block's gas limit. [default: 30,000,000]")
-                .requires("builder-proposals"),
+                    .requires("builder-proposals")
+                    .display_order(0),
         )
         .arg(
-            Arg::with_name("latency-measurement-service")
-                .long("latency-measurement-service")
-                .value_name("BOOLEAN")
-                .help("Set to 'true' to enable a service that periodically attempts to measure latency to BNs. \
-                    Set to 'false' to disable.")
-                .default_value("true")
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("validator-registration-batch-size")
+            Arg::new("validator-registration-batch-size")
                 .long("validator-registration-batch-size")
                 .value_name("INTEGER")
                 .help("Defines the number of validators per \
                     validator/register_validator request sent to the BN. This value \
                     can be reduced to avoid timeouts from builders.")
                 .default_value("500")
-                .takes_value(true),
+                .action(ArgAction::Set)
+                .display_order(0),
         )
 }

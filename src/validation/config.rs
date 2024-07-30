@@ -15,7 +15,7 @@ use dvf_directory::get_default_base_dir;
 use eth2::types::Graffiti;
 use sensitive_url::SensitiveUrl;
 use serde_derive::{Deserialize, Serialize};
-use slog::{info, warn, Logger};
+use slog::{info, Logger};
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
@@ -208,28 +208,19 @@ impl Config {
             .dvf_node_config
             .set_beacon_nodes(config.beacon_nodes.clone());
 
-        if cli_args.is_present("delete-lockfiles") {
-            warn!(
-                log,
-                "The --delete-lockfiles flag is deprecated";
-                "msg" => "it is no longer necessary, and no longer has any effect",
-            );
-        }
+        // if let Some(proposer_nodes) = parse_optional::<String>(cli_args, "proposer_nodes")? {
+        //     config.proposer_nodes = proposer_nodes
+        //         .split(',')
+        //         .map(SensitiveUrl::parse)
+        //         .collect::<Result<_, _>>()
+        //         .map_err(|e| format!("Unable to parse proposer node URL: {:?}", e))?;
+        // }
 
-        config.allow_unsynced_beacon_node = cli_args.is_present("allow-unsynced");
-        if let Some(proposer_nodes) = parse_optional::<String>(cli_args, "proposer_nodes")? {
-            config.proposer_nodes = proposer_nodes
-                .split(',')
-                .map(SensitiveUrl::parse)
-                .collect::<Result<_, _>>()
-                .map_err(|e| format!("Unable to parse proposer node URL: {:?}", e))?;
-        }
+        config.disable_auto_discover = cli_args.get_flag("disable-auto-discover");
+        config.init_slashing_protection = cli_args.get_flag("init-slashing-protection");
+        config.use_long_timeouts = cli_args.get_flag("use-long-timeouts");
 
-        config.disable_auto_discover = cli_args.is_present("disable-auto-discover");
-        config.init_slashing_protection = cli_args.is_present("init-slashing-protection");
-        config.use_long_timeouts = cli_args.is_present("use-long-timeouts");
-
-        if let Some(graffiti_file_path) = cli_args.value_of("graffiti-file") {
+        if let Some(graffiti_file_path) = cli_args.get_one::<String>("graffiti-file") {
             let mut graffiti_file = GraffitiFile::new(graffiti_file_path.into());
             graffiti_file
                 .read_graffiti_file()
@@ -238,7 +229,7 @@ impl Config {
             info!(log, "Successfully loaded graffiti file"; "path" => graffiti_file_path);
         }
 
-        if let Some(input_graffiti) = cli_args.value_of("graffiti") {
+        if let Some(input_graffiti) = cli_args.get_one::<String>("graffiti") {
             let graffiti_bytes = input_graffiti.as_bytes();
             if graffiti_bytes.len() > GRAFFITI_BYTES_LEN {
                 return Err(format!(
@@ -257,25 +248,17 @@ impl Config {
             }
         }
 
-        if let Some(input_fee_recipient) =
-            parse_optional::<Address>(cli_args, "suggested-fee-recipient")?
-        {
-            config.fee_recipient = Some(input_fee_recipient);
-        }
+        // if let Some(input_fee_recipient) =
+        //     parse_optional::<Address>(cli_args, "suggested-fee-recipient")?
+        // {
+        //     config.fee_recipient = Some(input_fee_recipient);
+        // }
 
         if let Some(tls_certs) = parse_optional::<String>(cli_args, "beacon-nodes-tls-certs")? {
             config.beacon_nodes_tls_certs = Some(tls_certs.split(',').map(PathBuf::from).collect());
         }
 
-        if cli_args.is_present("disable-run-on-all") {
-            warn!(
-                log,
-                "The --disable-run-on-all flag is deprecated";
-                "msg" => "please use --broadcast instead"
-            );
-            config.broadcast_topics = vec![];
-        }
-        if let Some(broadcast_topics) = cli_args.value_of("broadcast") {
+        if let Some(broadcast_topics) = cli_args.get_one::<String>("broadcast") {
             config.broadcast_topics = broadcast_topics
                 .split(',')
                 .filter(|t| *t != "none")
@@ -291,12 +274,12 @@ impl Config {
          * Http API server
          */
 
-        if cli_args.is_present("http") {
+        if cli_args.get_flag("http") {
             config.http_api.enabled = true;
         }
 
-        if let Some(address) = cli_args.value_of("http-address") {
-            if cli_args.is_present("unencrypted-http-transport") {
+        if let Some(address) = cli_args.get_one::<String>("http-address") {
+            if cli_args.get_flag("unencrypted-http-transport") {
                 config.http_api.listen_addr = address
                     .parse::<IpAddr>()
                     .map_err(|_| "http-address is not a valid IP address.")?;
@@ -308,13 +291,13 @@ impl Config {
             }
         }
 
-        if let Some(port) = cli_args.value_of("http-port") {
+        if let Some(port) = cli_args.get_one::<String>("http-port") {
             config.http_api.listen_port = port
                 .parse::<u16>()
                 .map_err(|_| "http-port is not a valid u16.")?;
         }
 
-        if let Some(allow_origin) = cli_args.value_of("http-allow-origin") {
+        if let Some(allow_origin) = cli_args.get_one::<String>("http-allow-origin") {
             // Pre-validate the config value to give feedback to the user on node startup, instead of
             // as late as when the first API response is produced.
             hyper::header::HeaderValue::from_str(allow_origin)
@@ -327,27 +310,27 @@ impl Config {
          * Prometheus metrics HTTP server
          */
 
-        if cli_args.is_present("metrics") {
+        if cli_args.get_flag("metrics") {
             config.http_metrics.enabled = true;
         }
 
-        if cli_args.is_present("enable-high-validator-count-metrics") {
+        if cli_args.get_flag("enable-high-validator-count-metrics") {
             config.enable_high_validator_count_metrics = true;
         }
 
-        if let Some(address) = cli_args.value_of("metrics-address") {
+        if let Some(address) = cli_args.get_one::<String>("metrics-address") {
             config.http_metrics.listen_addr = address
                 .parse::<IpAddr>()
                 .map_err(|_| "metrics-address is not a valid IP address.")?;
         }
 
-        if let Some(port) = cli_args.value_of("metrics-port") {
+        if let Some(port) = cli_args.get_one::<String>("metrics-port") {
             config.http_metrics.listen_port = port
                 .parse::<u16>()
                 .map_err(|_| "metrics-port is not a valid u16.")?;
         }
 
-        if let Some(allow_origin) = cli_args.value_of("metrics-allow-origin") {
+        if let Some(allow_origin) = cli_args.get_one::<String>("metrics-allow-origin") {
             // Pre-validate the config value to give feedback to the user on node startup, instead of
             // as late as when the first API response is produced.
             hyper::header::HeaderValue::from_str(allow_origin)
@@ -358,7 +341,7 @@ impl Config {
         /*
          * Explorer metrics
          */
-        if let Some(monitoring_endpoint) = cli_args.value_of("monitoring-endpoint") {
+        if let Some(monitoring_endpoint) = cli_args.get_one::<String>("monitoring-endpoint") {
             let update_period_secs =
                 clap_utils::parse_optional(cli_args, "monitoring-endpoint-period")?;
             config.monitoring_api = Some(monitoring_api::Config {
@@ -369,20 +352,20 @@ impl Config {
             });
         }
 
-        if cli_args.is_present("enable-doppelganger-protection") {
+        if cli_args.get_flag("enable-doppelganger-protection") {
             config.enable_doppelganger_protection = true;
         }
 
-        if cli_args.is_present("builder-proposals") {
+        if cli_args.get_flag("builder-proposals") {
             config.builder_proposals = true;
         }
 
-        if cli_args.is_present("produce-block-v3") {
+        if cli_args.get_flag("produce-block-v3") {
             config.produce_block_v3 = true;
         }
 
         config.gas_limit = cli_args
-            .value_of("gas-limit")
+            .get_one::<String>("gas-limit")
             .map(|gas_limit| {
                 gas_limit
                     .parse::<u64>()
@@ -399,9 +382,6 @@ impl Config {
         //             .map_err(|_| "builder-registration-timestamp-override is not a valid u64.")?,
         //     );
         // }
-
-        config.enable_latency_measurement_service =
-            parse_optional(cli_args, "latency-measurement-service")?.unwrap_or(true);
 
         config.validator_registration_batch_size =
             parse_required(cli_args, "validator-registration-batch-size")?;

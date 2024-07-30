@@ -1,7 +1,7 @@
 version: '3'
 services:
   geth:
-    image: ethereum/client-go:v1.13.14
+    image: ethereum/client-go:v1.14.7
     pull_policy: always
     restart: unless-stopped
     network_mode: "host"
@@ -46,7 +46,7 @@ services:
       - "18550"
   lighthouse:
     network_mode: "host"
-    image: sigp/lighthouse:v5.1.2
+    image: sigp/lighthouse:v5.2.1
     pull_policy: always
     restart: unless-stopped
     volumes:
@@ -111,6 +111,18 @@ services:
       - -c
       - |
         dvf_key_tool ${OPERATOR_NETWORK}
+
+  dvf_network_tool:
+    network_mode: "host"
+    image: parastate/dvf-operator:${IMAGE_TAG}
+    volumes:
+      - operator-data:/root/.lighthouse
+    pull_policy: always
+    command:
+      - /bin/sh
+      - -c
+      - |
+        dvf_network_tool ${OPERATOR_NETWORK} ${NODE_IP} 26000
 
   nethermind:
     image: nethermind/nethermind

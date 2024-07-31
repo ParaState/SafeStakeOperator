@@ -192,8 +192,8 @@ impl<T: EthSpec> Node<T> {
 
     pub fn process_contract_command(node: Arc<RwLock<Node<T>>>, db: Database) {
         tokio::spawn(async move {
+            let mut query_interval = tokio::time::interval(Duration::from_secs(6));
             loop {
-                let mut query_interval = tokio::time::interval(Duration::from_secs(12));
                 query_interval.tick().await;
                 match db.get_contract_command().await {
                     Ok((command, id)) => {

@@ -56,7 +56,7 @@ use validator_dir::insecure_keys::INSECURE_PASSWORD;
 use web3::types::H160;
 
 const THRESHOLD: u64 = 3;
-pub const COMMITTEE_IP_HEARTBEAT_INTERVAL: u64 = 600;
+pub const COMMITTEE_IP_HEARTBEAT_INTERVAL: u64 = 180;
 pub const BALANCE_USED_UP: i64 = 1;
 pub const BALANCE_STILL_AVAILABLE: i64 = 0;
 // type InitiatorStore =
@@ -394,7 +394,6 @@ impl<T: EthSpec> Node<T> {
             };
             let mut query_interval =
                 tokio::time::interval(Duration::from_secs(COMMITTEE_IP_HEARTBEAT_INTERVAL));
-            query_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             loop {
                 let exit_clone = exit.clone();
                 let validator_pk = committee_def.validator_public_key.clone();

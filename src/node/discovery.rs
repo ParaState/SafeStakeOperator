@@ -306,6 +306,13 @@ impl Discovery {
     }
 
     pub async fn query_addr_from_boot(&self, boot_idx: usize, pk: &[u8]) -> Option<SocketAddr> {
+        if self.secret.name.0.as_slice() == pk {
+            return Some(SocketAddr::new(
+                IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+                self.base_port,
+            ));
+        }
+        
         if boot_idx >= self.boot_enrs.len() {
             error!("Invalid boot index");
             return None;

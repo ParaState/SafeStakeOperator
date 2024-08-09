@@ -1,18 +1,18 @@
 //! Reference: lighthouse/validator_client/attestation_service.rs
 
-use crate::validation::beacon_node_fallback::{BeaconNodeFallback, RequireSynced};
+use crate::validation::beacon_node_fallback::{ApiTopic, BeaconNodeFallback, RequireSynced};
 use crate::validation::signing_method::Error as SigningError;
 use crate::validation::{
     duties_service::{DutiesService, DutyAndProof},
     http_metrics::metrics,
-    validator_store::Error as VSError,
+    validator_store::Error as ValidatorStoreError,
     validator_store::ValidatorStore,
     OfflineOnFailure,
 };
 use environment::RuntimeContext;
 use futures::executor::block_on;
 use futures::future::join_all;
-use slog::{crit, error, info, trace};
+use slog::{crit, error, info, trace, warn, debug};
 use slot_clock::SlotClock;
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -20,7 +20,7 @@ use std::sync::Arc;
 use tokio::time::{sleep, sleep_until, Duration, Instant};
 use tree_hash::TreeHash;
 use types::{
-    AggregateSignature, Attestation, AttestationData, BitList, ChainSpec, CommitteeIndex, EthSpec,
+    Attestation, AttestationData, ChainSpec, CommitteeIndex, EthSpec,
     Slot,
 };
 
@@ -294,7 +294,7 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
             // Then download, sign and publish a `SignedAggregateAndProof` for each
             // validator that is elected to aggregate for this `slot` and
             // `committee_index`.
-            self.produce_and_publish_aggregates(&attestation_data, &validator_duties)
+            self.produce_and_publish_aggregates(&attestation_data, committee_index, &validator_duties)
                 .await
                 .map_err(move |e| {
                     crit!(
@@ -390,10 +390,26 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
                 return None;
             }
 
-            let mut attestation = Attestation {
-                aggregation_bits: BitList::with_capacity(duty.committee_length as usize).unwrap(),
-                data: attestation_data.clone(),
-                signature: AggregateSignature::infinity(),
+            let mut attestation = match Attestation::<E>::empty_for_signing(
+                duty.committee_index,
+                duty.committee_length as usize,
+                attestation_data.slot,
+                attestation_data.beacon_block_root,
+                attestation_data.source,
+                attestation_data.target,
+                &self.context.eth2_config.spec,
+            ) {
+                Ok(attestation) => attestation,
+                Err(err) => {
+                    crit!(
+                        log,
+                        "Invalid validator duties during signing";
+                        "validator" => ?duty.pubkey,
+                        "duty" => ?duty,
+                        "err" => ?err,
+                    );
+                    return None;
+                }
             };
 
             match self
@@ -406,8 +422,22 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
                 )
                 .await
             {
-                Ok(()) => Some(attestation),
-                Err(VSError::UnableToSign(SigningError::NotLeader)) => None,
+                Ok(()) => Some((attestation, duty.validator_index)),
+                Err(ValidatorStoreError::UnableToSign(SigningError::NotLeader)) => None,
+                Err(ValidatorStoreError::UnknownPubkey(pubkey)) => {
+                    // A pubkey can be missing when a validator was recently
+                    // removed via the API.
+                    warn!(
+                        log,
+                        "Missing pubkey for attestation";
+                        "info" => "a validator may have recently been removed from this VC",
+                        "pubkey" => ?pubkey,
+                        "validator" => ?duty.pubkey,
+                        "committee_index" => committee_index,
+                        "slot" => slot.as_u64(),
+                    );
+                    None
+                }
                 Err(e) => {
                     crit!(
                         log,
@@ -421,41 +451,45 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
             }
         });
 
-        // Execute all the futures in parallel, collecting any successful results.
-        let attestations = &join_all(signing_futures)
+        let (ref attestations, ref validator_indices): (Vec<_>, Vec<_>) = join_all(signing_futures)
             .await
             .into_iter()
             .flatten()
-            .collect::<Vec<Attestation<E>>>();
-
-        info!(
-            log,
-            "Signed attestation duty";
-            "slot" => slot.as_u64(),
-            "slot's epoch" => slot.epoch(E::slots_per_epoch()).as_u64(),
-            "current epoch" => current_epoch.as_u64(),
-            "duties" => attestations.len(),
-        );
+            .unzip();
 
         // No need to further process. This can happen quite often for non-leader operators.
         if attestations.is_empty() {
+            warn!(log, "No attestations were published");
             return Ok(None);
         }
+
+        let fork_name = self
+            .context
+            .eth2_config
+            .spec
+            .fork_name_at_slot::<E>(attestation_data.slot);
 
         // Post the attestations to the BN.
         match self
             .beacon_nodes
-            .first_success(
+            .request(
                 RequireSynced::No,
                 OfflineOnFailure::Yes,
+                ApiTopic::Attestations,
                 |beacon_node| async move {
                     let _timer = metrics::start_timer_vec(
                         &metrics::ATTESTATION_SERVICE_TIMES,
                         &[metrics::ATTESTATIONS_HTTP_POST],
                     );
-                    beacon_node
-                        .post_beacon_pool_attestations(attestations)
-                        .await
+                    if fork_name.electra_enabled() {
+                        beacon_node
+                            .post_beacon_pool_attestations_v2(attestations, fork_name)
+                            .await
+                    } else {
+                        beacon_node
+                            .post_beacon_pool_attestations_v1(attestations)
+                            .await
+                    }
                 },
             )
             .await
@@ -464,9 +498,12 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
                 log,
                 "Successfully published attestations";
                 "count" => attestations.len(),
+                "validator_indices" => ?validator_indices,
                 "head_block" => ?attestation_data.beacon_block_root,
                 "committee_index" => attestation_data.index,
                 "slot" => attestation_data.slot.as_u64(),
+                "slot's epoch" => slot.epoch(E::slots_per_epoch()).as_u64(),
+                "current epoch" => current_epoch.as_u64(),
                 "type" => "unaggregated",
             ),
             Err(e) => error!(
@@ -498,9 +535,25 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
     async fn produce_and_publish_aggregates(
         &self,
         attestation_data: &AttestationData,
+        committee_index: CommitteeIndex,
         validator_duties: &[DutyAndProof],
     ) -> Result<(), String> {
         let log = self.context.log();
+
+        if !validator_duties
+            .iter()
+            .any(|duty_and_proof| duty_and_proof.selection_proof.is_some())
+        {
+            // Exit early if no validator is aggregator
+            return Ok(());
+        }
+
+        let fork_name = self
+            .context
+            .eth2_config
+            .spec
+            .fork_name_at_slot::<E>(attestation_data.slot);
+
 
         let aggregated_attestation = &self
             .beacon_nodes
@@ -512,17 +565,36 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
                         &metrics::ATTESTATION_SERVICE_TIMES,
                         &[metrics::AGGREGATES_HTTP_GET],
                     );
-                    beacon_node
-                        .get_validator_aggregate_attestation(
-                            attestation_data.slot,
-                            attestation_data.tree_hash_root(),
-                        )
-                        .await
-                        .map_err(|e| {
-                            format!("Failed to produce an aggregate attestation: {:?}", e)
-                        })?
-                        .ok_or_else(|| format!("No aggregate available for {:?}", attestation_data))
-                        .map(|result| result.data)
+                    if fork_name.electra_enabled() {
+                        beacon_node
+                            .get_validator_aggregate_attestation_v2(
+                                attestation_data.slot,
+                                attestation_data.tree_hash_root(),
+                                committee_index,
+                            )
+                            .await
+                            .map_err(|e| {
+                                format!("Failed to produce an aggregate attestation: {:?}", e)
+                            })?
+                            .ok_or_else(|| {
+                                format!("No aggregate available for {:?}", attestation_data)
+                            })
+                            .map(|result| result.data)
+                    } else {
+                        beacon_node
+                            .get_validator_aggregate_attestation_v1(
+                                attestation_data.slot,
+                                attestation_data.tree_hash_root(),
+                            )
+                            .await
+                            .map_err(|e| {
+                                format!("Failed to produce an aggregate attestation: {:?}", e)
+                            })?
+                            .ok_or_else(|| {
+                                format!("No aggregate available for {:?}", attestation_data)
+                            })
+                            .map(|result| result.data)
+                    }
                 },
             )
             .await
@@ -552,7 +624,17 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
                 .await
             {
                 Ok(aggregate) => Some(aggregate),
-                Err(VSError::UnableToSign(SigningError::NotLeader)) => None,
+                Err(ValidatorStoreError::UnableToSign(SigningError::NotLeader)) => None,
+                Err(ValidatorStoreError::UnknownPubkey(pubkey)) => {
+                    // A pubkey can be missing when a validator was recently
+                    // removed via the API.
+                    debug!(
+                        log,
+                        "Missing pubkey for aggregate";
+                        "pubkey" => ?pubkey,
+                    );
+                    None
+                }
                 Err(e) => {
                     crit!(
                         log,
@@ -584,37 +666,49 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
                             &metrics::ATTESTATION_SERVICE_TIMES,
                             &[metrics::AGGREGATES_HTTP_POST],
                         );
-                        beacon_node
-                            .post_validator_aggregate_and_proof(signed_aggregate_and_proofs_slice)
-                            .await
+                        if fork_name.electra_enabled() {
+                            beacon_node
+                                .post_validator_aggregate_and_proof_v2(
+                                    signed_aggregate_and_proofs_slice,
+                                    fork_name,
+                                )
+                                .await
+                        } else {
+                            beacon_node
+                                .post_validator_aggregate_and_proof_v1(
+                                    signed_aggregate_and_proofs_slice,
+                                )
+                                .await
+                        }
                     },
                 )
                 .await
             {
                 Ok(()) => {
                     for signed_aggregate_and_proof in signed_aggregate_and_proofs {
-                        let attestation = &signed_aggregate_and_proof.message.aggregate;
+                        let attestation = signed_aggregate_and_proof.message().aggregate();
                         info!(
                             log,
-                            "Successfully published attestations";
-                            "aggregator" => signed_aggregate_and_proof.message.aggregator_index,
-                            "signatures" => attestation.aggregation_bits.num_set_bits(),
-                            "head_block" => format!("{:?}", attestation.data.beacon_block_root),
-                            "committee_index" => attestation.data.index,
-                            "slot" => attestation.data.slot.as_u64(),
+                            "Successfully published attestation";
+                            "aggregator" => signed_aggregate_and_proof.message().aggregator_index(),
+                            "signatures" => attestation.num_set_aggregation_bits(),
+                            "head_block" => format!("{:?}", attestation.data().beacon_block_root),
+                            "committee_index" => attestation.committee_index(),
+                            "slot" => attestation.data().slot.as_u64(),
                             "type" => "aggregated",
                         );
                     }
                 }
                 Err(e) => {
                     for signed_aggregate_and_proof in signed_aggregate_and_proofs {
-                        let attestation = &signed_aggregate_and_proof.message.aggregate;
+                        let attestation = &signed_aggregate_and_proof.message().aggregate();
                         crit!(
                             log,
                             "Failed to publish attestation";
                             "error" => %e,
-                            "committee_index" => attestation.data.index,
-                            "slot" => attestation.data.slot.as_u64(),
+                            "aggregator" => signed_aggregate_and_proof.message().aggregator_index(),
+                            "committee_index" => attestation.committee_index(),
+                            "slot" => attestation.data().slot.as_u64(),
                             "type" => "aggregated",
                         );
                     }

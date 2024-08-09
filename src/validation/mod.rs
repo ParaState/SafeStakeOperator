@@ -77,6 +77,7 @@ const WAITING_FOR_GENESIS_POLL_TIME: Duration = Duration::from_secs(12);
 /// This can help ensure that proper endpoint fallback occurs.
 const HTTP_ATTESTATION_TIMEOUT_QUOTIENT: u32 = 4;
 const HTTP_ATTESTER_DUTIES_TIMEOUT_QUOTIENT: u32 = 4;
+const HTTP_ATTESTATION_SUBSCRIPTIONS_TIMEOUT_QUOTIENT: u32 = 24;
 const HTTP_LIVENESS_TIMEOUT_QUOTIENT: u32 = 4;
 const HTTP_PROPOSAL_TIMEOUT_QUOTIENT: u32 = 2;
 const HTTP_PROPOSER_DUTIES_TIMEOUT_QUOTIENT: u32 = 4;
@@ -112,16 +113,10 @@ async fn check_synced<T: SlotClock, E: EthSpec>(
             OfflineOnFailure::Yes,
             |beacon_node| async move {
                 if let Ok(response) = beacon_node.get_node_syncing().await {
-                    if let Some(is_optimistic) = response.data.is_optimistic {
-                        // "Optimistic" means the execution engine is not yet synced
-                        // https://github.com/sigp/lighthouse/blob/38514c07f222ff7783834c48cf5c0a6ee7f346d0/beacon_node/client/src/notifier.rs#L268
-                        if is_optimistic {
-                            Err("unsynced")
-                        } else {
-                            Ok(())
-                        }
+                    if response.data.is_optimistic {
+                        Err("unsynced")
                     } else {
-                        Err("unknown")
+                        Ok(())
                     }
                 } else {
                     Err("unknown")
@@ -159,6 +154,7 @@ pub struct ProductionValidatorClient<T: EthSpec> {
     doppelganger_service: Option<Arc<DoppelgangerService>>,
     preparation_service: PreparationService<SystemTimeSlotClock, T>,
     validator_store: Arc<ValidatorStore<SystemTimeSlotClock, T>>,
+    slot_clock: SystemTimeSlotClock,
     http_api_listen_addr: Option<SocketAddr>,
     config: Config,
     beacon_nodes: Arc<BeaconNodeFallback<SystemTimeSlotClock, T>>,
@@ -364,6 +360,8 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
                 Timeouts {
                     attestation: slot_duration / HTTP_ATTESTATION_TIMEOUT_QUOTIENT,
                     attester_duties: slot_duration / HTTP_ATTESTER_DUTIES_TIMEOUT_QUOTIENT,
+                    attestation_subscriptions: slot_duration
+                        / HTTP_ATTESTATION_SUBSCRIPTIONS_TIMEOUT_QUOTIENT,
                     liveness: slot_duration / HTTP_LIVENESS_TIMEOUT_QUOTIENT,
                     proposal: slot_duration / HTTP_PROPOSAL_TIMEOUT_QUOTIENT,
                     proposer_duties: slot_duration / HTTP_PROPOSER_DUTIES_TIMEOUT_QUOTIENT,
@@ -572,7 +570,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         let sync_committee_service = SyncCommitteeService::new(
             duties_service.clone(),
             validator_store.clone(),
-            slot_clock,
+            slot_clock.clone(),
             beacon_nodes.clone(),
             context.service_context("sync_committee".into()),
         );
@@ -593,6 +591,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             preparation_service,
             validator_store,
             config,
+            slot_clock,
             http_api_listen_addr: None,
             genesis_time,
             beacon_nodes,
@@ -615,8 +614,13 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
                 api_secret,
                 validator_store: Some(self.validator_store.clone()),
                 validator_dir: Some(self.config.validator_dir.clone()),
+                secrets_dir: Some(self.config.secrets_dir.clone()),
+                graffiti_file: self.config.graffiti_file.clone(),
+                graffiti_flag: self.config.graffiti,
                 spec: self.context.eth2_config.spec.clone(),
                 config: self.config.http_api.clone(),
+                sse_logging_components: self.context.sse_logging_components.clone(),
+                slot_clock: self.slot_clock.clone(),
                 log: log.clone(),
                 _phantom: PhantomData,
             });

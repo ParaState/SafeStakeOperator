@@ -12,7 +12,7 @@ name: UnitTest & Publish Image
 on:
   push:
     branches:
-      - lighthouse-5.2
+      - lighthouse-5.3
 
 jobs:
   push_to_registry:

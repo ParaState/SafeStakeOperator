@@ -102,7 +102,8 @@ task_executor = { path = "lighthouse/common/task_executor" }
 types = { path = "lighthouse/consensus/types" }
 validator_dir = { path = "lighthouse/common/validator_dir", features = ["insecure_keys"] }
 warp_utils = { path = "lighthouse/common/warp_utils" }
-
+logging = { path = "lighthouse/common/logging" }
+system_health = { path = "lighthouse/common/system_health" }
 consensus = { path = "hotstuff/consensus" }
 hsconfig = { path = "hotstuff/config", package = "hotstuff_config" }
 hscrypto = { path = "hotstuff/crypto", package = "crypto" }
@@ -110,6 +111,7 @@ hsutils = { path = "hotstuff/utils", package = "utils" }
 mempool = { path = "hotstuff/mempool" }
 network = { path = "hotstuff/network" }
 store = { path = "hotstuff/store" }
+sysinfo = "0.26"
 
 [patch]
 [patch.crates-io]

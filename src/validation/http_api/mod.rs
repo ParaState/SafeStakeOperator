@@ -3,19 +3,17 @@ mod create_validator;
 mod keystores;
 mod remotekeys;
 mod tests;
+mod graffiti;
 
-use crate::validation::account_utils::mnemonic_from_phrase;
-use crate::validation::account_utils::validator_definitions::{
-    SigningDefinition, ValidatorDefinition,
-};
-use crate::validation::ValidatorStore;
-use create_validator::{create_validators_mnemonic, create_validators_web3signer};
+use crate::validation::{GraffitiFile, ValidatorStore};
 use eth2::lighthouse_vc::{
     std_types::AuthResponse,
-    types::{self as api_types, PublicKey, PublicKeyBytes},
+    types::{self as api_types, GenericResponse, GetFeeRecipientResponse, GetGasLimitResponse, Graffiti, PublicKey,
+        PublicKeyBytes},
 };
-use futures::executor::block_on;
+use logging::SSELoggingComponents;
 use lighthouse_version::version_with_platform;
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use slog::{crit, info, warn, Logger};
 use slot_clock::SlotClock;
@@ -24,9 +22,10 @@ use std::marker::PhantomData;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
+use sysinfo::{System, SystemExt};
+use system_health::observe_system_health_vc;
 use task_executor::TaskExecutor;
 use types::{ChainSpec, ConfigAndPreset, EthSpec};
-use validator_dir::Builder as ValidatorDirBuilder;
 use warp::{
     http::{
         header::{HeaderValue, CONTENT_TYPE},
@@ -35,6 +34,7 @@ use warp::{
     },
     Filter,
 };
+use warp_utils::task::blocking_json_task;
 
 pub use api_secret::ApiSecret;
 
@@ -64,9 +64,14 @@ pub struct Context<T: SlotClock, E: EthSpec> {
     pub api_secret: ApiSecret,
     pub validator_store: Option<Arc<ValidatorStore<T, E>>>,
     pub validator_dir: Option<PathBuf>,
+    pub secrets_dir: Option<PathBuf>,
+    pub graffiti_file: Option<GraffitiFile>,
+    pub graffiti_flag: Option<Graffiti>,
     pub spec: ChainSpec,
     pub config: Config,
     pub log: Logger,
+    pub sse_logging_components: Option<SSELoggingComponents>,
+    pub slot_clock: T,
     pub _phantom: PhantomData<E>,
 }
 
@@ -77,6 +82,8 @@ pub struct Config {
     pub listen_addr: IpAddr,
     pub listen_port: u16,
     pub allow_origin: Option<String>,
+    pub allow_keystore_export: bool,
+    pub store_passwords_in_secrets_dir: bool,
 }
 
 impl Default for Config {
@@ -86,6 +93,8 @@ impl Default for Config {
             listen_addr: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
             listen_port: 5062,
             allow_origin: None,
+            allow_keystore_export: false,
+            store_passwords_in_secrets_dir: false,
         }
     }
 }
@@ -115,7 +124,7 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
     // Configure CORS.
     let cors_builder = {
         let builder = warp::cors()
-            .allow_methods(vec!["GET", "POST", "PATCH", "DELETE"])
+            .allow_methods(vec!["GET"])
             .allow_headers(vec!["Content-Type", "Authorization"]);
 
         warp_utils::cors::set_builder_origins(
@@ -148,9 +157,6 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
         }
     };
 
-    let signer = ctx.api_secret.signer();
-    let signer = warp::any().map(move || signer.clone());
-
     let inner_validator_store = ctx.validator_store.clone();
     let validator_store_filter = warp::any()
         .map(move || inner_validator_store.clone())
@@ -175,23 +181,48 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
                 )
             })
         });
+    
+        let inner_spec = Arc::new(ctx.spec.clone());
+        let spec_filter = warp::any().map(move || inner_spec.clone());
+    
+        let api_token_path_inner = api_token_path.clone();
+        let api_token_path_filter = warp::any().map(move || api_token_path_inner.clone());
+    
+        // Create a `warp` filter that provides access to local system information.
+        let system_info = Arc::new(RwLock::new(sysinfo::System::new()));
+        {
+            // grab write access for initialisation
+            let mut system_info = system_info.write();
+            system_info.refresh_disks_list();
+            system_info.refresh_networks_list();
+        } // end lock
 
-    let inner_ctx = ctx.clone();
-    let log_filter = warp::any().map(move || inner_ctx.log.clone());
+        let system_info_filter =
+        warp::any()
+            .map(move || system_info.clone())
+            .map(|sysinfo: Arc<RwLock<System>>| {
+                {
+                    // refresh stats
+                    let mut sysinfo_lock = sysinfo.write();
+                    sysinfo_lock.refresh_memory();
+                    sysinfo_lock.refresh_cpu_specifics(sysinfo::CpuRefreshKind::everything());
+                    sysinfo_lock.refresh_cpu();
+                    sysinfo_lock.refresh_system();
+                    sysinfo_lock.refresh_networks();
+                    sysinfo_lock.refresh_disks();
+                } // end lock
+                sysinfo
+            });
 
-    let inner_spec = Arc::new(ctx.spec.clone());
-    let spec_filter = warp::any().map(move || inner_spec.clone());
-
-    let api_token_path_inner = api_token_path.clone();
-    let api_token_path_filter = warp::any().map(move || api_token_path_inner.clone());
+        let app_start = std::time::Instant::now();
+        let app_start_filter = warp::any().map(move || app_start);
 
     // GET lighthouse/version
     let get_node_version = warp::path("lighthouse")
         .and(warp::path("version"))
         .and(warp::path::end())
-        .and(signer.clone())
-        .and_then(|signer| {
-            blocking_signed_json_task(signer, move || {
+        .then(|| {
+            blocking_json_task(move || {
                 Ok(api_types::GenericResponse::from(api_types::VersionData {
                     version: version_with_platform(),
                 }))
@@ -202,9 +233,8 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
     let get_lighthouse_health = warp::path("lighthouse")
         .and(warp::path("health"))
         .and(warp::path::end())
-        .and(signer.clone())
-        .and_then(|signer| {
-            blocking_signed_json_task(signer, move || {
+        .then(|| {
+            blocking_json_task(move || {
                 eth2::lighthouse::Health::observe()
                     .map(api_types::GenericResponse::from)
                     .map_err(warp_utils::reject::custom_bad_request)
@@ -216,11 +246,9 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
         .and(warp::path("spec"))
         .and(warp::path::end())
         .and(spec_filter.clone())
-        .and(signer.clone())
-        .and_then(|spec: Arc<_>, signer| {
-            blocking_signed_json_task(signer, move || {
+        .then(|spec: Arc<_>| {
+            blocking_json_task(move || {
                 let config = ConfigAndPreset::from_chain_spec::<E>(&spec, None);
-                // config.make_backwards_compat(&spec);
                 Ok(api_types::GenericResponse::from(config))
             })
         });
@@ -230,12 +258,13 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
         .and(warp::path("validators"))
         .and(warp::path::end())
         .and(validator_store_filter.clone())
-        .and(signer.clone())
-        .and_then(|validator_store: Arc<ValidatorStore<T, E>>, signer| {
-            blocking_signed_json_task(signer, move || {
-                // Zico: It is OK to use 'block_on' here because we know this function will be spawned in OS's blocking threads,
-                // hence will not block tokio's core thread (for executing async tasks).
-                let validators = block_on(validator_store.initialized_validators().read())
+        .and(task_executor_filter.clone())
+        .then(|validator_store: Arc<ValidatorStore<T, E>>, task_executor: TaskExecutor| {
+            blocking_json_task(move || {
+                if let Some(handle) = task_executor.handle() {
+                    let validators = handle.block_on(validator_store
+                    .initialized_validators()
+                    .read())
                     .validator_definitions()
                     .iter()
                     .map(|def| api_types::ValidatorData {
@@ -244,8 +273,12 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
                         voting_pubkey: PublicKeyBytes::from(&def.voting_public_key),
                     })
                     .collect::<Vec<_>>();
-
                 Ok(api_types::GenericResponse::from(validators))
+                } else {
+                    Err(warp_utils::reject::custom_server_error(
+                        "Lighthouse shutting down".into(),
+                    ))
+                }
             })
         });
 
@@ -255,326 +288,61 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
         .and(warp::path::param::<PublicKey>())
         .and(warp::path::end())
         .and(validator_store_filter.clone())
-        .and(signer.clone())
-        .and_then(
-            |validator_pubkey: PublicKey, validator_store: Arc<ValidatorStore<T, E>>, signer| {
-                blocking_signed_json_task(signer, move || {
-                    // Zico: It is OK to use 'block_on' here because we know this function will be spawned in OS's blocking threads,
-                    // hence will not block tokio's core thread (for executing async tasks).
-                    let validator = block_on(validator_store.initialized_validators().read())
-                        .validator_definitions()
-                        .iter()
-                        .find(|def| def.voting_public_key == validator_pubkey)
-                        .map(|def| api_types::ValidatorData {
-                            enabled: def.enabled,
-                            description: def.description.clone(),
-                            voting_pubkey: PublicKeyBytes::from(&def.voting_public_key),
-                        })
-                        .ok_or_else(|| {
-                            warp_utils::reject::custom_not_found(format!(
-                                "no validator for {:?}",
-                                validator_pubkey
-                            ))
-                        })?;
-
-                    Ok(api_types::GenericResponse::from(validator))
-                })
-            },
-        );
-
-    // POST lighthouse/validators/
-    let post_validators = warp::path("lighthouse")
-        .and(warp::path("validators"))
-        .and(warp::path::end())
-        .and(warp::body::json())
-        .and(validator_dir_filter.clone())
-        .and(validator_store_filter.clone())
-        .and(spec_filter.clone())
-        .and(signer.clone())
         .and(task_executor_filter.clone())
-        .and_then(
-            |body: Vec<api_types::ValidatorRequest>,
-             validator_dir: PathBuf,
-             validator_store: Arc<ValidatorStore<T, E>>,
-             spec: Arc<ChainSpec>,
-             signer,
-             task_executor: TaskExecutor| {
-                blocking_signed_json_task(signer, move || {
+        .then(
+            |validator_pubkey: PublicKey, validator_store: Arc<ValidatorStore<T, E>>, task_executor: TaskExecutor| {
+                blocking_json_task(move || {
                     if let Some(handle) = task_executor.handle() {
-                        let (validators, mnemonic) =
-                            handle.block_on(create_validators_mnemonic(
-                                None,
-                                None,
-                                &body,
-                                &validator_dir,
-                                &validator_store,
-                                &spec,
-                            ))?;
-                        let response = api_types::PostValidatorsResponseData {
-                            mnemonic: mnemonic.into_phrase().into(),
-                            validators,
-                        };
-                        Ok(api_types::GenericResponse::from(response))
-                    } else {
-                        Err(warp_utils::reject::custom_server_error(
-                            "Lighthouse shutting down".into(),
-                        ))
-                    }
-                })
-            },
-        );
-
-    // POST lighthouse/validators/mnemonic
-    let post_validators_mnemonic = warp::path("lighthouse")
-        .and(warp::path("validators"))
-        .and(warp::path("mnemonic"))
-        .and(warp::path::end())
-        .and(warp::body::json())
-        .and(validator_dir_filter.clone())
-        .and(validator_store_filter.clone())
-        .and(spec_filter)
-        .and(signer.clone())
-        .and(task_executor_filter.clone())
-        .and_then(
-            |body: api_types::CreateValidatorsMnemonicRequest,
-             validator_dir: PathBuf,
-             validator_store: Arc<ValidatorStore<T, E>>,
-             spec: Arc<ChainSpec>,
-             signer,
-             task_executor: TaskExecutor| {
-                blocking_signed_json_task(signer, move || {
-                    if let Some(handle) = task_executor.handle() {
-                        let mnemonic =
-                            mnemonic_from_phrase(body.mnemonic.as_str()).map_err(|e| {
-                                warp_utils::reject::custom_bad_request(format!(
-                                    "invalid mnemonic: {:?}",
-                                    e
+                        let validator = handle.block_on(validator_store
+                            .initialized_validators()
+                            .read())
+                            .validator_definitions()
+                            .iter()
+                            .find(|def| def.voting_public_key == validator_pubkey)
+                            .map(|def| api_types::ValidatorData {
+                                enabled: def.enabled,
+                                description: def.description.clone(),
+                                voting_pubkey: PublicKeyBytes::from(&def.voting_public_key),
+                            })
+                            .ok_or_else(|| {
+                                warp_utils::reject::custom_not_found(format!(
+                                    "no validator for {:?}",
+                                    validator_pubkey
                                 ))
                             })?;
-                        let (validators, _mnemonic) =
-                            handle.block_on(create_validators_mnemonic(
-                                Some(mnemonic),
-                                Some(body.key_derivation_path_offset),
-                                &body.validators,
-                                &validator_dir,
-                                &validator_store,
-                                &spec,
-                            ))?;
-                        Ok(api_types::GenericResponse::from(validators))
+                        Ok(api_types::GenericResponse::from(validator))
                     } else {
                         Err(warp_utils::reject::custom_server_error(
                             "Lighthouse shutting down".into(),
                         ))
-                    }
+                    }  
                 })
             },
         );
 
-    // POST lighthouse/validators/keystore
-    let post_validators_keystore = warp::path("lighthouse")
-        .and(warp::path("validators"))
-        .and(warp::path("keystore"))
+    // GET lighthouse/ui/health
+    let get_lighthouse_ui_health = warp::path("lighthouse")
+        .and(warp::path("ui"))
+        .and(warp::path("health"))
         .and(warp::path::end())
-        .and(warp::body::json())
+        .and(system_info_filter)
+        .and(app_start_filter)
         .and(validator_dir_filter.clone())
-        .and(validator_store_filter.clone())
-        .and(signer.clone())
-        .and(task_executor_filter.clone())
-        .and_then(
-            |body: api_types::KeystoreValidatorsPostRequest,
-             validator_dir: PathBuf,
-             validator_store: Arc<ValidatorStore<T, E>>,
-             signer,
-             task_executor: TaskExecutor| {
-                blocking_signed_json_task(signer, move || {
-                    // Check to ensure the password is correct.
-                    let keypair = body
-                        .keystore
-                        .decrypt_keypair(body.password.as_ref())
-                        .map_err(|e| {
-                            warp_utils::reject::custom_bad_request(format!(
-                                "invalid keystore: {:?}",
-                                e
-                            ))
-                        })?;
-
-                    let validator_dir = ValidatorDirBuilder::new(validator_dir.clone())
-                        .voting_keystore(body.keystore.clone(), body.password.as_ref())
-                        .store_withdrawal_keystore(false)
-                        .build()
-                        .map_err(|e| {
-                            warp_utils::reject::custom_server_error(format!(
-                                "failed to build validator directory: {:?}",
-                                e
-                            ))
-                        })?;
-
-                    // Drop validator dir so that `add_validator_keystore` can re-lock the keystore.
-                    let voting_keystore_path = validator_dir.voting_keystore_path();
-                    drop(validator_dir);
-                    let voting_password = body.password.clone();
-                    let graffiti = body.graffiti.clone();
-                    let suggested_fee_recipient = body.suggested_fee_recipient;
-                    let gas_limit = body.gas_limit;
-                    let builder_proposals = body.builder_proposals;
-
-                    let validator_def = {
-                        if let Some(handle) = task_executor.handle() {
-                            handle
-                                .block_on(validator_store.add_validator_keystore(
-                                    voting_keystore_path,
-                                    voting_password,
-                                    body.enable,
-                                    graffiti,
-                                    suggested_fee_recipient,
-                                    gas_limit,
-                                    builder_proposals,
-                                ))
-                                .map_err(|e| {
-                                    warp_utils::reject::custom_server_error(format!(
-                                        "failed to initialize validator: {:?}",
-                                        e
-                                    ))
-                                })?
-                        } else {
-                            return Err(warp_utils::reject::custom_server_error(
-                                "Lighthouse shutting down".into(),
-                            ));
-                        }
-                    };
-
-                    Ok(api_types::GenericResponse::from(api_types::ValidatorData {
-                        enabled: body.enable,
-                        description: validator_def.description,
-                        voting_pubkey: keypair.pk.into(),
-                    }))
-                })
-            },
-        );
-
-    // POST lighthouse/validators/web3signer
-    let post_validators_web3signer = warp::path("lighthouse")
-        .and(warp::path("validators"))
-        .and(warp::path("web3signer"))
-        .and(warp::path::end())
-        .and(warp::body::json())
-        .and(validator_store_filter.clone())
-        .and(signer.clone())
-        .and(task_executor_filter.clone())
-        .and_then(
-            |body: Vec<api_types::Web3SignerValidatorRequest>,
-             validator_store: Arc<ValidatorStore<T, E>>,
-             signer,
-             task_executor: TaskExecutor| {
-                blocking_signed_json_task(signer, move || {
-                    if let Some(handle) = task_executor.handle() {
-                        let web3signers: Vec<ValidatorDefinition> = body
-                            .into_iter()
-                            .map(|web3signer| ValidatorDefinition {
-                                enabled: web3signer.enable,
-                                voting_public_key: web3signer.voting_public_key,
-                                graffiti: web3signer.graffiti,
-                                suggested_fee_recipient: web3signer.suggested_fee_recipient,
-                                gas_limit: web3signer.gas_limit,
-                                builder_proposals: web3signer.builder_proposals,
-                                description: web3signer.description,
-                                signing_definition: SigningDefinition::Web3Signer {
-                                    url: web3signer.url,
-                                    root_certificate_path: web3signer.root_certificate_path,
-                                    request_timeout_ms: web3signer.request_timeout_ms,
-                                    client_identity_path: web3signer.client_identity_path,
-                                    client_identity_password: web3signer.client_identity_password,
-                                },
-                            })
-                            .collect();
-                        handle.block_on(create_validators_web3signer(
-                            web3signers,
-                            &validator_store,
-                        ))?;
-                        Ok(())
-                    } else {
-                        Err(warp_utils::reject::custom_server_error(
-                            "Lighthouse shutting down".into(),
-                        ))
-                    }
-                })
-            },
-        );
-
-    // PATCH lighthouse/validators/{validator_pubkey}
-    let patch_validators = warp::path("lighthouse")
-        .and(warp::path("validators"))
-        .and(warp::path::param::<PublicKey>())
-        .and(warp::path::end())
-        .and(warp::body::json())
-        .and(validator_store_filter.clone())
-        .and(signer.clone())
-        .and(task_executor_filter.clone())
-        .and_then(
-            |validator_pubkey: PublicKey,
-             body: api_types::ValidatorPatchRequest,
-             validator_store: Arc<ValidatorStore<T, E>>,
-             signer,
-             task_executor: TaskExecutor| {
-                blocking_signed_json_task(signer, move || {
-                    let initialized_validators_rw_lock = validator_store.initialized_validators();
-                    // Zico: It is OK to use 'block_on' here because we know this function will be spawned in OS's blocking threads,
-                    // hence will not block tokio's core thread (for executing async tasks).
-                    let mut initialized_validators =
-                        block_on(initialized_validators_rw_lock.write());
-
-                    match (
-                        initialized_validators.is_enabled(&validator_pubkey),
-                        initialized_validators.validator(&validator_pubkey.compress()),
-                    ) {
-                        (None, _) => Err(warp_utils::reject::custom_not_found(format!(
-                            "no validator for {:?}",
-                            validator_pubkey
-                        ))),
-                        (Some(is_enabled), Some(initialized_validator))
-                            if Some(is_enabled) == body.enabled
-                                && initialized_validator.get_gas_limit() == body.gas_limit
-                                && initialized_validator.get_builder_proposals()
-                                    == body.builder_proposals =>
-                        {
-                            Ok(())
-                        }
-                        (Some(_), _) => {
-                            if let Some(handle) = task_executor.handle() {
-                                handle
-                                    .block_on(
-                                        initialized_validators.set_validator_definition_fields(
-                                            &validator_pubkey,
-                                            body.enabled,
-                                            body.gas_limit,
-                                            body.builder_proposals,
-                                        ),
-                                    )
-                                    .map_err(|e| {
-                                        warp_utils::reject::custom_server_error(format!(
-                                            "unable to set validator status: {:?}",
-                                            e
-                                        ))
-                                    })?;
-                                Ok(())
-                            } else {
-                                Err(warp_utils::reject::custom_server_error(
-                                    "Lighthouse shutting down".into(),
-                                ))
-                            }
-                        }
-                    }
-                })
-            },
-        );
+        .then(|sysinfo, app_start: std::time::Instant, val_dir| {
+            blocking_json_task(move || {
+                let app_uptime = app_start.elapsed().as_secs();
+                Ok(api_types::GenericResponse::from(observe_system_health_vc(
+                    sysinfo, val_dir, app_uptime,
+                )))
+            })
+        });
 
     // GET /lighthouse/auth
     let get_auth = warp::path("lighthouse").and(warp::path("auth").and(warp::path::end()));
     let get_auth = get_auth
-        .and(signer.clone())
         .and(api_token_path_filter)
-        .and_then(|signer, token_path: PathBuf| {
-            blocking_signed_json_task(signer, move || {
+        .then(move |token_path: PathBuf| {
+            blocking_json_task(move || {
                 Ok(AuthResponse {
                     token_path: token_path.display().to_string(),
                 })
@@ -586,81 +354,141 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
     let std_keystores = eth_v1.and(warp::path("keystores")).and(warp::path::end());
     let std_remotekeys = eth_v1.and(warp::path("remotekeys")).and(warp::path::end());
 
-    // GET /eth/v1/keystores
-    let get_std_keystores = std_keystores
-        .and(signer.clone())
-        .and(validator_store_filter.clone())
-        .and_then(|signer, validator_store: Arc<ValidatorStore<T, E>>| {
-            blocking_signed_json_task(signer, move || Ok(keystores::list(validator_store)))
-        });
-
-    // POST /eth/v1/keystores
-    let post_std_keystores = std_keystores
-        .and(warp::body::json())
-        .and(signer.clone())
-        .and(validator_dir_filter)
+    // GET /eth/v1/validator/{pubkey}/feerecipient
+    let get_fee_recipient = eth_v1
+        .and(warp::path("validator"))
+        .and(warp::path::param::<PublicKey>())
+        .and(warp::path("feerecipient"))
+        .and(warp::path::end())
         .and(validator_store_filter.clone())
         .and(task_executor_filter.clone())
-        .and(log_filter.clone())
-        .and_then(
-            |request, signer, validator_dir, validator_store, task_executor, log| {
-                blocking_signed_json_task(signer, move || {
-                    keystores::import(request, validator_dir, validator_store, task_executor, log)
+        .then(
+            |validator_pubkey: PublicKey, validator_store: Arc<ValidatorStore<T, E>>, task_executor: TaskExecutor| {
+                blocking_json_task(move || {
+                    if let Some(handle) = task_executor.handle() {
+                        if handle.block_on(validator_store
+                            .initialized_validators()
+                            .read()).is_enabled(&validator_pubkey)
+                            .is_none() {
+                            return Err(warp_utils::reject::custom_not_found(format!(
+                                "no validator found with pubkey {:?}",
+                                validator_pubkey
+                            )));
+                        }
+                        handle.block_on(validator_store
+                            .get_fee_recipient(&PublicKeyBytes::from(&validator_pubkey))).map(|fee_recipient| {
+                                GenericResponse::from(GetFeeRecipientResponse {
+                                    pubkey: PublicKeyBytes::from(validator_pubkey.clone()),
+                                    ethaddress: fee_recipient,
+                                })
+                            })
+                            .ok_or_else(|| {
+                                warp_utils::reject::custom_server_error(
+                                    "no fee recipient set".to_string(),
+                                )
+                            })
+                    }  else {
+                        Err(warp_utils::reject::custom_server_error(
+                            "Lighthouse shutting down".into(),
+                        ))
+                    }
                 })
             },
         );
 
-    // DELETE /eth/v1/keystores
-    let delete_std_keystores = std_keystores
-        .and(warp::body::json())
-        .and(signer.clone())
+    // POST /eth/v1/validator/{pubkey}/feerecipient
+    // let post_fee_recipient = eth_v1
+    //     .and(warp::path("validator"))
+    //     .and(warp::path::param::<PublicKey>())
+    //     .and(warp::path("feerecipient"))
+    //     .and(warp::body::json())
+    //     .and(warp::path::end())
+    //     .and(validator_store_filter.clone())
+    //     .then(
+    //         |validator_pubkey: PublicKey,
+    //          request: api_types::UpdateFeeRecipientRequest,
+    //          validator_store: Arc<ValidatorStore<T, E>>| {
+    //             blocking_json_task(move || {
+    //                 if validator_store
+    //                     .initialized_validators()
+    //                     .read()
+    //                     .is_enabled(&validator_pubkey)
+    //                     .is_none()
+    //                 {
+    //                     return Err(warp_utils::reject::custom_not_found(format!(
+    //                         "no validator found with pubkey {:?}",
+    //                         validator_pubkey
+    //                     )));
+    //                 }
+    //                 validator_store
+    //                     .initialized_validators()
+    //                     .write()
+    //                     .set_validator_fee_recipient(&validator_pubkey, request.ethaddress)
+    //                     .map_err(|e| {
+    //                         warp_utils::reject::custom_server_error(format!(
+    //                             "Error persisting fee recipient: {:?}",
+    //                             e
+    //                         ))
+    //                     })
+    //             })
+    //         },
+    //     )
+    //     .map(|reply| warp::reply::with_status(reply, warp::http::StatusCode::ACCEPTED));
+
+    // GET /eth/v1/validator/{pubkey}/gas_limit
+    let get_gas_limit = eth_v1
+        .and(warp::path("validator"))
+        .and(warp::path::param::<PublicKey>())
+        .and(warp::path("gas_limit"))
+        .and(warp::path::end())
         .and(validator_store_filter.clone())
         .and(task_executor_filter.clone())
-        .and(log_filter.clone())
-        .and_then(|request, signer, validator_store, task_executor, log| {
-            blocking_signed_json_task(signer, move || {
-                block_on(keystores::delete(
-                    request,
-                    validator_store,
-                    task_executor,
-                    log,
-                ))
-            })
-        });
+        .then(
+            |validator_pubkey: PublicKey, validator_store: Arc<ValidatorStore<T, E>>, task_executor: TaskExecutor| {
+
+                blocking_json_task(move || {
+                    if let Some(handle) = task_executor.handle() {
+                        if handle.block_on(validator_store
+                        .initialized_validators()
+                        .read())
+                        .is_enabled(&validator_pubkey)
+                        .is_none()
+                    {
+                        return Err(warp_utils::reject::custom_not_found(format!(
+                            "no validator found with pubkey {:?}",
+                            validator_pubkey
+                        )));
+                    }
+                    Ok(GenericResponse::from(GetGasLimitResponse {
+                        pubkey: PublicKeyBytes::from(validator_pubkey.clone()),
+                        gas_limit: handle.block_on(validator_store
+                            .get_gas_limit(&PublicKeyBytes::from(&validator_pubkey))),
+                    }))
+                    }
+                    else {
+                        Err(warp_utils::reject::custom_server_error(
+                            "Lighthouse shutting down".into(),
+                        ))
+                    }
+
+                    
+                })
+            },
+        );
+
+    // GET /eth/v1/keystores
+    let get_std_keystores = std_keystores.and(validator_store_filter.clone()).then(
+        |validator_store: Arc<ValidatorStore<T, E>>| {
+            blocking_json_task(move || Ok(keystores::list(validator_store)))
+        },
+    );
 
     // GET /eth/v1/remotekeys
-    let get_std_remotekeys = std_remotekeys
-        .and(signer.clone())
-        .and(validator_store_filter.clone())
-        .and_then(|signer, validator_store: Arc<ValidatorStore<T, E>>| {
-            blocking_signed_json_task(signer, move || Ok(remotekeys::list(validator_store)))
-        });
-
-    // POST /eth/v1/remotekeys
-    let post_std_remotekeys = std_remotekeys
-        .and(warp::body::json())
-        .and(signer.clone())
-        .and(validator_store_filter.clone())
-        .and(task_executor_filter.clone())
-        .and(log_filter.clone())
-        .and_then(|request, signer, validator_store, task_executor, log| {
-            blocking_signed_json_task(signer, move || {
-                remotekeys::import(request, validator_store, task_executor, log)
-            })
-        });
-
-    // DELETE /eth/v1/remotekeys
-    let delete_std_remotekeys = std_remotekeys
-        .and(warp::body::json())
-        .and(signer)
-        .and(validator_store_filter)
-        .and(task_executor_filter)
-        .and(log_filter.clone())
-        .and_then(|request, signer, validator_store, task_executor, log| {
-            blocking_signed_json_task(signer, move || {
-                remotekeys::delete(request, validator_store, task_executor, log)
-            })
-        });
+    let get_std_remotekeys = std_remotekeys.and(validator_store_filter.clone()).then(
+        |validator_store: Arc<ValidatorStore<T, E>>| {
+            blocking_json_task(move || Ok(remotekeys::list(validator_store)))
+        },
+    );
 
     let routes = warp::any()
         .and(authorization_header_filter)
@@ -676,21 +504,16 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
                         .or(get_lighthouse_spec)
                         .or(get_lighthouse_validators)
                         .or(get_lighthouse_validators_pubkey)
+                        .or(get_lighthouse_ui_health)
+                        .or(get_fee_recipient)
+                        .or(get_gas_limit)
+                        // .or(get_graffiti)
                         .or(get_std_keystores)
-                        .or(get_std_remotekeys),
+                        .or(get_std_remotekeys)
+                        .recover(warp_utils::reject::handle_rejection),
                 )
-                .or(warp::post().and(
-                    post_validators
-                        .or(post_validators_keystore)
-                        .or(post_validators_mnemonic)
-                        .or(post_validators_web3signer)
-                        .or(post_std_keystores)
-                        .or(post_std_remotekeys),
-                ))
-                .or(warp::patch().and(patch_validators))
-                .or(warp::delete().and(delete_std_keystores.or(delete_std_remotekeys))),
         )
-        // The auth route is the only route that is allowed to be accessed without the API token.
+        // The auth route and logs  are the only routes that are allowed to be accessed without the API token.
         .or(warp::get().and(get_auth))
         // Maps errors into HTTP responses.
         .recover(warp_utils::reject::handle_rejection)

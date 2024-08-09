@@ -644,6 +644,8 @@ pub async fn add_validator<T: EthSpec>(
                     Some(validator.owner_address),
                     None,
                     None,
+                    None,
+                    None,
                     committee_def_path,
                     keystore_share.master_id,
                     keystore_share.share_id,

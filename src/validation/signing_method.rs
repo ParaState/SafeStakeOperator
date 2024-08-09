@@ -133,6 +133,21 @@ impl SigningContext {
 }
 
 impl SigningMethod {
+    /// Return whether this signing method requires local slashing protection.
+    pub fn requires_local_slashing_protection(
+        &self,
+        enable_web3signer_slashing_protection: bool,
+    ) -> bool {
+        match self {
+            // Slashing protection is ALWAYS required for local keys. DO NOT TURN THIS OFF.
+            SigningMethod::LocalKeystore { .. } => true,
+            SigningMethod::DistributedKeystore { .. } => true,
+            // Slashing protection is only required for remote signer keys when the configuration
+            // dictates that it is desired.
+            SigningMethod::Web3Signer { .. } => enable_web3signer_slashing_protection,
+        }
+    }
+
     /// Return the signature of `signable_message`, with respect to the `signing_context`.
     pub async fn get_signature<T: EthSpec, Payload: AbstractExecPayload<T>>(
         &self,
@@ -286,7 +301,7 @@ impl SigningMethod {
                     SignableMessage::AttestationData(a) => (a.slot, "ATTESTER", true),
                     SignableMessage::BeaconBlock(b) => (b.slot(), "PROPOSER", true),
                     SignableMessage::SignedAggregateAndProof(x) => {
-                        (x.aggregate.data.slot, "AGGREGATE", true)
+                        (x.aggregate().data().slot, "AGGREGATE", true)
                     }
                     SignableMessage::SelectionProof(s) => {
                         // Every operator should be able to get selection proof signature,

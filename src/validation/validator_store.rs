@@ -75,7 +75,9 @@ pub struct ValidatorStore<T, E: EthSpec> {
     fee_recipient_process: Option<Address>,
     gas_limit: Option<u64>,
     builder_proposals: bool,
-    produce_block_v3: bool,
+    enable_web3signer_slashing_protection: bool,
+    prefer_builder_proposals: bool,
+    builder_boost_factor: Option<u64>,
     task_executor: TaskExecutor,
     _phantom: PhantomData<E>,
 }
@@ -107,7 +109,9 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
             fee_recipient_process: config.fee_recipient,
             gas_limit: config.gas_limit,
             builder_proposals: config.builder_proposals,
-            produce_block_v3: config.produce_block_v3,
+            enable_web3signer_slashing_protection: true,
+            prefer_builder_proposals: config.prefer_builder_proposals,
+            builder_boost_factor: config.builder_boost_factor,
             task_executor,
             _phantom: PhantomData,
         }
@@ -147,6 +151,8 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         suggested_fee_recipient: Option<Address>,
         gas_limit: Option<u64>,
         builder_proposals: Option<bool>,
+        builder_boost_factor: Option<u64>,
+        prefer_builder_proposals: Option<bool>,
     ) -> Result<ValidatorDefinition, String> {
         let mut validator_def = ValidatorDefinition::new_keystore_with_password(
             voting_keystore_path,
@@ -155,6 +161,8 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
             suggested_fee_recipient,
             gas_limit,
             builder_proposals,
+            builder_boost_factor,
+            prefer_builder_proposals,
         )
         .map_err(|e| format!("failed to create validator definitions: {:?}", e))?;
 
@@ -174,6 +182,8 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         suggested_fee_recipient: Option<Address>,
         gas_limit: Option<u64>,
         builder_proposals: Option<bool>,
+        builder_boost_factor: Option<u64>,
+        prefer_builder_proposals: Option<bool>,
         operator_committee_definition_path: P,
         operator_committee_index: u64,
         operator_id: u64,
@@ -185,6 +195,8 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
             suggested_fee_recipient,
             gas_limit,
             builder_proposals,
+            builder_boost_factor,
+            prefer_builder_proposals,
             operator_committee_definition_path,
             operator_committee_index,
             operator_id,
@@ -342,10 +354,6 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         self.spec.fork_at_epoch(epoch)
     }
 
-    pub fn produce_block_v3(&self) -> bool {
-        self.produce_block_v3
-    }
-
     /// Returns a `SigningMethod` for `validator_pubkey` *only if* that validator is considered safe
     /// by doppelganger protection.
     async fn doppelganger_checked_signing_method(
@@ -500,6 +508,63 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         )
     }
 
+    /// Translate the per validator `builder_proposals`, `builder_boost_factor` and
+    /// `prefer_builder_proposals` to a boost factor, if available.
+    /// - If `prefer_builder_proposals` is true, set boost factor to `u64::MAX` to indicate a
+    ///   preference for builder payloads.
+    /// - If `builder_boost_factor` is a value other than None, return its value as the boost factor.
+    /// - If `builder_proposals` is set to false, set boost factor to 0 to indicate a preference for
+    ///   local payloads.
+    /// - Else return `None` to indicate no preference between builder and local payloads.
+    pub async fn determine_validator_builder_boost_factor(
+        &self,
+        validator_pubkey: &PublicKeyBytes,
+    ) -> Option<u64> {
+        let validator_prefer_builder_proposals = self
+            .validators
+            .read().await
+            .prefer_builder_proposals(validator_pubkey);
+
+        if matches!(validator_prefer_builder_proposals, Some(true)) {
+            return Some(u64::MAX);
+        }
+
+        let validator_prefer_builder_proposal = self.validators.read().await.builder_proposals(validator_pubkey);
+        self.validators
+            .read().await
+            .builder_boost_factor(validator_pubkey)
+            .or_else(|| {
+                if matches!(
+                    validator_prefer_builder_proposal,
+                    Some(false)
+                ) {
+                    return Some(0);
+                }
+                None
+            })
+    }
+
+    /// Translate the process-wide `builder_proposals`, `builder_boost_factor` and
+    /// `prefer_builder_proposals` configurations to a boost factor.
+    /// - If `prefer_builder_proposals` is true, set boost factor to `u64::MAX` to indicate a
+    ///   preference for builder payloads.
+    /// - If `builder_boost_factor` is a value other than None, return its value as the boost factor.
+    /// - If `builder_proposals` is set to false, set boost factor to 0 to indicate a preference for
+    ///   local payloads.
+    /// - Else return `None` to indicate no preference between builder and local payloads.
+    pub fn determine_default_builder_boost_factor(&self) -> Option<u64> {
+        if self.prefer_builder_proposals {
+            return Some(u64::MAX);
+        }
+        self.builder_boost_factor.or({
+            if !self.builder_proposals {
+                Some(0)
+            } else {
+                None
+            }
+        })
+    }
+
     fn get_builder_proposals_defaulting(&self, builder_proposals: Option<bool>) -> bool {
         builder_proposals
             // If there's nothing in the file, try the process-level default value.
@@ -593,32 +658,39 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         current_epoch: Epoch,
     ) -> Result<(), Error> {
         // Make sure the target epoch is not higher than the current epoch to avoid potential attacks.
-        if attestation.data.target.epoch > current_epoch {
+        if attestation.data().target.epoch > current_epoch {
             return Err(Error::GreaterThanCurrentEpoch {
-                epoch: attestation.data.target.epoch,
+                epoch: attestation.data().target.epoch,
                 current_epoch,
             });
         }
 
+        // Get the signing method and check doppelganger protection.
+        let signing_method = self.doppelganger_checked_signing_method(validator_pubkey).await?;
+
         // Checking for slashing conditions.
-        let signing_epoch = attestation.data.target.epoch;
+        let signing_epoch = attestation.data().target.epoch;
         let signing_context = self.signing_context(Domain::BeaconAttester, signing_epoch);
         let domain_hash = signing_context.domain_hash(&self.spec);
-        let slashing_status = self.slashing_protection.check_and_insert_attestation(
-            &validator_pubkey,
-            &attestation.data,
-            domain_hash,
-        );
+
+        let slashing_status = if signing_method
+            .requires_local_slashing_protection(self.enable_web3signer_slashing_protection)
+        {
+            self.slashing_protection.check_and_insert_attestation(
+                &validator_pubkey,
+                attestation.data(),
+                domain_hash,
+            )
+        } else {
+            Ok(Safe::Valid)
+        };
 
         match slashing_status {
             // We can safely sign this attestation.
             Ok(Safe::Valid) => {
-                let signing_method = self
-                    .doppelganger_checked_signing_method(validator_pubkey)
-                    .await?;
                 let signature = signing_method
                     .get_signature::<E, BlindedPayload<E>>(
-                        SignableMessage::AttestationData(&attestation.data),
+                        SignableMessage::AttestationData(&attestation.data()),
                         signing_context,
                         &self.spec,
                         &self.task_executor,
@@ -660,7 +732,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
                 crit!(
                     self.log,
                     "Not signing slashable attestation";
-                    "attestation" => format!("{:?}", attestation.data),
+                    "attestation" => format!("{:?}", attestation.data()),
                     "error" => format!("{:?}", e)
                 );
                 metrics::inc_counter_vec(
@@ -744,14 +816,11 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         aggregate: Attestation<E>,
         selection_proof: SelectionProof,
     ) -> Result<SignedAggregateAndProof<E>, Error> {
-        let signing_epoch = aggregate.data.target.epoch;
+        let signing_epoch = aggregate.data().target.epoch;
         let signing_context = self.signing_context(Domain::AggregateAndProof, signing_epoch);
 
-        let message = AggregateAndProof {
-            aggregator_index,
-            aggregate,
-            selection_proof: selection_proof.into(),
-        };
+        let message =
+            AggregateAndProof::from_attestation(aggregator_index, aggregate, selection_proof);
 
         let signing_method = self
             .doppelganger_checked_signing_method(validator_pubkey)
@@ -767,7 +836,9 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
 
         metrics::inc_counter_vec(&metrics::SIGNED_AGGREGATES_TOTAL, &[metrics::SUCCESS]);
 
-        Ok(SignedAggregateAndProof { message, signature })
+        Ok(SignedAggregateAndProof::from_aggregate_and_proof(
+            message, signature,
+        ))
     }
 
     /// Produces a `SelectionProof` for the `slot`, signed by with corresponding secret key to

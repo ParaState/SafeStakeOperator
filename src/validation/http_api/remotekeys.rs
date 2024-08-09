@@ -1,6 +1,6 @@
 //! Implementation of the standard remotekey management API.
 use crate::validation::account_utils::validator_definitions::{
-    SigningDefinition, ValidatorDefinition,
+    SigningDefinition, ValidatorDefinition, Web3SignerDefinition
 };
 use crate::validation::{initialized_validators::Error, InitializedValidators, ValidatorStore};
 use eth2::lighthouse_vc::std_types::{
@@ -34,11 +34,13 @@ pub fn list<T: SlotClock + 'static, E: EthSpec>(
 
             match &def.signing_definition {
                 SigningDefinition::LocalKeystore { .. } => None,
-                SigningDefinition::Web3Signer { url, .. } => Some(SingleListRemotekeysResponse {
-                    pubkey: validating_pubkey,
-                    url: url.clone(),
-                    readonly: false,
-                }),
+                SigningDefinition::Web3Signer(Web3SignerDefinition { url, .. }) => {
+                    Some(SingleListRemotekeysResponse {
+                        pubkey: validating_pubkey,
+                        url: url.clone(),
+                        readonly: false,
+                    })
+                },
                 // [Zico]TODO: to be revised
                 SigningDefinition::DistributedKeystore { .. } => None,
             }
@@ -48,7 +50,7 @@ pub fn list<T: SlotClock + 'static, E: EthSpec>(
     ListRemotekeysResponse { data: keystores }
 }
 
-pub fn import<T: SlotClock + 'static, E: EthSpec>(
+pub fn _import<T: SlotClock + 'static, E: EthSpec>(
     request: ImportRemotekeysRequest,
     validator_store: Arc<ValidatorStore<T, E>>,
     task_executor: TaskExecutor,
@@ -65,7 +67,7 @@ pub fn import<T: SlotClock + 'static, E: EthSpec>(
     for remotekey in request.remote_keys {
         let status = if let Some(handle) = task_executor.handle() {
             // Import the keystore.
-            match import_single_remotekey(remotekey.pubkey, remotekey.url, &validator_store, handle)
+            match _import_single_remotekey(remotekey.pubkey, remotekey.url, &validator_store, handle)
             {
                 Ok(status) => Status::ok(status),
                 Err(e) => {
@@ -89,7 +91,7 @@ pub fn import<T: SlotClock + 'static, E: EthSpec>(
     Ok(ImportRemotekeysResponse { data: statuses })
 }
 
-fn import_single_remotekey<T: SlotClock + 'static, E: EthSpec>(
+fn _import_single_remotekey<T: SlotClock + 'static, E: EthSpec>(
     pubkey: PublicKeyBytes,
     url: String,
     validator_store: &ValidatorStore<T, E>,
@@ -124,14 +126,16 @@ fn import_single_remotekey<T: SlotClock + 'static, E: EthSpec>(
         suggested_fee_recipient: None,
         gas_limit: None,
         builder_proposals: None,
+        builder_boost_factor: None,
+        prefer_builder_proposals: None,
         description: String::from("Added by remotekey API"),
-        signing_definition: SigningDefinition::Web3Signer {
+        signing_definition: SigningDefinition::Web3Signer(Web3SignerDefinition {
             url,
             root_certificate_path: None,
             request_timeout_ms: None,
             client_identity_path: None,
             client_identity_password: None,
-        },
+        }),
     };
     handle
         .block_on(validator_store.add_validator(web3signer_validator))
@@ -140,7 +144,7 @@ fn import_single_remotekey<T: SlotClock + 'static, E: EthSpec>(
     Ok(ImportRemotekeyStatus::Imported)
 }
 
-pub fn delete<T: SlotClock + 'static, E: EthSpec>(
+pub fn _delete<T: SlotClock + 'static, E: EthSpec>(
     request: DeleteRemotekeysRequest,
     validator_store: Arc<ValidatorStore<T, E>>,
     task_executor: TaskExecutor,
@@ -159,7 +163,7 @@ pub fn delete<T: SlotClock + 'static, E: EthSpec>(
         .pubkeys
         .iter()
         .map(|pubkey_bytes| {
-            match delete_single_remotekey(
+            match _delete_single_remotekey(
                 pubkey_bytes,
                 &mut initialized_validators,
                 task_executor.clone(),
@@ -190,7 +194,7 @@ pub fn delete<T: SlotClock + 'static, E: EthSpec>(
     Ok(DeleteRemotekeysResponse { data: statuses })
 }
 
-fn delete_single_remotekey<E: EthSpec>(
+fn _delete_single_remotekey<E: EthSpec>(
     pubkey_bytes: &PublicKeyBytes,
     initialized_validators: &mut InitializedValidators<E>,
     task_executor: TaskExecutor,

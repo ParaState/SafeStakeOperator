@@ -192,6 +192,7 @@ impl<T: EthSpec> Node<T> {
 
     pub fn process_contract_command(node: Arc<RwLock<Node<T>>>, db: Database) {
         tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(30)).await;
             let mut query_interval = tokio::time::interval(Duration::from_secs(6));
             loop {
                 query_interval.tick().await;
@@ -643,9 +644,9 @@ pub async fn add_validator<T: EthSpec>(
                     None,
                     Some(validator.owner_address),
                     None,
-                    None,
-                    None,
-                    None,
+                    Some(node.config.builder_proposals),
+                    node.config.builder_boost_factor,
+                    Some(node.config.prefer_builder_proposals),
                     committee_def_path,
                     keystore_share.master_id,
                     keystore_share.share_id,

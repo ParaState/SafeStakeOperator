@@ -92,6 +92,9 @@ pub struct NodeConfig {
     pub secrets_dir: PathBuf,
     pub boot_enrs: Vec<Enr<CombinedKey>>,
     pub beacon_nodes: Vec<SensitiveUrl>,
+    pub builder_proposals: bool,
+    pub builder_boost_factor: Option<u64>,
+    pub prefer_builder_proposals: bool,
 }
 
 impl Default for NodeConfig {
@@ -149,6 +152,9 @@ impl NodeConfig {
             secrets_dir,
             boot_enrs,
             beacon_nodes: Vec::new(),
+            builder_proposals: false,
+            builder_boost_factor: None,
+            prefer_builder_proposals: false
         }
     }
 
@@ -195,4 +201,5 @@ impl NodeConfig {
         self.beacon_nodes = beacon_nodes;
         self
     }
+
 }

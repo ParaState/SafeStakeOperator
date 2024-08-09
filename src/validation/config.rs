@@ -223,14 +223,6 @@ impl Config {
             .dvf_node_config
             .set_beacon_nodes(config.beacon_nodes.clone());
 
-        // if let Some(proposer_nodes) = parse_optional::<String>(cli_args, "proposer_nodes")? {
-        //     config.proposer_nodes = proposer_nodes
-        //         .split(',')
-        //         .map(SensitiveUrl::parse)
-        //         .collect::<Result<_, _>>()
-        //         .map_err(|e| format!("Unable to parse proposer node URL: {:?}", e))?;
-        // }
-
         config.disable_auto_discover = cli_args.get_flag("disable-auto-discover");
         config.init_slashing_protection = cli_args.get_flag("init-slashing-protection");
         config.use_long_timeouts = cli_args.get_flag("use-long-timeouts");
@@ -262,12 +254,6 @@ impl Config {
                 config.graffiti = Some(graffiti.into());
             }
         }
-
-        // if let Some(input_fee_recipient) =
-        //     parse_optional::<Address>(cli_args, "suggested-fee-recipient")?
-        // {
-        //     config.fee_recipient = Some(input_fee_recipient);
-        // }
 
         if let Some(tls_certs) = parse_optional::<String>(cli_args, "beacon-nodes-tls-certs")? {
             config.beacon_nodes_tls_certs = Some(tls_certs.split(',').map(PathBuf::from).collect());
@@ -373,6 +359,12 @@ impl Config {
 
         if cli_args.get_flag("builder-proposals") {
             config.builder_proposals = true;
+            config.dvf_node_config.builder_proposals = true;
+        }
+
+        if cli_args.get_flag("prefer-builder-proposals") {
+            config.prefer_builder_proposals = true;
+            config.dvf_node_config.prefer_builder_proposals = true;
         }
 
         config.gas_limit = cli_args
@@ -384,6 +376,10 @@ impl Config {
             })
             .transpose()?;
 
+        config.builder_boost_factor = parse_optional(cli_args, "builder-boost-factor")?;
+
+        config.dvf_node_config.builder_boost_factor = parse_optional(cli_args, "builder-boost-factor")?;
+    
         config.validator_registration_batch_size =
             parse_required(cli_args, "validator-registration-batch-size")?;
         if config.validator_registration_batch_size == 0 {

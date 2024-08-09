@@ -142,7 +142,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                     }
                 }
             }
-            warn!("Connection closed by peer {}", peer);
+            debug!("Connection closed by peer {}", peer);
         });
     }
 }

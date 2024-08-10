@@ -370,7 +370,6 @@ impl<T: EthSpec> Node<T> {
                                 }
                             }
                             ContractCommand::SetFeeRecipient(va_pk, fee_recipient_address) => {
-                                info!("Set Fee Recipient");
                                 match set_validator_fee_recipient(node.clone(), va_pk, fee_recipient_address).await {
                                     Ok(_) => {
                                         db.delete_contract_command(id).await;

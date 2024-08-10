@@ -33,6 +33,7 @@ const CONTRACT_INI_REG_EVENT_NAME: &str = "InitiatorRegistration";
 const CONTRACT_MINIPOOL_CREATED_EVENT_NAME: &str = "InitiatorMiniPoolCreated";
 const CONTRACT_MINIPOOL_READY_EVENT_NAME: &str = "InitiatorMiniPoolReady";
 const CONTRACT_INI_RM_EVENT_NAME: &str = "InitiatorRemoval";
+const CONTRACT_FEE_RECIPIENT_SET_EVENT_NAME: &str = "FeeReceiptAddressSet";
 pub static SELF_OPERATOR_ID: OnceCell<u32> = OnceCell::const_new();
 pub static DEFAULT_TRANSPORT_URL: OnceCell<String> = OnceCell::const_new();
 pub static REGISTRY_CONTRACT: OnceCell<String> = OnceCell::const_new();
@@ -157,6 +158,7 @@ pub enum ContractCommand {
         Address,
     ),
     RemoveInitiator(Initiator, OperatorPublicKeys),
+    SetFeeRecipient(ValidatorPublicKey, Address)
 }
 
 #[derive(Clone)]
@@ -303,6 +305,25 @@ impl TopicHandler for InitiatorRemovalHandler {
     }
 }
 
+#[derive(Clone)]
+pub struct FeeRecipientSetHandler {}
+#[async_trait]
+impl TopicHandler for FeeRecipientSetHandler {
+    async fn process(
+        &self,
+        log: Log,
+        db: &Database,
+        _operator_pk_base64: &String,
+        _config: &ContractConfig,
+        _web3: &Web3<WebSocket>,
+    ) -> Result<(), ContractError> {
+        process_fee_recipient_set(log, db).await.map_err(|e| {
+            error!("error happens when process initiator removal");
+            e
+        })
+    } 
+}
+
 #[derive(Debug, DeriveSerialize, DeriveDeserialize, Clone)]
 pub struct ContractConfig {
     pub validator_registration_topic: String,
@@ -311,6 +332,7 @@ pub struct ContractConfig {
     pub initiator_minipool_created_topic: String,
     pub initiator_minipool_ready_topic: String,
     pub initiator_removal_topic: String,
+    pub fee_recipient_set_topic: String,
     pub safestake_network_abi_path: String,
     pub safestake_registry_abi_path: String,
 }
@@ -426,11 +448,13 @@ impl Contract {
         let minipool_ready_topic =
             H256::from_slice(&hex::decode(&config.initiator_minipool_ready_topic).unwrap());
         let ini_rm_topic = H256::from_slice(&hex::decode(&config.initiator_removal_topic).unwrap());
+        let fee_receipient_set_topic = H256::from_slice(&hex::decode(&config.fee_recipient_set_topic).unwrap());
+
         let va_filter_builder = FilterBuilder::default()
             .address(vec![Address::from_slice(
                 &hex::decode(NETWORK_CONTRACT.get().unwrap()).unwrap(),
             )])
-            .topics(Some(vec![va_reg_topic, va_rm_topic]), None, None, None);
+            .topics(Some(vec![va_reg_topic, va_rm_topic, fee_receipient_set_topic]), None, None, None);
         self.va_filter_builder = Some(va_filter_builder);
         let initiator_filter_builder = FilterBuilder::default()
             .address(vec![Address::from_slice(
@@ -455,6 +479,7 @@ impl Contract {
         handlers.insert(minipool_created_topic, Box::new(MinipoolCreatedHandler {}));
         handlers.insert(minipool_ready_topic, Box::new(MinipoolReadyHandler {}));
         handlers.insert(ini_rm_topic, Box::new(InitiatorRemovalHandler {}));
+        handlers.insert(fee_receipient_set_topic, Box::new(FeeRecipientSetHandler {}));
     }
 
     pub fn monitor_validator_paidblock(&mut self) {
@@ -1124,6 +1149,52 @@ pub async fn process_minipool_ready(raw_log: Log, db: &Database) -> Result<(), C
         },
         Err(_) => Err(ContractError::DatabaseError),
     }
+}
+
+pub async fn process_fee_recipient_set(raw_log: Log, db: &Database) -> Result<(), ContractError> {
+    info!("process_fee_recipient_set");
+    let fee_recipient_set_event = Event {
+        name: CONTRACT_FEE_RECIPIENT_SET_EVENT_NAME.to_string(),
+        inputs: vec![
+            EventParam {
+                name: "owner".to_string(),
+                kind: ParamType::Address,
+                indexed: true,
+            },
+            EventParam {
+                name: "pubkey".to_string(),
+                kind: ParamType::Bytes,
+                indexed: false,
+            },
+            EventParam {
+                name: "feeReceiptAddress".to_string(),
+                kind: ParamType::Address,
+                indexed: true,
+            },
+            EventParam {
+                name: "updateCount".to_string(),
+                kind: ParamType::Uint(32),
+                indexed: false,
+            }
+        ],
+        anonymous: false,
+    };
+    let log = fee_recipient_set_event.parse_log(RawLog {
+        topics: raw_log.topics,
+        data: raw_log.data.0,
+    }).map_err(|_| ContractError::LogParseError)?;
+    let pubkey = log.params[1].value.clone().into_bytes().ok_or(ContractError::LogParseError)?;
+    let fee_recipient_address = log.params[2].value.clone().into_address().ok_or(ContractError::LogParseError)?;
+    match db.query_validator_by_public_key(hex::encode(pubkey.clone())).await.unwrap() {
+        Some(v) => {
+            let cmd = ContractCommand::SetFeeRecipient(pubkey, fee_recipient_address);
+            db.insert_contract_command(v.id, serde_json::to_string(&cmd).unwrap()).await;
+        },
+        None => {
+            info!("set fee recipient not releated to this operator");
+        }
+    }
+    Ok(())
 }
 
 pub async fn query_block_number_timestamp(

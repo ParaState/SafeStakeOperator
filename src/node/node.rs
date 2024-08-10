@@ -364,7 +364,19 @@ impl<T: EthSpec> Node<T> {
                                         db.delete_contract_command(id).await;
                                     }
                                     Err(e) => {
-                                        error!("Failed to process remove initiator ready: {}", e);
+                                        error!("Failed to process remove initiator: {}", e);
+                                        db.updatetime_contract_command(id).await;
+                                    }
+                                }
+                            }
+                            ContractCommand::SetFeeRecipient(va_pk, fee_recipient_address) => {
+                                info!("Set Fee Recipient");
+                                match set_validator_fee_recipient(node.clone(), va_pk, fee_recipient_address).await {
+                                    Ok(_) => {
+                                        db.delete_contract_command(id).await;
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to set validator fee recipient address: {:?}", e);
                                         db.updatetime_contract_command(id).await;
                                     }
                                 }
@@ -442,27 +454,6 @@ impl<T: EthSpec> Node<T> {
                                     error!("Unable to find validator with public key {:?}", validator_pk);
                                 }
                             }
-                            // loop {
-                            //     match restart_validator(node.clone(), committee_def.validator_id, committee_def.validator_public_key.clone()).await {
-                            //         Ok(_) => {
-                            //             info!("Successfully restart validator: {}, pk: {}",
-                            //                 committee_def.validator_id, committee_def.validator_public_key);
-                            //             break;
-                            //         }
-                            //         Err(DvfError::ValidatorStoreNotReady) => {
-                            //             error!("Failed to restart validator: {}, pk: {}. Error:
-                            //                 validator store is not ready yet, will try again in 1 minute.",
-                            //                 committee_def.validator_id, committee_def.validator_public_key);
-                            //             tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-                            //             continue;
-                            //         }
-                            //         Err(e) => {
-                            //             error!("Failed to restart validator: {}, pk: {}. Error: {:?}",
-                            //                 committee_def.validator_id, committee_def.validator_public_key, e);
-                            //             break;
-                            //         }
-                            //     };
-                            // }
                         }
                     }
                     () = exit_clone => {
@@ -1063,6 +1054,30 @@ pub async fn restart_validator<T: EthSpec>(
             validator_store
                 .restart_validator_keystore(&validator_pk)
                 .await;
+            Ok(())
+        }
+        _ => Err(DvfError::ValidatorStoreNotReady),
+    }
+}
+
+pub async fn set_validator_fee_recipient<T: EthSpec>(
+    node: Arc<RwLock<Node<T>>>,
+    validator_pk: Vec<u8>,
+    fee_recipient_address: H160
+) -> Result<(), DvfError> {
+    info!(
+        "setting fee recipient to {} for validator {}...",
+        fee_recipient_address, hex::encode(validator_pk.clone())
+    );
+    let validator_store = {
+        let node_ = node.read().await;
+        node_.validator_store.clone()
+    };
+    match validator_store {
+        Some(validator_store) => {
+            validator_store.
+            set_fee_recipient_for_validator(
+                &BlsPublicKey::deserialize(&validator_pk).unwrap(), fee_recipient_address).await;
             Ok(())
         }
         _ => Err(DvfError::ValidatorStoreNotReady),

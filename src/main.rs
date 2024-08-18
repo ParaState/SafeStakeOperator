@@ -442,7 +442,7 @@ fn run<E: EthSpec>(
 
     let _logger = env_logger::Builder::from_env(Env::default().default_filter_or(debug_level))
         .format(|buf, record| {
-            let level = { buf.default_styled_level(record.level()) };
+            let level = { buf.default_level_style(record.level()) };
             writeln!(
                 buf,
                 "{} {} [{}:{}] {}",

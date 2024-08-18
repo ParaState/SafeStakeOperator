@@ -85,7 +85,7 @@ impl Discovery {
             builder.seq(seq);
             builder.build(&enr_key).unwrap()
         };
-        let base_address = SocketAddr::new(ip, udp_port - DISCOVERY_PORT_OFFSET);
+        let base_address = SocketAddr::new(ip, udp_port.checked_sub(DISCOVERY_PORT_OFFSET).unwrap());
         info!("Node ENR ip: {}, port: {}", ip, udp_port);
         info!("Node public key: {}", secret.name.encode_base64());
         info!("Node id: {}", base64::encode(local_enr.node_id().raw()));
@@ -135,8 +135,14 @@ impl Discovery {
                                     if let Some(ip) = enr.ip4() {
                                         if let Some(discv_port) = enr.udp4() {
                                             // update public key socket address
-                                            store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(ip), discv_port - DISCOVERY_PORT_OFFSET)).unwrap()).await;
-                                            set_metrics(&store, enr.public_key().encode()).await;
+                                            match discv_port.checked_sub(DISCOVERY_PORT_OFFSET) {
+                                                Some(port) => {
+                                                    store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(ip), port)).unwrap()).await;
+                                                    set_metrics(&store, enr.public_key().encode()).await;
+                                                }
+                                                None => { }
+                                            }
+                                            
                                         }
                                     };
                                 };
@@ -150,9 +156,13 @@ impl Discovery {
                                 if let Some(ip) = enr.ip4() {
                                     // update public key ip
                                     if let Some(discv_port) = enr.udp4() {
-                                        // update public key socket address
-                                        store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(ip), discv_port - DISCOVERY_PORT_OFFSET)).unwrap()).await;
-                                        set_metrics(&store, enr.public_key().encode()).await;
+                                        match discv_port.checked_sub(DISCOVERY_PORT_OFFSET) {
+                                            Some(port) => {
+                                                store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(ip), port)).unwrap()).await;
+                                                set_metrics(&store, enr.public_key().encode()).await;
+                                            }
+                                            None => { }
+                                        }
                                     }
                                 };
                             },
@@ -160,9 +170,13 @@ impl Discovery {
                                 if let Some(ip) = enr.ip4() {
                                     // update public key ip
                                     if let Some(discv_port) = enr.udp4() {
-                                        // update public key socket address
-                                        store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(ip), discv_port - DISCOVERY_PORT_OFFSET)).unwrap()).await;
-                                        set_metrics(&store, enr.public_key().encode()).await;
+                                        match discv_port.checked_sub(DISCOVERY_PORT_OFFSET) {
+                                            Some(port) => {
+                                                store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(ip), port)).unwrap()).await;
+                                                set_metrics(&store, enr.public_key().encode()).await;
+                                            }
+                                            None => { }
+                                        }
                                     }
                                 };
                             },
@@ -170,8 +184,13 @@ impl Discovery {
                                 info!("Discv5Event::SocketUpdated: local ENR IP address has been updated, addr:{}", addr);
                                 match addr {
                                     V4(v4addr) => {
-                                        store.write(local_enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(v4addr.ip().clone()), v4addr.port() - DISCOVERY_PORT_OFFSET)).unwrap()).await;
-                                        set_metrics(&store, local_enr.public_key().encode()).await;
+                                        match v4addr.port().checked_sub(DISCOVERY_PORT_OFFSET) {
+                                            Some(port) => {
+                                                store.write(local_enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(v4addr.ip().clone()), port)).unwrap()).await;
+                                                set_metrics(&store, local_enr.public_key().encode()).await;
+                                            }   
+                                            None => {}
+                                        }
                                     }
                                     V6(_) => {}
                                 }

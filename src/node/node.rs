@@ -172,7 +172,7 @@ impl<T: EthSpec> Node<T> {
         StatusReport::spawn(
             base_address,
             *SELF_OPERATOR_ID.get().unwrap(),
-            secret.secret,
+            secret.secret.clone(),
         );
 
         info!("Node {} successfully booted", secret.name);

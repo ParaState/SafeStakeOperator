@@ -155,6 +155,17 @@ pub fn cli_app() -> Command {
                 .required(true)
         )
         .arg(
+            Arg::new("extra-contract")
+                .long("extra-contract")
+                .value_name("EXTRA_CONTRACT")
+                .help(
+                    "This is the address of extra contract"
+                )
+                .action(ArgAction::Set)
+                .display_order(0)
+                .required(true)
+        )
+        .arg(
             Arg::new("init-slashing-protection")
                 .long("init-slashing-protection")
                 .action(ArgAction::SetTrue)

@@ -38,6 +38,7 @@ pub static SELF_OPERATOR_ID: OnceCell<u32> = OnceCell::const_new();
 pub static DEFAULT_TRANSPORT_URL: OnceCell<String> = OnceCell::const_new();
 pub static REGISTRY_CONTRACT: OnceCell<String> = OnceCell::const_new();
 pub static NETWORK_CONTRACT: OnceCell<String> = OnceCell::const_new();
+pub static EXTRA_CONTRACT: OnceCell<String> = OnceCell::const_new();
 pub static DATABASE: OnceCell<Database> = OnceCell::const_new();
 const QUERY_LOGS_INTERVAL: u64 = 60;
 const QUERY_BLOCK_INTERVAL: u64 = 500;
@@ -452,7 +453,10 @@ impl Contract {
 
         let va_filter_builder = FilterBuilder::default()
             .address(vec![Address::from_slice(
-                &hex::decode(NETWORK_CONTRACT.get().unwrap()).unwrap(),
+                &hex::decode(NETWORK_CONTRACT.get().unwrap()).unwrap()
+            ),
+                Address::from_slice(
+                    &hex::decode(EXTRA_CONTRACT.get().unwrap()).unwrap()
             )])
             .topics(Some(vec![va_reg_topic, va_rm_topic, fee_receipient_set_topic]), None, None, None);
         self.va_filter_builder = Some(va_filter_builder);
@@ -1183,17 +1187,28 @@ pub async fn process_fee_recipient_set(raw_log: Log, db: &Database) -> Result<()
         topics: raw_log.topics,
         data: raw_log.data.0,
     }).map_err(|_| ContractError::LogParseError)?;
+    let owner = log.params[0].value.clone().into_address().ok_or(ContractError::LogParseError)?;
     let pubkey = log.params[1].value.clone().into_bytes().ok_or(ContractError::LogParseError)?;
     let fee_recipient_address = log.params[2].value.clone().into_address().ok_or(ContractError::LogParseError)?;
-    match db.query_validator_by_public_key(hex::encode(pubkey.clone())).await.unwrap() {
-        Some(v) => {
-            let cmd = ContractCommand::SetFeeRecipient(pubkey, fee_recipient_address);
+
+    if pubkey.iter().all(|&x| x== 0) {
+        // public key is zero
+        for v in db.query_validator_by_address(owner).await.unwrap().iter() {
+            let cmd = ContractCommand::SetFeeRecipient(v.public_key.clone(), fee_recipient_address);
             db.insert_contract_command(v.id, serde_json::to_string(&cmd).unwrap()).await;
-        },
-        None => {
-            info!("set fee recipient not releated to this operator");
+        };
+    } else {
+        match db.query_validator_by_public_key(hex::encode(pubkey.clone())).await.unwrap() {
+            Some(v) => {
+                let cmd = ContractCommand::SetFeeRecipient(pubkey, fee_recipient_address);
+                db.insert_contract_command(v.id, serde_json::to_string(&cmd).unwrap()).await;
+            },
+            None => {
+                info!("set fee recipient not releated to this operator");
+            }
         }
     }
+    
     Ok(())
 }
 

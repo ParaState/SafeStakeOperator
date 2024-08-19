@@ -1,6 +1,6 @@
 use crate::node::config::{NodeConfig, API_ADDRESS};
 use crate::node::contract::{
-    DEFAULT_TRANSPORT_URL, NETWORK_CONTRACT, REGISTRY_CONTRACT, SELF_OPERATOR_ID,
+    DEFAULT_TRANSPORT_URL, NETWORK_CONTRACT, REGISTRY_CONTRACT, SELF_OPERATOR_ID, EXTRA_CONTRACT
 };
 use crate::validation::beacon_node_fallback::ApiTopic;
 use crate::validation::graffiti_file::GraffitiFile;
@@ -162,6 +162,10 @@ impl Config {
         let network_contract: String = parse_required(cli_args, "network-contract")?;
         info!(log, "read network contract"; "network-contract" => &network_contract);
         NETWORK_CONTRACT.set(network_contract).unwrap();
+
+        let extra_contract: String = parse_required(cli_args, "extra-contract")?;
+        info!(log, "read extra contract"; "extra-contract" => &extra_contract);
+        EXTRA_CONTRACT.set(extra_contract).unwrap();
 
         let self_ip: Ipv4Addr = parse_required(cli_args, "ip")?;
         info!(log, "read node ip"; "ip" => &self_ip.to_string());

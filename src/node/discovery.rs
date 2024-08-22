@@ -212,7 +212,7 @@ impl Discovery {
             store: store_clone,
             boot_enrs,
             discv5_service_handle,
-            base_port: udp_port - DISCOVERY_PORT_OFFSET,
+            base_port: udp_port.checked_sub(DISCOVERY_PORT_OFFSET).expect("overflow due to incorrect config"),
         };
 
         // immediately initiate a discover request to annouce ourself

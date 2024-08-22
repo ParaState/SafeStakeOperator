@@ -505,7 +505,7 @@ impl Contract {
                                     match db.query_validator_by_public_key(public_key).await {
                                         Ok(validator) => {
                                             if let Some(va) = validator {
-                                                if used_up && va.active {
+                                                if used_up {
                                                     let va_id = va.id;
                                                     let cmd = ContractCommand::StopValidator(va);
                                                     db.insert_contract_command(
@@ -513,7 +513,7 @@ impl Contract {
                                                         serde_json::to_string(&cmd).unwrap(),
                                                     )
                                                     .await;
-                                                } else if !used_up && !va.active {
+                                                } else {
                                                     let va_id = va.id;
                                                     let cmd =
                                                         ContractCommand::ActivateValidator(va);

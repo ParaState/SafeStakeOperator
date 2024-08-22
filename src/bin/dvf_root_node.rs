@@ -81,11 +81,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let store = Store::new(store_dir.to_str().unwrap()).unwrap();
     let secret_dir = base_dir.join(DEFAULT_SECRET_DIR);
 
-    let default_public_ip: Ipv4Addr = get_public_ip().parse().expect("valid ip");
     let ip = std::env::args()
         .nth(2)
         .map(|addr| addr.parse::<Ipv4Addr>().unwrap())
-        .unwrap_or(default_public_ip);
+        .unwrap();
 
     let port = {
         if let Some(udp_port) = std::env::args().nth(3) {
@@ -161,7 +160,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     Event::Discovered(enr) => {
                         if let Some(enr_ip) =  enr.ip4() {
                             if let Some(discv_port) = enr.udp4() {
-                                store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(enr_ip), discv_port - DISCOVERY_PORT_OFFSET)).unwrap()).await;
+                                match discv_port.checked_sub(DISCOVERY_PORT_OFFSET) {
+                                    Some(port) => {
+                                        store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(enr_ip), port)).unwrap()).await;
+                                    }
+                                    None => {}
+                                }
+                                
                             }
                         }
                     },
@@ -169,10 +174,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                         if let Some(enr_ip) =  enr.ip4() {
                             if let Some(discv_port) = enr.udp4() {
-                                let socketaddr = SocketAddr::new(IpAddr::V4(enr_ip), discv_port - DISCOVERY_PORT_OFFSET);
-                                info!("A peer has established session: public key: {}, base addr: {:?}",
-                                base64::encode(enr.public_key().encode()), socketaddr);
-                                store.write(enr.public_key().encode(), bincode::serialize(&socketaddr).unwrap()).await;
+                                match discv_port.checked_sub(DISCOVERY_PORT_OFFSET) {
+                                    Some(port) => {
+                                        let socketaddr = SocketAddr::new(IpAddr::V4(enr_ip), port);
+                                        info!("A peer has established session: public key: {}, base addr: {:?}",
+                                        base64::encode(enr.public_key().encode()), socketaddr);
+                                        store.write(enr.public_key().encode(), bincode::serialize(&socketaddr).unwrap()).await;
+                                    }
+                                    None => {}
+                                }
+                                
                             } else {
                                 let socketaddr = SocketAddr::new(IpAddr::V4(enr_ip), 26000);
                                 info!("A peer has established session with default port: public key: {}, base addr: {:?}",

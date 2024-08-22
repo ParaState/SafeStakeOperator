@@ -1,15 +1,6 @@
 use std::net::{IpAddr, UdpSocket};
 use std::process::Command;
 
-pub fn get_public_ip() -> String {
-    let output = Command::new("curl")
-        .arg("ifconfig.me")
-        .output()
-        .expect("failed to execute process");
-
-    String::from_utf8_lossy(&output.stdout).to_string()
-}
-
 pub fn get_local_ip() -> String {
     let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
     socket.connect("8.8.8.8:80").unwrap();

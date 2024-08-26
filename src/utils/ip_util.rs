@@ -1,5 +1,4 @@
 use std::net::{IpAddr, UdpSocket};
-use std::process::Command;
 
 pub fn get_local_ip() -> String {
     let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
@@ -25,7 +24,6 @@ mod tests {
     #[traced_test]
     #[test]
     fn test_get_pub_ip() {
-        debug!("{}", get_public_ip());
         debug!("{}", get_local_ip());
     }
 }

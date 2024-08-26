@@ -8,6 +8,7 @@ use crate::validation::{
 use crate::validation::{
     http_metrics::metrics, validator_store::Error as ValidatorStoreError,
     validator_store::ValidatorStore,
+    signing_method::Error as SigningError
 };
 use bls::SignatureBytes;
 use environment::RuntimeContext;
@@ -572,6 +573,9 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
 
         let signed_block = match res {
             Ok(block) => block,
+            Err(ValidatorStoreError::UnableToSign(SigningError::NotLeader)) => {
+                return Ok(());
+            }
             Err(ValidatorStoreError::UnknownPubkey(pubkey)) => {
                 // A pubkey can be missing when a validator was recently removed
                 // via the API.

@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use bytes::Bytes;
-use dvf::utils::ip_util::get_public_ip;
 use futures::prelude::*;
 use hsconfig::Export as _;
 use hsconfig::Secret;

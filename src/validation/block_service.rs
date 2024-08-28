@@ -891,7 +891,7 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
             eth2::types::ProduceBlockV3Response::Full(block) => {
                 info!(
                     log,
-                    "Received unsigned block";
+                    "Received unsigned full block";
                     "block hash" => ?block.block().state_root()
                 );
                 UnsignedBlock::Full(block)
@@ -899,7 +899,7 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
             eth2::types::ProduceBlockV3Response::Blinded(block) => {
                 info!(
                     log,
-                    "Received unsigned block";
+                    "Received unsigned blinded block";
                     "block hash" => ?block.state_root()
                 );
                 UnsignedBlock::Blinded(block)

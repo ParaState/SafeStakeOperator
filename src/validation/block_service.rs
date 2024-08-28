@@ -888,14 +888,27 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
             })?;
 
         let unsigned_block = match block_response.data {
-            eth2::types::ProduceBlockV3Response::Full(block) => UnsignedBlock::Full(block),
-            eth2::types::ProduceBlockV3Response::Blinded(block) => UnsignedBlock::Blinded(block),
+            eth2::types::ProduceBlockV3Response::Full(block) => {
+                info!(
+                    log,
+                    "Received unsigned block";
+                    "block hash" => ?block.block().state_root()
+                );
+                UnsignedBlock::Full(block)
+            },
+            eth2::types::ProduceBlockV3Response::Blinded(block) => {
+                info!(
+                    log,
+                    "Received unsigned block";
+                    "block hash" => ?block.state_root()
+                );
+                UnsignedBlock::Blinded(block)
+            }
         };
-
         info!(
             log,
             "Received unsigned block";
-            "slot" => slot.as_u64(),
+            "slot" => slot.as_u64()
         );
         if proposer_index != Some(unsigned_block.proposer_index()) {
             return Err(BlockError::Recoverable(

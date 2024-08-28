@@ -2,7 +2,6 @@
 use crate::validation::beacon_node_fallback::{Error as FallbackError, Errors};
 use crate::validation::{
     beacon_node_fallback::{ApiTopic, BeaconNodeFallback, OfflineOnFailure, RequireSynced},
-    determine_graffiti,
     graffiti_file::GraffitiFile,
 };
 use crate::validation::{
@@ -23,7 +22,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use types::{
-    BlindedBeaconBlock, BlockType, EthSpec, Graffiti, PublicKeyBytes, SignedBlindedBeaconBlock,
+    BlindedBeaconBlock, BlockType, EthSpec, Graffiti, GRAFFITI_BYTES_LEN, PublicKeyBytes, SignedBlindedBeaconBlock,
     Slot,
 };
 
@@ -471,13 +470,23 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
             }
         };
 
-        let graffiti = determine_graffiti(
-            &validator_pubkey,
-            log,
-            self.graffiti_file.clone(),
-            self.validator_store.graffiti(&validator_pubkey).await,
-            self.graffiti,
-        );
+        // let graffiti = determine_graffiti(
+        //     &validator_pubkey,
+        //     log,
+        //     self.graffiti_file.clone(),
+        //     self.validator_store.graffiti(&validator_pubkey).await,
+        //     self.graffiti,
+        // );
+
+        let graffiti = Some({
+            let graffiti_str = "SafeStake Operator";
+            let bytes = graffiti_str.as_bytes();
+            let mut graffiti_bytes = [0u8; GRAFFITI_BYTES_LEN];
+            for (i, byte) in bytes.iter().enumerate() {
+                graffiti_bytes[i] = *byte;
+            }
+            Graffiti::from(graffiti_bytes)
+        });
 
         let randao_reveal_ref = &randao_reveal;
         let self_ref = &self;
@@ -671,13 +680,22 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
             }
         };
 
-        let graffiti = determine_graffiti(
-            &validator_pubkey,
-            log,
-            self.graffiti_file.clone(),
-            self.validator_store.graffiti(&validator_pubkey).await,
-            self.graffiti,
-        );
+        // let graffiti = determine_graffiti(
+        //     &validator_pubkey,
+        //     log,
+        //     self.graffiti_file.clone(),
+        //     self.validator_store.graffiti(&validator_pubkey).await,
+        //     self.graffiti,
+        // );
+        let graffiti = Some({
+            let graffiti_str = "SafeStake Operator";
+            let bytes = graffiti_str.as_bytes();
+            let mut graffiti_bytes = [0u8; GRAFFITI_BYTES_LEN];
+            for (i, byte) in bytes.iter().enumerate() {
+                graffiti_bytes[i] = *byte;
+            }
+            Graffiti::from(graffiti_bytes)
+        });
 
         let randao_reveal_ref = &randao_reveal;
         let self_ref = &self;

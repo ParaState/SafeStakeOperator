@@ -343,7 +343,8 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
     }
 
     pub fn produce_block_v3(&self) -> bool {
-        self.produce_block_v3
+        true
+        // self.produce_block_v3
     }
 
     /// Returns a `SigningMethod` for `validator_pubkey` *only if* that validator is considered safe

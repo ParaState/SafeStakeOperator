@@ -986,15 +986,17 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
             UnsignedBlock::Blinded(block) => {
                 info!(
                     log,
-                    "Received unsigned full block";
-                    "block hash" => ?block.state_root()
+                    "Received unsigned blinded block";
+                    "block hash" => ?block.state_root(),
+                    "block" => ?block
                 );
             },
             UnsignedBlock::Full(block) => {
                 info!(
                     log,
                     "Received unsigned full block";
-                    "block hash" => ?block.block().state_root()
+                    "block hash" => ?block.block().state_root(),
+                    "block" => ?block.block()
                 );
             }
         }

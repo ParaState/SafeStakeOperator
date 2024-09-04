@@ -20,6 +20,7 @@ pub trait TOperatorCommittee: Send {
     async fn add_operator(&mut self, operator_id: u64, operator: Arc<RwLock<dyn TOperator>>);
     async fn consensus(&self, msg: Hash256) -> Result<(), DvfError>;
     async fn sign(&self, msg: Hash256) -> Result<(Signature, Vec<u64>), DvfError>;
+    async fn consensus_sign(&self, msg: Hash256) -> Result<(Signature, Vec<u64>), DvfError>;
     async fn get_leader(&self, nonce: u64) -> u64;
     async fn get_op_pos(&self, op_id: u64) -> usize;
     fn get_validator_pk(&self) -> String;
@@ -77,5 +78,9 @@ where
 
     pub async fn get_op_pos(&self, op_id: u64) -> usize {
         self.cmt.get_op_pos(op_id).await
+    }
+
+    pub async fn consensus_sign(&self, msg: Hash256) -> Result<(Signature, Vec<u64>), DvfError> {
+        self.cmt.consensus_sign(msg).await
     }
 }

@@ -253,6 +253,13 @@ impl DvfSigner {
         self.operator_committee.sign(message).await
     }
 
+    pub async fn consensus_sign(
+        &self,
+        message: Hash256,
+    ) -> Result<(Signature, Vec<u64>), DvfError> {
+        self.operator_committee.consensus_sign(message).await
+    }
+
     pub fn local_sign(&self, message: Hash256) -> Signature {
         self.local_keypair.sk.sign(message)
     }
@@ -270,6 +277,10 @@ impl DvfSigner {
             || self.operator_committee.get_leader(nonce + 1).await == self.operator_id
     }
 
+    pub async fn is_propose_aggregator(&self, nonce: u64) -> bool {
+        self.operator_committee.get_leader(nonce).await == self.operator_id
+    }
+
     pub fn validator_public_key(&self) -> String {
         self.operator_committee.get_validator_pk()
     }
@@ -281,7 +292,7 @@ impl DvfSigner {
 
 pub struct DvfCore {
     pub store: Store,
-    // pub commit: Receiver<Block>,
+    pub commit: Receiver<Block>,
     pub validator_id: u64,
     pub operator_id: u64,
     pub bls_keypair: Keypair,
@@ -306,17 +317,17 @@ impl DvfCore {
     ) {
         let node = node.read().await;
 
-        // let (tx_commit, rx_commit) =
-        //     MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "dvf-commit".to_string(), "info");
-        // let (tx_consensus_to_mempool, rx_consensus_to_mempool) =
-        //     MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "dvf-cs2mp".to_string(), "info");
-        // let (tx_mempool_to_consensus, rx_mempool_to_consensus) =
-        //     MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "dvf-mp2cs".to_string(), "info");
+        let (tx_commit, rx_commit) =
+            MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "dvf-commit".to_string(), "info");
+        let (tx_consensus_to_mempool, rx_consensus_to_mempool) =
+            MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "dvf-cs2mp".to_string(), "info");
+        let (tx_mempool_to_consensus, rx_mempool_to_consensus) =
+            MonitoredChannel::new(DEFAULT_CHANNEL_CAPACITY, "dvf-mp2cs".to_string(), "info");
 
-        // let parameters = Parameters::default();
+        let parameters = Parameters::default();
 
         // Run the signature service.
-        // let signature_service = SignatureService::new(node.secret.secret.clone());
+        let signature_service = SignatureService::new(node.secret.secret.clone());
 
         node.signature_handler_map.write().await.insert(
             validator_id,
@@ -326,41 +337,41 @@ impl DvfCore {
         );
         info!("Insert signature handler for validator: {}", validator_id);
 
-        // Mempool::spawn(
-        //     node.secret.name,
-        //     committee.mempool,
-        //     parameters.mempool,
-        //     store.clone(),
-        //     rx_consensus_to_mempool,
-        //     tx_mempool_to_consensus,
-        //     validator_id,
-        //     Arc::clone(&node.tx_handler_map),
-        //     Arc::clone(&node.mempool_handler_map),
-        //     exit.clone(),
-        // )
-        // .await;
+        Mempool::spawn(
+            node.secret.name,
+            committee.mempool,
+            parameters.mempool,
+            store.clone(),
+            rx_consensus_to_mempool,
+            tx_mempool_to_consensus,
+            validator_id,
+            Arc::clone(&node.tx_handler_map),
+            Arc::clone(&node.mempool_handler_map),
+            exit.clone(),
+        )
+        .await;
 
-        // Consensus::spawn(
-        //     node.secret.name,
-        //     committee.consensus,
-        //     parameters.consensus,
-        //     signature_service,
-        //     store.clone(),
-        //     rx_mempool_to_consensus,
-        //     tx_consensus_to_mempool,
-        //     tx_commit,
-        //     validator_id,
-        //     Arc::clone(&node.consensus_handler_map),
-        //     exit.clone(),
-        // )
-        // .await;
+        Consensus::spawn(
+            node.secret.name,
+            committee.consensus,
+            parameters.consensus,
+            signature_service,
+            store.clone(),
+            rx_mempool_to_consensus,
+            tx_consensus_to_mempool,
+            tx_commit,
+            validator_id,
+            Arc::clone(&node.consensus_handler_map),
+            exit.clone(),
+        )
+        .await;
 
         info!("[Dvf {}/{}] successfully booted", operator_id, validator_id);
 
         tokio::spawn(async move {
             Self {
                 store: store,
-                // commit: rx_commit,
+                commit: rx_commit,
                 validator_id: validator_id,
                 operator_id: operator_id,
                 bls_keypair: keypair,
@@ -380,46 +391,48 @@ impl DvfCore {
         loop {
             let exit = self.exit.clone();
             tokio::select! {
-                // Some(block) = self.commit.recv() => {
-                //     // This is where we can further process committed block.
-                //     if block.payload.is_empty() {
-                //         continue;
-                //     }
-                //     debug!("[Dvf {}/{}] received a non-empty committed block", self.operator_id, self.validator_id);
-                //     for payload in block.payload {
-                //         match self.store.read(payload.to_vec()).await {
-                //             Ok(value) => {
-                //                 match value {
-                //                     Some(data) => {
-                //                         let message: MempoolMessage = bincode::deserialize(&data[..]).unwrap();
-                //                         match message {
-                //                             MempoolMessage::Batch(batches) => {
-                //                                 for batch in batches {
-                //                                     // construct hash256
-                //                                     let msg = Hash256::from_slice(&batch[..]);
-
-                //                                     if let Err(e) = self.tx_consensus.send(msg).await {
-                //                                         error!("Failed to notify consensus status: {}", e);
-                //                                     }
-                //                                     else {
-                //                                         debug!("[Dvf {}/{}] Sent out 1 consensus notification for msg: {}", self.operator_id, self.validator_id, msg);
-                //                                     }
-                //                                 }
-                //                             }
-                //                             MempoolMessage::BatchRequest(_, _) => { }
-                //                         }
-                //                     }
-                //                     None => {
-                //                         warn!("block is empty");
-                //                     }
-                //                 }
-                //             },
-                //             Err(e) => {
-                //                 error!("can't read database, {}", e)
-                //             }
-                //         }
-                //     }
-                // }
+                Some(block) = self.commit.recv() => {
+                    // This is where we can further process committed block.
+                    if block.payload.is_empty() {
+                        continue;
+                    }
+                    debug!("[Dvf {}/{}] received a non-empty committed block", self.operator_id, self.validator_id);
+                    for payload in block.payload {
+                        match self.store.read(payload.to_vec()).await {
+                            Ok(value) => {
+                                match value {
+                                    Some(data) => {
+                                        let message: MempoolMessage = bincode::deserialize(&data[..]).unwrap();
+                                        match message {
+                                            MempoolMessage::Batch(batches) => {
+                                                for batch in batches {
+                                                    // construct hash256
+                                                    let msg = Hash256::from_slice(&batch[..]);
+                                                    let sig = self.bls_keypair.sk.sign(msg.clone());
+                                                    let serialized_signature = bincode::serialize(&sig).unwrap();
+                                                    self.store.write(batch, serialized_signature).await;
+                                                    if let Err(e) = self.tx_consensus.send(msg).await {
+                                                        error!("Failed to notify consensus status: {}", e);
+                                                    }
+                                                    else {
+                                                        debug!("[Dvf {}/{}] Sent out 1 consensus notification for msg: {}", self.operator_id, self.validator_id, msg);
+                                                    }
+                                                }
+                                            }
+                                            MempoolMessage::BatchRequest(_, _) => { }
+                                        }
+                                    }
+                                    None => {
+                                        warn!("block is empty");
+                                    }
+                                }
+                            },
+                            Err(e) => {
+                                error!("can't read database, {}", e)
+                            }
+                        }
+                    }
+                }
                 () = exit => {
                     break;
                 }

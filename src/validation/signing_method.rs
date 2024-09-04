@@ -313,7 +313,7 @@ impl SigningMethod {
                     }
                 };
                 let is_aggregator = dvf_signer
-                    .is_aggregator(
+                    .is_propose_aggregator(
                         signing_epoch.as_u64() + dvf_signer.operator_committee.validator_id(),
                     )
                     .await;
@@ -334,9 +334,9 @@ impl SigningMethod {
 
                 if !only_aggregator || (only_aggregator && is_aggregator) {
                     
-                    if duty == "PROPOSER" && dvf_signer.is_propose_aggregator(signing_epoch.as_u64() + dvf_signer.operator_committee.validator_id()).await {
-                        return Err(Error::NotLeader);
-                    }
+                    // if duty == "PROPOSER" && dvf_signer.is_propose_aggregator(signing_epoch.as_u64() + dvf_signer.operator_committee.validator_id()).await {
+                    //     return Err(Error::NotLeader);
+                    // }
 
                     log::info!("[Dvf {}/{}] Leader trying to achieve {} consensus and aggregate duty signatures",
                         dvf_signer.operator_id,

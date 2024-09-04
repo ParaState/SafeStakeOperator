@@ -106,16 +106,8 @@ impl MessageHandler for DvfSignatureReceiverHandler {
                     let _ = writer.send(Bytes::from(data)).await;
                 }
                 None => {
-                    warn!("unkown msg 0x{}", hex::encode(&msg));
-                    if msg.len() != 32 {
-                        let _ = writer.send(Bytes::from("can't find signature, please wait"));
-                        return Ok(());
-                    }
-                    let sig = self.local_keypair.sk.sign(Hash256::from_slice(&msg));
-                    let serialized_signature = bincode::serialize(&sig).unwrap();
-                    let _ = writer
-                        .send(Bytes::from(serialized_signature))
-                        .await;
+                    let _ = writer.send(Bytes::from("can't find signature, please wait"));
+                    return Ok(());
                 }
             },
             Err(e) => {
@@ -259,6 +251,13 @@ impl DvfSigner {
         message: Hash256,
     ) -> Result<(Signature, Vec<u64>), DvfError> {
         self.operator_committee.sign(message).await
+    }
+
+    pub async fn consensus_sign(
+        &self,
+        message: Hash256,
+    ) -> Result<(Signature, Vec<u64>), DvfError> {
+        self.operator_committee.consensus_sign(message).await
     }
 
     pub fn local_sign(&self, message: Hash256) -> Signature {
@@ -410,7 +409,9 @@ impl DvfCore {
                                                 for batch in batches {
                                                     // construct hash256
                                                     let msg = Hash256::from_slice(&batch[..]);
-
+                                                    let sig = self.bls_keypair.sk.sign(msg.clone());
+                                                    let serialized_signature = bincode::serialize(&sig).unwrap();
+                                                    self.store.write(batch, serialized_signature).await;
                                                     if let Err(e) = self.tx_consensus.send(msg).await {
                                                         error!("Failed to notify consensus status: {}", e);
                                                     }

@@ -333,15 +333,9 @@ impl SigningMethod {
                 dvf_signer.local_sign_and_store(signing_root).await;
 
                 if !only_aggregator || (only_aggregator && is_aggregator) {
-                    
-                    if duty == "PROPOSER" && dvf_signer.is_propose_aggregator(signing_epoch.as_u64() + dvf_signer.operator_committee.validator_id()).await {
-                        return Err(Error::NotLeader);
-                    }
-
-                    log::info!("[Dvf {}/{}] Leader trying to achieve {} consensus and aggregate duty signatures",
+                    log::debug!("[Dvf {}/{}] Leader trying to achieve duty consensus and aggregate duty signatures",
                         dvf_signer.operator_id,
-                        dvf_signer.operator_committee.validator_id(),
-                        duty
+                        dvf_signer.operator_committee.validator_id()
                     );
                     // Should NOT take more than a slot duration for two reasons:
                     // 1. if longer than slot duration, it might affect duty retrieval for other VAs (for example, previously,

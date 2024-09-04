@@ -140,7 +140,7 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
 
     async fn sign(&self, msg: Hash256) -> Result<(Signature, Vec<u64>), DvfError> {
         // Run consensus protocol
-        // self.consensus(msg).await?;
+        self.consensus(msg).await?;
 
         let operators = &self.operators.read().await;
         let signing_futs = operators.keys().map(|operator_id| async move {

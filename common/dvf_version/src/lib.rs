@@ -6,6 +6,6 @@ pub const ROOT_VERSION: u64 = 1;
 /// Up to 1 million
 pub const MAJOR_VERSION: u64 = 3;
 /// Up to 1 million
-pub const MINOR_VERSION: u64 = 3;
+pub const MINOR_VERSION: u64 = 2;
 
 pub static VERSION: u64 = ROOT_VERSION * 1000_000_000_000 + MAJOR_VERSION * 1000_000 + MINOR_VERSION;

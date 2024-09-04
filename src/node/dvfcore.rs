@@ -93,20 +93,28 @@ impl fmt::Debug for SignatureInfo {
 #[derive(Clone)]
 pub struct DvfSignatureReceiverHandler {
     pub store: Store,
+    pub local_keypair: Keypair
 }
 
 #[async_trait]
 impl MessageHandler for DvfSignatureReceiverHandler {
     async fn dispatch(&self, writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
         let msg: Vec<u8> = message.slice(..).to_vec();
-        match self.store.read(msg).await {
+        match self.store.read(msg.clone()).await {
             Ok(value) => match value {
                 Some(data) => {
                     let _ = writer.send(Bytes::from(data)).await;
                 }
                 None => {
+                    warn!("unkown msg 0x{}", hex::encode(&msg));
+                    if msg.len() != 32 {
+                        let _ = writer.send(Bytes::from("can't find signature, please wait"));
+                        return Ok(());
+                    }
+                    let sig = self.local_keypair.sk.sign(Hash256::from_slice(&msg));
+                    let serialized_signature = bincode::serialize(&sig).unwrap();
                     let _ = writer
-                        .send(Bytes::from("can't find signature, please wait"))
+                        .send(Bytes::from(serialized_signature))
                         .await;
                 }
             },
@@ -270,6 +278,10 @@ impl DvfSigner {
             || self.operator_committee.get_leader(nonce + 1).await == self.operator_id
     }
 
+    pub async fn is_propose_aggregator(&self, nonce: u64) -> bool {
+        self.operator_committee.get_leader(nonce).await == self.operator_id
+    }
+
     pub fn validator_public_key(&self) -> String {
         self.operator_committee.get_validator_pk()
     }
@@ -322,6 +334,7 @@ impl DvfCore {
             validator_id,
             DvfSignatureReceiverHandler {
                 store: store.clone(),
+                local_keypair: keypair.clone()
             },
         );
         info!("Insert signature handler for validator: {}", validator_id);

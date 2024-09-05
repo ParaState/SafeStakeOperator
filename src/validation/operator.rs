@@ -233,13 +233,6 @@ impl TOperator for RemoteOperator {
                 sleep_until(next_try_instant).await;
             }
         }
-        warn!(
-            "Failed to receive a signature from operator {}/{} ({:?})",
-            self.operator_id,
-            self.validator_id,
-            self.signature_address()
-        );
-
     }
 }
 

@@ -1,3 +1,4 @@
+use hsconfig::Export as _;
 use hsconfig::Secret;
 use lighthouse_network::discv5::{
     enr::{CombinedKey, Enr},
@@ -5,7 +6,6 @@ use lighthouse_network::discv5::{
 };
 use log::{error, info};
 use std::net::IpAddr;
-use hsconfig::Export as _;
 pub const DISCOVERY_PORT_OFFSET: u16 = 4;
 pub const DEFAULT_DISCOVERY_PORT: u16 = 26004;
 pub const DEFAULT_SECRET_DIR: &str = "node_key.json";

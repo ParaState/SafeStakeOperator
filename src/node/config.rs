@@ -162,7 +162,7 @@ impl NodeConfig {
             beacon_nodes: Vec::new(),
             builder_proposals: false,
             builder_boost_factor: None,
-            prefer_builder_proposals: false
+            prefer_builder_proposals: false,
         }
     }
 
@@ -209,5 +209,4 @@ impl NodeConfig {
         self.beacon_nodes = beacon_nodes;
         self
     }
-
 }

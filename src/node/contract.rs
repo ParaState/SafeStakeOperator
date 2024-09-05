@@ -159,7 +159,7 @@ pub enum ContractCommand {
         Address,
     ),
     RemoveInitiator(Initiator, OperatorPublicKeys),
-    SetFeeRecipient(ValidatorPublicKey, Address)
+    SetFeeRecipient(ValidatorPublicKey, Address),
 }
 
 #[derive(Clone)]
@@ -322,7 +322,7 @@ impl TopicHandler for FeeRecipientSetHandler {
             error!("error happens when process initiator removal");
             e
         })
-    } 
+    }
 }
 
 #[derive(Debug, DeriveSerialize, DeriveDeserialize, Clone)]
@@ -449,16 +449,20 @@ impl Contract {
         let minipool_ready_topic =
             H256::from_slice(&hex::decode(&config.initiator_minipool_ready_topic).unwrap());
         let ini_rm_topic = H256::from_slice(&hex::decode(&config.initiator_removal_topic).unwrap());
-        let fee_receipient_set_topic = H256::from_slice(&hex::decode(&config.fee_recipient_set_topic).unwrap());
+        let fee_receipient_set_topic =
+            H256::from_slice(&hex::decode(&config.fee_recipient_set_topic).unwrap());
 
         let va_filter_builder = FilterBuilder::default()
-            .address(vec![Address::from_slice(
-                &hex::decode(NETWORK_CONTRACT.get().unwrap()).unwrap()
-            ),
-                Address::from_slice(
-                    &hex::decode(EXTRA_CONTRACT.get().unwrap()).unwrap()
-            )])
-            .topics(Some(vec![va_reg_topic, va_rm_topic, fee_receipient_set_topic]), None, None, None);
+            .address(vec![
+                Address::from_slice(&hex::decode(NETWORK_CONTRACT.get().unwrap()).unwrap()),
+                Address::from_slice(&hex::decode(EXTRA_CONTRACT.get().unwrap()).unwrap()),
+            ])
+            .topics(
+                Some(vec![va_reg_topic, va_rm_topic, fee_receipient_set_topic]),
+                None,
+                None,
+                None,
+            );
         self.va_filter_builder = Some(va_filter_builder);
         let initiator_filter_builder = FilterBuilder::default()
             .address(vec![Address::from_slice(
@@ -483,7 +487,10 @@ impl Contract {
         handlers.insert(minipool_created_topic, Box::new(MinipoolCreatedHandler {}));
         handlers.insert(minipool_ready_topic, Box::new(MinipoolReadyHandler {}));
         handlers.insert(ini_rm_topic, Box::new(InitiatorRemovalHandler {}));
-        handlers.insert(fee_receipient_set_topic, Box::new(FeeRecipientSetHandler {}));
+        handlers.insert(
+            fee_receipient_set_topic,
+            Box::new(FeeRecipientSetHandler {}),
+        );
     }
 
     pub fn monitor_validator_paidblock(&mut self) {
@@ -1179,36 +1186,56 @@ pub async fn process_fee_recipient_set(raw_log: Log, db: &Database) -> Result<()
                 name: "updateCount".to_string(),
                 kind: ParamType::Uint(32),
                 indexed: false,
-            }
+            },
         ],
         anonymous: false,
     };
-    let log = fee_recipient_set_event.parse_log(RawLog {
-        topics: raw_log.topics,
-        data: raw_log.data.0,
-    }).map_err(|_| ContractError::LogParseError)?;
-    let owner = log.params[0].value.clone().into_address().ok_or(ContractError::LogParseError)?;
-    let pubkey = log.params[1].value.clone().into_bytes().ok_or(ContractError::LogParseError)?;
-    let fee_recipient_address = log.params[2].value.clone().into_address().ok_or(ContractError::LogParseError)?;
+    let log = fee_recipient_set_event
+        .parse_log(RawLog {
+            topics: raw_log.topics,
+            data: raw_log.data.0,
+        })
+        .map_err(|_| ContractError::LogParseError)?;
+    let owner = log.params[0]
+        .value
+        .clone()
+        .into_address()
+        .ok_or(ContractError::LogParseError)?;
+    let pubkey = log.params[1]
+        .value
+        .clone()
+        .into_bytes()
+        .ok_or(ContractError::LogParseError)?;
+    let fee_recipient_address = log.params[2]
+        .value
+        .clone()
+        .into_address()
+        .ok_or(ContractError::LogParseError)?;
 
-    if pubkey.iter().all(|&x| x== 0) {
+    if pubkey.iter().all(|&x| x == 0) {
         // public key is zero
         for v in db.query_validator_by_address(owner).await.unwrap().iter() {
             let cmd = ContractCommand::SetFeeRecipient(v.public_key.clone(), fee_recipient_address);
-            db.insert_contract_command(v.id, serde_json::to_string(&cmd).unwrap()).await;
-        };
+            db.insert_contract_command(v.id, serde_json::to_string(&cmd).unwrap())
+                .await;
+        }
     } else {
-        match db.query_validator_by_public_key(hex::encode(pubkey.clone())).await.unwrap() {
+        match db
+            .query_validator_by_public_key(hex::encode(pubkey.clone()))
+            .await
+            .unwrap()
+        {
             Some(v) => {
                 let cmd = ContractCommand::SetFeeRecipient(pubkey, fee_recipient_address);
-                db.insert_contract_command(v.id, serde_json::to_string(&cmd).unwrap()).await;
-            },
+                db.insert_contract_command(v.id, serde_json::to_string(&cmd).unwrap())
+                    .await;
+            }
             None => {
                 info!("set fee recipient not releated to this operator");
             }
         }
     }
-    
+
     Ok(())
 }
 

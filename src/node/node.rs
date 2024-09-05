@@ -4,9 +4,9 @@ use crate::deposit::get_distributed_deposit;
 use crate::exit::get_distributed_voluntary_exit;
 use crate::network::io_committee::{SecureNetIOChannel, SecureNetIOCommittee};
 use crate::node::config::{
-    base_to_consensus_addr, base_to_mempool_addr, base_to_signature_addr, base_to_duties_addr,
-    NodeConfig, API_ADDRESS, DB_FILENAME, DISCOVERY_PORT_OFFSET, DKG_PORT_OFFSET,
-    PRESTAKE_SIGNATURE_URL, STAKE_SIGNATURE_URL, VALIDATOR_PK_URL,
+    base_to_duties_addr, base_to_signature_addr, NodeConfig, API_ADDRESS, DB_FILENAME,
+    DISCOVERY_PORT_OFFSET, DKG_PORT_OFFSET, PRESTAKE_SIGNATURE_URL, STAKE_SIGNATURE_URL,
+    VALIDATOR_PK_URL,
 };
 use crate::node::contract::{
     Contract, ContractCommand, EncryptedSecretKeys, Initiator, InitiatorStoreRecord, OperatorIds,
@@ -16,7 +16,7 @@ use crate::node::contract::{
 use crate::node::{
     db::{self, Database},
     discovery::Discovery,
-    dvfcore::{DvfSignatureReceiverHandler, DvfDutyCheckHandler},
+    dvfcore::{DvfDutyCheckHandler, DvfSignatureReceiverHandler},
     status_report::StatusReport,
     utils::{
         convert_address_to_withdraw_crendentials, request_to_web_server, DepositRequest,
@@ -74,7 +74,7 @@ pub struct Node<T: EthSpec> {
     pub mempool_handler_map: Arc<RwLock<HashMap<u64, MempoolReceiverHandler>>>,
     pub consensus_handler_map: Arc<RwLock<HashMap<u64, ConsensusReceiverHandler>>>,
     pub signature_handler_map: Arc<RwLock<HashMap<u64, DvfSignatureReceiverHandler>>>,
-    pub duties_handler_map: Arc<RwLock<HashMap<u64, DvfDutyCheckHandler<T> >>>,
+    pub duties_handler_map: Arc<RwLock<HashMap<u64, DvfDutyCheckHandler<T>>>>,
     pub validator_store: Option<Arc<ValidatorStore<SystemTimeSlotClock, T>>>,
     pub discovery: Arc<Discovery>,
     pub db: Database,
@@ -107,7 +107,6 @@ impl<T: EthSpec> Node<T> {
             "Node {} listening to duties consensus on {}",
             secret.name, duties_address
         );
-
 
         // let transaction_address = with_wildcard_ip(base_to_transaction_addr(config.base_address));
         // NetworkReceiver::spawn(
@@ -385,12 +384,21 @@ impl<T: EthSpec> Node<T> {
                                 }
                             }
                             ContractCommand::SetFeeRecipient(va_pk, fee_recipient_address) => {
-                                match set_validator_fee_recipient(node.clone(), va_pk, fee_recipient_address).await {
+                                match set_validator_fee_recipient(
+                                    node.clone(),
+                                    va_pk,
+                                    fee_recipient_address,
+                                )
+                                .await
+                                {
                                     Ok(_) => {
                                         db.delete_contract_command(id).await;
                                     }
                                     Err(e) => {
-                                        error!("Failed to set validator fee recipient address: {:?}", e);
+                                        error!(
+                                            "Failed to set validator fee recipient address: {:?}",
+                                            e
+                                        );
                                         db.updatetime_contract_command(id).await;
                                     }
                                 }
@@ -1077,11 +1085,12 @@ pub async fn restart_validator<T: EthSpec>(
 pub async fn set_validator_fee_recipient<T: EthSpec>(
     node: Arc<RwLock<Node<T>>>,
     validator_pk: Vec<u8>,
-    fee_recipient_address: H160
+    fee_recipient_address: H160,
 ) -> Result<(), DvfError> {
     info!(
         "setting fee recipient to {} for validator {}...",
-        fee_recipient_address, hex::encode(validator_pk.clone())
+        fee_recipient_address,
+        hex::encode(validator_pk.clone())
     );
     let validator_store = {
         let node_ = node.read().await;
@@ -1089,9 +1098,12 @@ pub async fn set_validator_fee_recipient<T: EthSpec>(
     };
     match validator_store {
         Some(validator_store) => {
-            validator_store.
-            set_fee_recipient_for_validator(
-                &BlsPublicKey::deserialize(&validator_pk).unwrap(), fee_recipient_address).await;
+            validator_store
+                .set_fee_recipient_for_validator(
+                    &BlsPublicKey::deserialize(&validator_pk).unwrap(),
+                    fee_recipient_address,
+                )
+                .await;
             Ok(())
         }
         _ => Err(DvfError::ValidatorStoreNotReady),

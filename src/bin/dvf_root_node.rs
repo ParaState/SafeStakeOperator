@@ -165,7 +165,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                     }
                                     None => {}
                                 }
-                                
+
                             }
                         }
                     },
@@ -182,7 +182,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                     }
                                     None => {}
                                 }
-                                
+
                             } else {
                                 let socketaddr = SocketAddr::new(IpAddr::V4(enr_ip), 26000);
                                 info!("A peer has established session with default port: public key: {}, base addr: {:?}",

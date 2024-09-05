@@ -434,5 +434,4 @@ pub fn cli_app() -> Command {
                 .help_heading(FLAG_HEADER)
                 .display_order(0)
         )
-
 }

@@ -12,17 +12,14 @@ use crate::validation::{
 use environment::RuntimeContext;
 use futures::executor::block_on;
 use futures::future::join_all;
-use slog::{crit, error, info, trace, warn, debug};
+use slog::{crit, debug, error, info, trace, warn};
 use slot_clock::SlotClock;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
 use tokio::time::{sleep, sleep_until, Duration, Instant};
 use tree_hash::TreeHash;
-use types::{
-    Attestation, AttestationData, ChainSpec, CommitteeIndex, EthSpec,
-    Slot,
-};
+use types::{Attestation, AttestationData, ChainSpec, CommitteeIndex, EthSpec, Slot};
 
 /// Builds an `AttestationService`.
 pub struct AttestationServiceBuilder<T: SlotClock + 'static, E: EthSpec> {
@@ -294,17 +291,21 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
             // Then download, sign and publish a `SignedAggregateAndProof` for each
             // validator that is elected to aggregate for this `slot` and
             // `committee_index`.
-            self.produce_and_publish_aggregates(&attestation_data, committee_index, &validator_duties)
-                .await
-                .map_err(move |e| {
-                    crit!(
-                        log,
-                        "Error during attestation routine";
-                        "error" => format!("{:?}", e),
-                        "committee_index" => committee_index,
-                        "slot" => slot.as_u64(),
-                    )
-                })?;
+            self.produce_and_publish_aggregates(
+                &attestation_data,
+                committee_index,
+                &validator_duties,
+            )
+            .await
+            .map_err(move |e| {
+                crit!(
+                    log,
+                    "Error during attestation routine";
+                    "error" => format!("{:?}", e),
+                    "committee_index" => committee_index,
+                    "slot" => slot.as_u64(),
+                )
+            })?;
         }
 
         Ok(())
@@ -553,7 +554,6 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
             .eth2_config
             .spec
             .fork_name_at_slot::<E>(attestation_data.slot);
-
 
         let aggregated_attestation = &self
             .beacon_nodes

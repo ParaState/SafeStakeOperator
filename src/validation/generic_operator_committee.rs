@@ -2,7 +2,7 @@ use crate::utils::error::DvfError;
 use crate::validation::operator::TOperator;
 use async_trait::async_trait;
 use std::sync::Arc;
-use tokio::sync::mpsc::Receiver;
+// use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
 use types::{Hash256, PublicKey, Signature};
 /// Operator committee for a validator.
@@ -13,11 +13,11 @@ pub trait TOperatorCommittee: Send {
         validator_id: u64,
         validator_public_key: PublicKey,
         t: usize,
-        rx_consensus: Receiver<Hash256>,
+        // rx_consensus: Receiver<Hash256>,
     ) -> Self;
     fn validator_id(&self) -> u64;
     async fn add_operator(&mut self, operator_id: u64, operator: Arc<RwLock<dyn TOperator>>);
-    async fn consensus(&self, msg: Hash256) -> Result<(), DvfError>;
+    // async fn consensus(&self, msg: Hash256) -> Result<(), DvfError>;
     async fn consensus_on_duty(&self, data: &[u8]) -> Result<(), DvfError>;
     async fn sign(&self, msg: Hash256) -> Result<(Signature, Vec<u64>), DvfError>;
     async fn get_leader(&self, nonce: u64) -> u64;
@@ -39,14 +39,14 @@ where
         validator_id: u64,
         validator_public_key: PublicKey,
         threshold: usize,
-        rx_consensus: Receiver<Hash256>,
+        // rx_consensus: Receiver<Hash256>,
     ) -> Self {
         Self {
             cmt: TOperatorCommittee::new(
                 validator_id,
                 validator_public_key,
                 threshold,
-                rx_consensus,
+                // rx_consensus,
             ),
         }
     }

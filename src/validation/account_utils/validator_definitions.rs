@@ -88,7 +88,7 @@ pub enum SigningDefinition {
         #[serde(skip_serializing_if = "Option::is_none")]
         voting_keystore_password: Option<ZeroizeString>,
     },
-   /// A validator that defers to a Web3Signer HTTP server for signing.
+    /// A validator that defers to a Web3Signer HTTP server for signing.
     ///
     /// https://github.com/ConsenSys/web3signer
     #[serde(rename = "web3signer")]

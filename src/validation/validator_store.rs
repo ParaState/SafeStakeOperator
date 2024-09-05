@@ -523,22 +523,25 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
     ) -> Option<u64> {
         let validator_prefer_builder_proposals = self
             .validators
-            .read().await
+            .read()
+            .await
             .prefer_builder_proposals(validator_pubkey);
 
         if matches!(validator_prefer_builder_proposals, Some(true)) {
             return Some(u64::MAX);
         }
 
-        let validator_prefer_builder_proposal = self.validators.read().await.builder_proposals(validator_pubkey);
+        let validator_prefer_builder_proposal = self
+            .validators
+            .read()
+            .await
+            .builder_proposals(validator_pubkey);
         self.validators
-            .read().await
+            .read()
+            .await
             .builder_boost_factor(validator_pubkey)
             .or_else(|| {
-                if matches!(
-                    validator_prefer_builder_proposal,
-                    Some(false)
-                ) {
+                if matches!(validator_prefer_builder_proposal, Some(false)) {
                     return Some(0);
                 }
                 None
@@ -577,7 +580,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         validator_pubkey: PublicKeyBytes,
         block: BeaconBlock<E, Payload>,
         current_slot: Slot,
-        block_type: BlockType
+        block_type: BlockType,
     ) -> Result<SignedBeaconBlock<E, Payload>, Error> {
         // Make sure the block slot is not higher than the current slot to avoid potential attacks.
         if block.slot() > current_slot {
@@ -598,8 +601,8 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         let domain_hash = signing_context.domain_hash(&self.spec);
 
         let signing_method = self
-                    .doppelganger_checked_signing_method(validator_pubkey)
-                    .await?;
+            .doppelganger_checked_signing_method(validator_pubkey)
+            .await?;
 
         if signing_method.is_leader(signing_epoch).await {
             // Check for slashing conditions.
@@ -613,7 +616,9 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
                 Ok(Safe::Valid) => {
                     metrics::inc_counter_vec(&metrics::SIGNED_BLOCKS_TOTAL, &[metrics::SUCCESS]);
                     // distributed consensus
-                    signing_method.distributed_consensus_block(domain_hash, &block, block_type).await;
+                    signing_method
+                        .distributed_consensus_block(domain_hash, &block, block_type)
+                        .await;
                     let signature = signing_method
                         .get_signature::<E, Payload>(
                             SignableMessage::BeaconBlock(&block),
@@ -639,7 +644,10 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
                         "msg" => "Carefully consider running with --init-slashing-protection (see --help)",
                         "public_key" => format!("{:?}", pk)
                     );
-                    metrics::inc_counter_vec(&metrics::SIGNED_BLOCKS_TOTAL, &[metrics::UNREGISTERED]);
+                    metrics::inc_counter_vec(
+                        &metrics::SIGNED_BLOCKS_TOTAL,
+                        &[metrics::UNREGISTERED],
+                    );
                     Err(Error::Slashable(NotSafe::UnregisteredValidator(pk)))
                 }
                 Err(e) => {
@@ -673,7 +681,9 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
         }
 
         // Get the signing method and check doppelganger protection.
-        let signing_method = self.doppelganger_checked_signing_method(validator_pubkey).await?;
+        let signing_method = self
+            .doppelganger_checked_signing_method(validator_pubkey)
+            .await?;
 
         // Checking for slashing conditions.
         let signing_epoch = attestation.data().target.epoch;
@@ -682,7 +692,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
 
         if signing_method.is_leader(signing_epoch).await {
             let slashing_status = if signing_method
-            .requires_local_slashing_protection(self.enable_web3signer_slashing_protection)
+                .requires_local_slashing_protection(self.enable_web3signer_slashing_protection)
             {
                 self.slashing_protection.check_and_insert_attestation(
                     &validator_pubkey,
@@ -690,12 +700,14 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
                     domain_hash,
                 )
             } else {
-                    Ok(Safe::Valid)
+                Ok(Safe::Valid)
             };
             match slashing_status {
                 // We can safely sign this attestation.
                 Ok(Safe::Valid) => {
-                    signing_method.distributed_consensus_attestation(domain_hash, attestation.data()).await;
+                    signing_method
+                        .distributed_consensus_attestation(domain_hash, attestation.data())
+                        .await;
                     let signature = signing_method
                         .get_signature::<E, BlindedPayload<E>>(
                             SignableMessage::AttestationData(&attestation.data()),
@@ -708,7 +720,10 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
                         .add_signature(&signature, validator_committee_position)
                         .map_err(Error::UnableToSignAttestation)?;
 
-                    metrics::inc_counter_vec(&metrics::SIGNED_ATTESTATIONS_TOTAL, &[metrics::SUCCESS]);
+                    metrics::inc_counter_vec(
+                        &metrics::SIGNED_ATTESTATIONS_TOTAL,
+                        &[metrics::SUCCESS],
+                    );
 
                     Ok(())
                 }
@@ -750,13 +765,9 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
                     Err(Error::Slashable(e))
                 }
             }
-        } 
-        else {
+        } else {
             return Err(Error::UnableToSign(SigningError::NotLeader));
         }
-
-
-        
     }
 
     pub async fn sign_voluntary_exit(

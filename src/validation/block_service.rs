@@ -1,4 +1,5 @@
 //! Reference: lighthouse/validator_client/block_service.rs
+use crate::node::dvfcore::BlockType as DvfBlockType;
 use crate::validation::beacon_node_fallback::{Error as FallbackError, Errors};
 use crate::validation::{
     beacon_node_fallback::{ApiTopic, BeaconNodeFallback, OfflineOnFailure, RequireSynced},
@@ -21,10 +22,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use types::{
-    BlindedBeaconBlock, BlockType, EthSpec, Graffiti, PublicKeyBytes, SignedBlindedBeaconBlock, GRAFFITI_BYTES_LEN,
-    Slot,
+    BlindedBeaconBlock, BlockType, EthSpec, Graffiti, PublicKeyBytes, SignedBlindedBeaconBlock,
+    Slot, GRAFFITI_BYTES_LEN,
 };
-use crate::node::dvfcore::BlockType as DvfBlockType;
 
 #[derive(Debug)]
 pub enum BlockError {
@@ -125,8 +125,8 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockServiceBuilder<T, E> {
                     .context
                     .ok_or("Cannot build BlockService without runtime_context")?,
                 proposer_nodes: self.proposer_nodes,
-                graffiti: self.graffiti,
-                graffiti_file: self.graffiti_file,
+                _graffiti: self.graffiti,
+                _graffiti_file: self.graffiti_file,
             }),
         })
     }
@@ -214,8 +214,8 @@ pub struct Inner<T, E: EthSpec> {
     beacon_nodes: Arc<BeaconNodeFallback<T, E>>,
     proposer_nodes: Option<Arc<BeaconNodeFallback<T, E>>>,
     context: RuntimeContext<E>,
-    graffiti: Option<Graffiti>,
-    graffiti_file: Option<GraffitiFile>,
+    _graffiti: Option<Graffiti>,
+    _graffiti_file: Option<GraffitiFile>,
 }
 
 /// Attempts to produce attestations for any block producer(s) at the start of the epoch.
@@ -349,7 +349,7 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
                 "block service",
             )
         }
-        
+
         Ok(())
     }
 
@@ -512,7 +512,7 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
             .request_proposers_last(
                 RequireSynced::No,
                 OfflineOnFailure::Yes,
-                 |beacon_node| async move {
+                |beacon_node| async move {
                     let _get_timer = metrics::start_timer_vec(
                         &metrics::BLOCK_SERVICE_TIMES,
                         &[metrics::BEACON_BLOCK_HTTP_GET],
@@ -634,7 +634,8 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
         // Apply per validator configuration first.
         let validator_builder_boost_factor = self
             .validator_store
-            .determine_validator_builder_boost_factor(validator_pubkey).await;
+            .determine_validator_builder_boost_factor(validator_pubkey)
+            .await;
 
         // Fallback to process-wide configuration if needed.
         let maybe_builder_boost_factor = validator_builder_boost_factor.or_else(|| {

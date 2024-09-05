@@ -3,14 +3,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::node::config::{
-    base_to_consensus_addr, base_to_mempool_addr, base_to_signature_addr, base_to_transaction_addr,
-    is_addr_invalid, base_to_duties_addr
+    base_to_consensus_addr, base_to_duties_addr, base_to_mempool_addr, base_to_signature_addr,
+    base_to_transaction_addr, is_addr_invalid,
 };
 use crate::utils::error::DvfError;
 use async_trait::async_trait;
 use bytes::Bytes;
 use downcast_rs::DowncastSync;
-use log::{debug, warn, info};
+use log::{debug, info, warn};
 use network::{DvfMessage, ReliableSender, SimpleSender, VERSION};
 use tokio::time::{sleep_until, timeout, Instant};
 use types::{Hash256, Keypair, PublicKey, Signature};
@@ -83,7 +83,7 @@ impl TOperator for LocalOperator {
     }
 
     async fn consensus_on_duty(&self, _msg: &[u8]) {
-        return ;
+        return;
     }
 }
 
@@ -194,7 +194,7 @@ impl TOperator for RemoteOperator {
         // skip this function quickly
         if is_addr_invalid(self.base_address()) {
             warn!("invalid socket address");
-            return ;
+            return;
         }
         let n_try: u64 = 1;
         let timeout_mill: u64 = 800;
@@ -214,9 +214,14 @@ impl TOperator for RemoteOperator {
             let result = timeout(Duration::from_millis(timeout_mill), receiver).await;
             match result {
                 Ok(output) => match output {
-                    Ok(data) =>  {
-                        info!("Received consensus response from [{}/{}]: {:?}", self.operator_id, self.validator_id, std::str::from_utf8(&data));
-                    },
+                    Ok(data) => {
+                        info!(
+                            "Received consensus response from [{}/{}]: {:?}",
+                            self.operator_id,
+                            self.validator_id,
+                            std::str::from_utf8(&data)
+                        );
+                    }
                     Err(_) => {
                         warn!("recv is interrupted.");
                     }

@@ -85,7 +85,8 @@ impl Discovery {
             builder.seq(seq);
             builder.build(&enr_key).unwrap()
         };
-        let base_address = SocketAddr::new(ip, udp_port.checked_sub(DISCOVERY_PORT_OFFSET).unwrap());
+        let base_address =
+            SocketAddr::new(ip, udp_port.checked_sub(DISCOVERY_PORT_OFFSET).unwrap());
         info!("Node ENR ip: {}, port: {}", ip, udp_port);
         info!("Node public key: {}", secret.name.encode_base64());
         info!("Node id: {}", base64::encode(local_enr.node_id().raw()));
@@ -142,7 +143,7 @@ impl Discovery {
                                                 }
                                                 None => { }
                                             }
-                                            
+
                                         }
                                     };
                                 };
@@ -188,7 +189,7 @@ impl Discovery {
                                             Some(port) => {
                                                 store.write(local_enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(v4addr.ip().clone()), port)).unwrap()).await;
                                                 set_metrics(&store, local_enr.public_key().encode()).await;
-                                            }   
+                                            }
                                             None => {}
                                         }
                                     }
@@ -212,7 +213,9 @@ impl Discovery {
             store: store_clone,
             boot_enrs,
             discv5_service_handle,
-            base_port: udp_port.checked_sub(DISCOVERY_PORT_OFFSET).expect("overflow due to incorrect config"),
+            base_port: udp_port
+                .checked_sub(DISCOVERY_PORT_OFFSET)
+                .expect("overflow due to incorrect config"),
         };
 
         // immediately initiate a discover request to annouce ourself
@@ -331,7 +334,7 @@ impl Discovery {
                 self.base_port,
             ));
         }
-        
+
         if boot_idx >= self.boot_enrs.len() {
             error!("Invalid boot index");
             return None;

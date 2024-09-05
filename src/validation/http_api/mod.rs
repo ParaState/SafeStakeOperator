@@ -1,18 +1,20 @@
 mod api_secret;
 mod create_validator;
+mod graffiti;
 mod keystores;
 mod remotekeys;
 mod tests;
-mod graffiti;
 
 use crate::validation::{GraffitiFile, ValidatorStore};
 use eth2::lighthouse_vc::{
     std_types::AuthResponse,
-    types::{self as api_types, GenericResponse, GetFeeRecipientResponse, GetGasLimitResponse, Graffiti, PublicKey,
-        PublicKeyBytes},
+    types::{
+        self as api_types, GenericResponse, GetFeeRecipientResponse, GetGasLimitResponse, Graffiti,
+        PublicKey, PublicKeyBytes,
+    },
 };
-use logging::SSELoggingComponents;
 use lighthouse_version::version_with_platform;
+use logging::SSELoggingComponents;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use slog::{crit, info, warn, Logger};
@@ -181,23 +183,23 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
                 )
             })
         });
-    
-        let inner_spec = Arc::new(ctx.spec.clone());
-        let spec_filter = warp::any().map(move || inner_spec.clone());
-    
-        let api_token_path_inner = api_token_path.clone();
-        let api_token_path_filter = warp::any().map(move || api_token_path_inner.clone());
-    
-        // Create a `warp` filter that provides access to local system information.
-        let system_info = Arc::new(RwLock::new(sysinfo::System::new()));
-        {
-            // grab write access for initialisation
-            let mut system_info = system_info.write();
-            system_info.refresh_disks_list();
-            system_info.refresh_networks_list();
-        } // end lock
 
-        let system_info_filter =
+    let inner_spec = Arc::new(ctx.spec.clone());
+    let spec_filter = warp::any().map(move || inner_spec.clone());
+
+    let api_token_path_inner = api_token_path.clone();
+    let api_token_path_filter = warp::any().map(move || api_token_path_inner.clone());
+
+    // Create a `warp` filter that provides access to local system information.
+    let system_info = Arc::new(RwLock::new(sysinfo::System::new()));
+    {
+        // grab write access for initialisation
+        let mut system_info = system_info.write();
+        system_info.refresh_disks_list();
+        system_info.refresh_networks_list();
+    } // end lock
+
+    let system_info_filter =
         warp::any()
             .map(move || system_info.clone())
             .map(|sysinfo: Arc<RwLock<System>>| {
@@ -214,8 +216,8 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
                 sysinfo
             });
 
-        let app_start = std::time::Instant::now();
-        let app_start_filter = warp::any().map(move || app_start);
+    let app_start = std::time::Instant::now();
+    let app_start_filter = warp::any().map(move || app_start);
 
     // GET lighthouse/version
     let get_node_version = warp::path("lighthouse")
@@ -259,28 +261,29 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
         .and(warp::path::end())
         .and(validator_store_filter.clone())
         .and(task_executor_filter.clone())
-        .then(|validator_store: Arc<ValidatorStore<T, E>>, task_executor: TaskExecutor| {
-            blocking_json_task(move || {
-                if let Some(handle) = task_executor.handle() {
-                    let validators = handle.block_on(validator_store
-                    .initialized_validators()
-                    .read())
-                    .validator_definitions()
-                    .iter()
-                    .map(|def| api_types::ValidatorData {
-                        enabled: def.enabled,
-                        description: def.description.clone(),
-                        voting_pubkey: PublicKeyBytes::from(&def.voting_public_key),
-                    })
-                    .collect::<Vec<_>>();
-                Ok(api_types::GenericResponse::from(validators))
-                } else {
-                    Err(warp_utils::reject::custom_server_error(
-                        "Lighthouse shutting down".into(),
-                    ))
-                }
-            })
-        });
+        .then(
+            |validator_store: Arc<ValidatorStore<T, E>>, task_executor: TaskExecutor| {
+                blocking_json_task(move || {
+                    if let Some(handle) = task_executor.handle() {
+                        let validators = handle
+                            .block_on(validator_store.initialized_validators().read())
+                            .validator_definitions()
+                            .iter()
+                            .map(|def| api_types::ValidatorData {
+                                enabled: def.enabled,
+                                description: def.description.clone(),
+                                voting_pubkey: PublicKeyBytes::from(&def.voting_public_key),
+                            })
+                            .collect::<Vec<_>>();
+                        Ok(api_types::GenericResponse::from(validators))
+                    } else {
+                        Err(warp_utils::reject::custom_server_error(
+                            "Lighthouse shutting down".into(),
+                        ))
+                    }
+                })
+            },
+        );
 
     // GET lighthouse/validators/{validator_pubkey}
     let get_lighthouse_validators_pubkey = warp::path("lighthouse")
@@ -290,12 +293,13 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
         .and(validator_store_filter.clone())
         .and(task_executor_filter.clone())
         .then(
-            |validator_pubkey: PublicKey, validator_store: Arc<ValidatorStore<T, E>>, task_executor: TaskExecutor| {
+            |validator_pubkey: PublicKey,
+             validator_store: Arc<ValidatorStore<T, E>>,
+             task_executor: TaskExecutor| {
                 blocking_json_task(move || {
                     if let Some(handle) = task_executor.handle() {
-                        let validator = handle.block_on(validator_store
-                            .initialized_validators()
-                            .read())
+                        let validator = handle
+                            .block_on(validator_store.initialized_validators().read())
                             .validator_definitions()
                             .iter()
                             .find(|def| def.voting_public_key == validator_pubkey)
@@ -315,7 +319,7 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
                         Err(warp_utils::reject::custom_server_error(
                             "Lighthouse shutting down".into(),
                         ))
-                    }  
+                    }
                 })
             },
         );
@@ -363,20 +367,27 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
         .and(validator_store_filter.clone())
         .and(task_executor_filter.clone())
         .then(
-            |validator_pubkey: PublicKey, validator_store: Arc<ValidatorStore<T, E>>, task_executor: TaskExecutor| {
+            |validator_pubkey: PublicKey,
+             validator_store: Arc<ValidatorStore<T, E>>,
+             task_executor: TaskExecutor| {
                 blocking_json_task(move || {
                     if let Some(handle) = task_executor.handle() {
-                        if handle.block_on(validator_store
-                            .initialized_validators()
-                            .read()).is_enabled(&validator_pubkey)
-                            .is_none() {
+                        if handle
+                            .block_on(validator_store.initialized_validators().read())
+                            .is_enabled(&validator_pubkey)
+                            .is_none()
+                        {
                             return Err(warp_utils::reject::custom_not_found(format!(
                                 "no validator found with pubkey {:?}",
                                 validator_pubkey
                             )));
                         }
-                        handle.block_on(validator_store
-                            .get_fee_recipient(&PublicKeyBytes::from(&validator_pubkey))).map(|fee_recipient| {
+                        handle
+                            .block_on(
+                                validator_store
+                                    .get_fee_recipient(&PublicKeyBytes::from(&validator_pubkey)),
+                            )
+                            .map(|fee_recipient| {
                                 GenericResponse::from(GetFeeRecipientResponse {
                                     pubkey: PublicKeyBytes::from(validator_pubkey.clone()),
                                     ethaddress: fee_recipient,
@@ -387,7 +398,7 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
                                     "no fee recipient set".to_string(),
                                 )
                             })
-                    }  else {
+                    } else {
                         Err(warp_utils::reject::custom_server_error(
                             "Lighthouse shutting down".into(),
                         ))
@@ -444,34 +455,33 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
         .and(validator_store_filter.clone())
         .and(task_executor_filter.clone())
         .then(
-            |validator_pubkey: PublicKey, validator_store: Arc<ValidatorStore<T, E>>, task_executor: TaskExecutor| {
-
+            |validator_pubkey: PublicKey,
+             validator_store: Arc<ValidatorStore<T, E>>,
+             task_executor: TaskExecutor| {
                 blocking_json_task(move || {
                     if let Some(handle) = task_executor.handle() {
-                        if handle.block_on(validator_store
-                        .initialized_validators()
-                        .read())
-                        .is_enabled(&validator_pubkey)
-                        .is_none()
-                    {
-                        return Err(warp_utils::reject::custom_not_found(format!(
-                            "no validator found with pubkey {:?}",
-                            validator_pubkey
-                        )));
-                    }
-                    Ok(GenericResponse::from(GetGasLimitResponse {
-                        pubkey: PublicKeyBytes::from(validator_pubkey.clone()),
-                        gas_limit: handle.block_on(validator_store
-                            .get_gas_limit(&PublicKeyBytes::from(&validator_pubkey))),
-                    }))
-                    }
-                    else {
+                        if handle
+                            .block_on(validator_store.initialized_validators().read())
+                            .is_enabled(&validator_pubkey)
+                            .is_none()
+                        {
+                            return Err(warp_utils::reject::custom_not_found(format!(
+                                "no validator found with pubkey {:?}",
+                                validator_pubkey
+                            )));
+                        }
+                        Ok(GenericResponse::from(GetGasLimitResponse {
+                            pubkey: PublicKeyBytes::from(validator_pubkey.clone()),
+                            gas_limit: handle.block_on(
+                                validator_store
+                                    .get_gas_limit(&PublicKeyBytes::from(&validator_pubkey)),
+                            ),
+                        }))
+                    } else {
                         Err(warp_utils::reject::custom_server_error(
                             "Lighthouse shutting down".into(),
                         ))
                     }
-
-                    
                 })
             },
         );
@@ -497,21 +507,20 @@ pub fn serve<T: 'static + SlotClock + Clone, E: EthSpec>(
         //
         // When adding a route, don't forget to add it to the `routes_with_invalid_auth` tests!
         .and(
-            warp::get()
-                .and(
-                    get_node_version
-                        .or(get_lighthouse_health)
-                        .or(get_lighthouse_spec)
-                        .or(get_lighthouse_validators)
-                        .or(get_lighthouse_validators_pubkey)
-                        .or(get_lighthouse_ui_health)
-                        .or(get_fee_recipient)
-                        .or(get_gas_limit)
-                        // .or(get_graffiti)
-                        .or(get_std_keystores)
-                        .or(get_std_remotekeys)
-                        .recover(warp_utils::reject::handle_rejection),
-                )
+            warp::get().and(
+                get_node_version
+                    .or(get_lighthouse_health)
+                    .or(get_lighthouse_spec)
+                    .or(get_lighthouse_validators)
+                    .or(get_lighthouse_validators_pubkey)
+                    .or(get_lighthouse_ui_health)
+                    .or(get_fee_recipient)
+                    .or(get_gas_limit)
+                    // .or(get_graffiti)
+                    .or(get_std_keystores)
+                    .or(get_std_remotekeys)
+                    .recover(warp_utils::reject::handle_rejection),
+            ),
         )
         // The auth route and logs  are the only routes that are allowed to be accessed without the API token.
         .or(warp::get().and(get_auth))

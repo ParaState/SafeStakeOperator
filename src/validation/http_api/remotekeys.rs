@@ -1,6 +1,6 @@
 //! Implementation of the standard remotekey management API.
 use crate::validation::account_utils::validator_definitions::{
-    SigningDefinition, ValidatorDefinition, Web3SignerDefinition
+    SigningDefinition, ValidatorDefinition, Web3SignerDefinition,
 };
 use crate::validation::{initialized_validators::Error, InitializedValidators, ValidatorStore};
 use eth2::lighthouse_vc::std_types::{
@@ -40,7 +40,7 @@ pub fn list<T: SlotClock + 'static, E: EthSpec>(
                         url: url.clone(),
                         readonly: false,
                     })
-                },
+                }
                 // [Zico]TODO: to be revised
                 SigningDefinition::DistributedKeystore { .. } => None,
             }
@@ -67,8 +67,12 @@ pub fn _import<T: SlotClock + 'static, E: EthSpec>(
     for remotekey in request.remote_keys {
         let status = if let Some(handle) = task_executor.handle() {
             // Import the keystore.
-            match _import_single_remotekey(remotekey.pubkey, remotekey.url, &validator_store, handle)
-            {
+            match _import_single_remotekey(
+                remotekey.pubkey,
+                remotekey.url,
+                &validator_store,
+                handle,
+            ) {
                 Ok(status) => Status::ok(status),
                 Err(e) => {
                     warn!(

@@ -1,13 +1,10 @@
 //! Implementation of the standard keystore management API.
 use crate::validation::account_utils::ZeroizeString;
-use crate::validation::{signing_method::SigningMethod,
-    ValidatorStore,
-};
+use crate::validation::{signing_method::SigningMethod, ValidatorStore};
 use eth2::lighthouse_vc::std_types::{
-    ImportKeystoreStatus,
-    ImportKeystoresRequest, ImportKeystoresResponse, InterchangeJsonStr, KeystoreJsonStr,
-    ListKeystoresResponse, SingleKeystoreResponse, Status,
-    };
+    ImportKeystoreStatus, ImportKeystoresRequest, ImportKeystoresResponse, InterchangeJsonStr,
+    KeystoreJsonStr, ListKeystoresResponse, SingleKeystoreResponse, Status,
+};
 use eth2_keystore::Keystore;
 use futures::executor::block_on;
 use slog::{info, warn, Logger};
@@ -209,7 +206,7 @@ fn _import_single_keystore<T: SlotClock + 'static, E: EthSpec>(
             None,
             None,
             None,
-            None
+            None,
         ))
         .map_err(|e| format!("failed to initialize validator: {:?}", e))?;
 

@@ -256,7 +256,6 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             .await
             .map_err(|e| format!("Dvf node creation failed: {}", e))?;
 
-        
         // Initialize slashing protection before initializing validators
         //
         // Create the slashing database if there are no validators, even if
@@ -285,13 +284,16 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             config.validator_dir.clone(),
             Some(node.clone()),
             log.clone(),
-            slashing_protection.clone()
+            slashing_protection.clone(),
         )
         .await
         .map_err(|e| format!("Unable to initialize validators: {:?}", e))?;
 
         let voting_pubkeys: Vec<_> = validators.iter_voting_pubkeys().collect();
-        let pubkeys: Vec<_> = validators.iter_voting_pubkeys().map(|p| p.clone() ).collect();
+        let pubkeys: Vec<_> = validators
+            .iter_voting_pubkeys()
+            .map(|p| p.clone())
+            .collect();
         info!(
             log,
             "Initialized validators";
@@ -306,8 +308,6 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
                 "hint" => "create validators via the API, or the `lighthouse account` CLI command"
             );
         }
-
-        
 
         // Check validator registration with slashing protection, or auto-register all validators.
         if config.init_slashing_protection {

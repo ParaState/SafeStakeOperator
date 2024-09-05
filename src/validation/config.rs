@@ -1,6 +1,6 @@
 use crate::node::config::{NodeConfig, API_ADDRESS};
 use crate::node::contract::{
-    DEFAULT_TRANSPORT_URL, NETWORK_CONTRACT, REGISTRY_CONTRACT, SELF_OPERATOR_ID, EXTRA_CONTRACT
+    DEFAULT_TRANSPORT_URL, EXTRA_CONTRACT, NETWORK_CONTRACT, REGISTRY_CONTRACT, SELF_OPERATOR_ID,
 };
 use crate::validation::beacon_node_fallback::ApiTopic;
 use crate::validation::graffiti_file::GraffitiFile;
@@ -382,8 +382,9 @@ impl Config {
 
         config.builder_boost_factor = parse_optional(cli_args, "builder-boost-factor")?;
 
-        config.dvf_node_config.builder_boost_factor = parse_optional(cli_args, "builder-boost-factor")?;
-    
+        config.dvf_node_config.builder_boost_factor =
+            parse_optional(cli_args, "builder-boost-factor")?;
+
         config.validator_registration_batch_size =
             parse_required(cli_args, "validator-registration-batch-size")?;
         if config.validator_registration_batch_size == 0 {

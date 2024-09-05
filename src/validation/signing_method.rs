@@ -7,7 +7,7 @@
 //! - Via a distributed operator committee
 
 use crate::node::config::{API_ADDRESS, COLLECT_PERFORMANCE_URL};
-use crate::node::dvfcore::{DvfSigner, DvfType, BlockType};
+use crate::node::dvfcore::{BlockType, DvfSigner, DvfType};
 use crate::node::utils::{request_to_web_server, DvfPerformanceRequest, SignDigest};
 use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
 use crate::validation::http_metrics::metrics;
@@ -135,31 +135,42 @@ impl SigningContext {
 impl SigningMethod {
     pub async fn is_leader(&self, epoch: Epoch) -> bool {
         match self {
-            SigningMethod::DistributedKeystore {dvf_signer, .. } => {
+            SigningMethod::DistributedKeystore { dvf_signer, .. } => {
                 dvf_signer.is_aggregator(epoch.as_u64()).await
-            },
-            _ => {
-                false
             }
+            _ => false,
         }
     }
 
-    pub async fn distributed_consensus_attestation(&self, domain_hash: Hash256, attestation_data: &AttestationData, ) {
+    pub async fn distributed_consensus_attestation(
+        &self,
+        domain_hash: Hash256,
+        attestation_data: &AttestationData,
+    ) {
         match self {
-            SigningMethod::DistributedKeystore {dvf_signer, .. } => {
+            SigningMethod::DistributedKeystore { dvf_signer, .. } => {
                 let data = serde_json::to_string(attestation_data).unwrap();
-                dvf_signer.consensus_on_duty(domain_hash, DvfType::Attester, data.as_bytes()).await;
-            },
+                dvf_signer
+                    .consensus_on_duty(domain_hash, DvfType::Attester, data.as_bytes())
+                    .await;
+            }
             _ => {}
         }
     }
 
-    pub async fn distributed_consensus_block<T: EthSpec, Payload: AbstractExecPayload<T>>(&self, domain_hash: Hash256, block: &BeaconBlock<T, Payload>, block_type: BlockType) {
+    pub async fn distributed_consensus_block<T: EthSpec, Payload: AbstractExecPayload<T>>(
+        &self,
+        domain_hash: Hash256,
+        block: &BeaconBlock<T, Payload>,
+        block_type: BlockType,
+    ) {
         match self {
-            SigningMethod::DistributedKeystore {dvf_signer, .. } => {
+            SigningMethod::DistributedKeystore { dvf_signer, .. } => {
                 let data = serde_json::to_string(block).unwrap();
-                dvf_signer.consensus_on_duty(domain_hash, DvfType::Proposer(block_type), data.as_bytes()).await
-            },
+                dvf_signer
+                    .consensus_on_duty(domain_hash, DvfType::Proposer(block_type), data.as_bytes())
+                    .await
+            }
             _ => {}
         }
     }
@@ -358,11 +369,7 @@ impl SigningMethod {
                         (e.epoch.start_slot(T::slots_per_epoch()), "VA_EXIT", true)
                     }
                 };
-                let is_aggregator = dvf_signer
-                    .is_aggregator(
-                        signing_epoch.as_u64(),
-                    )
-                    .await;
+                let is_aggregator = dvf_signer.is_aggregator(signing_epoch.as_u64()).await;
                 log::info!(
                     "[Dvf {}/{}] Signing\t-\tSlot: {}.\tEpoch: {}.\tType: {}.\tRoot: {:?}. Is aggregator {}",
                     dvf_signer.operator_id,

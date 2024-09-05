@@ -16,7 +16,7 @@ use crate::node::contract::{
 use crate::node::{
     db::{self, Database},
     discovery::Discovery,
-    dvfcore::DvfSignatureReceiverHandler,
+    dvfcore::{DvfSignatureReceiverHandler, DvfDutyCheckHandler},
     status_report::StatusReport,
     utils::{
         convert_address_to_withdraw_crendentials, request_to_web_server, DepositRequest,
@@ -74,6 +74,7 @@ pub struct Node<T: EthSpec> {
     pub mempool_handler_map: Arc<RwLock<HashMap<u64, MempoolReceiverHandler>>>,
     pub consensus_handler_map: Arc<RwLock<HashMap<u64, ConsensusReceiverHandler>>>,
     pub signature_handler_map: Arc<RwLock<HashMap<u64, DvfSignatureReceiverHandler>>>,
+    pub duties_handler_map: Arc<RwLock<HashMap<u64, DvfDutyCheckHandler<T> >>>,
     pub validator_store: Option<Arc<ValidatorStore<SystemTimeSlotClock, T>>>,
     pub discovery: Arc<Discovery>,
     pub db: Database,
@@ -94,35 +95,48 @@ impl<T: EthSpec> Node<T> {
         let mempool_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let consensus_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let signature_handler_map = Arc::new(RwLock::new(HashMap::new()));
+        let duties_handler_map = Arc::new(RwLock::new(HashMap::new()));
 
-        let transaction_address = with_wildcard_ip(base_to_transaction_addr(config.base_address));
+        let duties_address = with_wildcard_ip(base_to_transaction_addr(config.base_address));
         NetworkReceiver::spawn(
-            transaction_address,
-            Arc::clone(&tx_handler_map),
-            "transaction",
+            duties_address,
+            Arc::clone(&duties_handler_map),
+            "duties consensus",
         );
         info!(
-            "Node {} listening to client transactions on {}",
-            secret.name, transaction_address
+            "Node {} listening to duties consensus on {}",
+            secret.name, duties_address
         );
 
-        let mempool_address = with_wildcard_ip(base_to_mempool_addr(config.base_address));
-        NetworkReceiver::spawn(mempool_address, Arc::clone(&mempool_handler_map), "mempool");
-        info!(
-            "Node {} listening to mempool messages on {}",
-            secret.name, mempool_address
-        );
 
-        let consensus_address = with_wildcard_ip(base_to_consensus_addr(config.base_address));
-        NetworkReceiver::spawn(
-            consensus_address,
-            Arc::clone(&consensus_handler_map),
-            "consensus",
-        );
-        info!(
-            "Node {} listening to consensus messages on {}",
-            secret.name, consensus_address
-        );
+        // let transaction_address = with_wildcard_ip(base_to_transaction_addr(config.base_address));
+        // NetworkReceiver::spawn(
+        //     transaction_address,
+        //     Arc::clone(&tx_handler_map),
+        //     "transaction",
+        // );
+        // info!(
+        //     "Node {} listening to client transactions on {}",
+        //     secret.name, transaction_address
+        // );
+
+        // let mempool_address = with_wildcard_ip(base_to_mempool_addr(config.base_address));
+        // NetworkReceiver::spawn(mempool_address, Arc::clone(&mempool_handler_map), "mempool");
+        // info!(
+        //     "Node {} listening to mempool messages on {}",
+        //     secret.name, mempool_address
+        // );
+
+        // let consensus_address = with_wildcard_ip(base_to_consensus_addr(config.base_address));
+        // NetworkReceiver::spawn(
+        //     consensus_address,
+        //     Arc::clone(&consensus_handler_map),
+        //     "consensus",
+        // );
+        // info!(
+        //     "Node {} listening to consensus messages on {}",
+        //     secret.name, consensus_address
+        // );
 
         let signature_address = with_wildcard_ip(base_to_signature_addr(config.base_address));
         NetworkReceiver::spawn(
@@ -161,6 +175,7 @@ impl<T: EthSpec> Node<T> {
             mempool_handler_map: Arc::clone(&mempool_handler_map),
             consensus_handler_map: Arc::clone(&consensus_handler_map),
             signature_handler_map: Arc::clone(&signature_handler_map),
+            duties_handler_map: Arc::clone(&duties_handler_map),
             validator_store: None,
             discovery: Arc::new(discovery),
             db: db.clone(),

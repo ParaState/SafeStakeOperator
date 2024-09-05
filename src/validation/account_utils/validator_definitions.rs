@@ -565,6 +565,10 @@ impl ValidatorDefinitions {
     pub fn as_mut_slice(&mut self) -> &mut [ValidatorDefinition] {
         self.0.as_mut_slice()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 /// Perform an exhaustive tree search of `dir`, adding any discovered voting keystore paths to

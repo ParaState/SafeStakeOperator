@@ -120,28 +120,25 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
         for operator in operators.values() {
             operator.read().await.propose(msg).await;
         }
-
-        // let notify = {
-        //     let mut notes = self.consensus_notifications.write().await;
-        //     if let Some(notify) = notes.get(&msg) {
-        //         notify.clone()
-        //     }
-        //     else {
-        //         let notify = Arc::new(Notify::new());
-        //         notes.insert(msg, notify.clone());
-        //         notify
-        //     }
-        // };
         notify.notified().await;
         let mut notes = self.consensus_notifications.write().await;
         notes.remove(&msg);
         Ok(())
     }
 
+    async fn consensus_on_duty(&self, data: &[u8]) -> Result<(), DvfError> {
+        let operators = &self.operators.read().await;
+        let signing_futs = operators.keys().map(|operator_id| async move {
+            let operator = operators.get(operator_id).unwrap().read().await;
+            operator
+                .consensus_on_duty(data)
+                .await
+        });
+        let _ = join_all(signing_futs).await;
+        Ok(())
+    }
+
     async fn sign(&self, msg: Hash256) -> Result<(Signature, Vec<u64>), DvfError> {
-        // Run consensus protocol
-        // self.consensus(msg).await?;
-
         let operators = &self.operators.read().await;
         let signing_futs = operators.keys().map(|operator_id| async move {
             let operator = operators.get(operator_id).unwrap().read().await;
@@ -173,42 +170,8 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
         Ok((sig, ids))
     }
 
-    async fn consensus_sign(&self, msg: Hash256) -> Result<(Signature, Vec<u64>), DvfError> {
-        // Run consensus protocol
-        self.consensus(msg).await?;
 
-        let operators = &self.operators.read().await;
-        let signing_futs = operators.keys().map(|operator_id| async move {
-            let operator = operators.get(operator_id).unwrap().read().await;
-            operator
-                .sign(msg)
-                .await
-                .map(|x| (operator_id.clone(), operator.public_key(), x))
-        });
-        let results = join_all(signing_futs)
-            .await
-            .into_iter()
-            .flatten()
-            .collect::<Vec<(u64, PublicKey, Signature)>>();
-
-        let ids = results.iter().map(|x| x.0).collect::<Vec<u64>>();
-        let pks = results.iter().map(|x| &x.1).collect::<Vec<&PublicKey>>();
-        let sigs = results.iter().map(|x| &x.2).collect::<Vec<&Signature>>();
-
-        info!(
-            "Received {} signatures from {:?} for {}",
-            sigs.len(),
-            ids,
-            self.validator_id
-        );
-
-        let threshold_sig = ThresholdSignature::new(self.threshold());
-        let sig = threshold_sig.threshold_aggregate(&sigs[..], &pks[..], &ids[..], msg)?;
-
-        Ok((sig, ids))
-    }
-
-    fn get_validator_pk(&self) -> String {
-        self.validator_public_key.as_hex_string()
+    fn get_validator_pk(&self) -> PublicKey {
+        self.validator_public_key.clone()
     }
 }

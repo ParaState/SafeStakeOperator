@@ -24,6 +24,7 @@ use types::{
     BlindedBeaconBlock, BlockType, EthSpec, Graffiti, PublicKeyBytes, SignedBlindedBeaconBlock, GRAFFITI_BYTES_LEN,
     Slot,
 };
+use crate::node::dvfcore::BlockType as DvfBlockType;
 
 #[derive(Debug)]
 pub enum BlockError {
@@ -368,13 +369,13 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
             UnsignedBlock::Full(block_contents) => {
                 let (block, maybe_blobs) = block_contents.deconstruct();
                 self.validator_store
-                    .sign_block(*validator_pubkey, block, slot)
+                    .sign_block(*validator_pubkey, block, slot, DvfBlockType::Full)
                     .await
                     .map(|b| SignedBlock::Full(PublishBlockRequest::new(Arc::new(b), maybe_blobs)))
             }
             UnsignedBlock::Blinded(block) => self
                 .validator_store
-                .sign_block(*validator_pubkey, block, slot)
+                .sign_block(*validator_pubkey, block, slot, DvfBlockType::Blinded)
                 .await
                 .map(SignedBlock::Blinded),
         };

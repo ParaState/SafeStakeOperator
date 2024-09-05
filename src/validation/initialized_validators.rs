@@ -28,6 +28,7 @@ use lighthouse_metrics::set_gauge;
 use lockfile::{Lockfile, LockfileError};
 use parking_lot::{MappedMutexGuard, Mutex, MutexGuard};
 use reqwest::{Certificate, Error as ReqwestError};
+use slashing_protection::SlashingDatabase;
 use slog::{debug, error, info, warn, Logger};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
@@ -214,6 +215,7 @@ impl InitializedValidator {
         key_cache: &mut KeyCache,
         key_stores: &mut HashMap<PathBuf, Keystore>,
         node: Option<Arc<RwLock<Node<T>>>>,
+        slashing_protection: SlashingDatabase
     ) -> Result<Self, Error> {
         if !def.enabled {
             return Err(Error::UnableToInitializeDisabledValidator);
@@ -388,7 +390,7 @@ impl InitializedValidator {
                 let committee_def = OperatorCommitteeDefinition::from_file(committee_def_path)
                     .map_err(Error::UnableToParseCommitteeDefinition)?;
                 let validator_public_key = committee_def.validator_public_key.clone();
-                let signer = DvfSigner::spawn(node.unwrap(), voting_keypair, committee_def)
+                let signer = DvfSigner::spawn(node.unwrap(), voting_keypair, committee_def, slashing_protection)
                     .await
                     .map_err(|e| Error::DvfError(format!("{:?}", e)))?;
 
@@ -493,6 +495,8 @@ pub struct InitializedValidators<T: EthSpec> {
     node: Option<Arc<RwLock<Node<T>>>>,
     /// For logging via `slog`.
     log: Logger,
+    /// For slashing protection in dvf signer
+    slashing_protection: SlashingDatabase
 }
 
 impl<T: EthSpec> InitializedValidators<T> {
@@ -502,6 +506,7 @@ impl<T: EthSpec> InitializedValidators<T> {
         validators_dir: PathBuf,
         node: Option<Arc<RwLock<Node<T>>>>,
         log: Logger,
+        slashing_protection: SlashingDatabase
     ) -> Result<Self, Error> {
         let mut this = Self {
             validators_dir,
@@ -509,6 +514,7 @@ impl<T: EthSpec> InitializedValidators<T> {
             validators: HashMap::<PublicKeyBytes, InitializedValidator>::default(),
             node,
             log,
+            slashing_protection
         };
         this.update_validators().await?;
         Ok(this)
@@ -1265,6 +1271,7 @@ impl<T: EthSpec> InitializedValidators<T> {
                             &mut key_stores,
                             //&mut committee_cache,
                             None,
+                            self.slashing_protection.clone()
                         )
                         .await
                         {
@@ -1316,6 +1323,7 @@ impl<T: EthSpec> InitializedValidators<T> {
                             &mut key_stores,
                             //&mut committee_cache,
                             None,
+                            self.slashing_protection.clone()
                         )
                         .await
                         {
@@ -1368,6 +1376,7 @@ impl<T: EthSpec> InitializedValidators<T> {
                             &mut key_stores,
                             //&mut committee_cache,
                             self.node.clone(),
+                            self.slashing_protection.clone()
                         )
                         .await
                         {

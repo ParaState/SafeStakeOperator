@@ -5,7 +5,6 @@ use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
 use types::{Hash256, PublicKey, Signature};
-
 /// Operator committee for a validator.
 ///
 #[async_trait]
@@ -19,11 +18,11 @@ pub trait TOperatorCommittee: Send {
     fn validator_id(&self) -> u64;
     async fn add_operator(&mut self, operator_id: u64, operator: Arc<RwLock<dyn TOperator>>);
     async fn consensus(&self, msg: Hash256) -> Result<(), DvfError>;
+    async fn consensus_on_duty(&self, data: &[u8]) -> Result<(), DvfError>;
     async fn sign(&self, msg: Hash256) -> Result<(Signature, Vec<u64>), DvfError>;
-    async fn consensus_sign(&self, msg: Hash256) -> Result<(Signature, Vec<u64>), DvfError>;
     async fn get_leader(&self, nonce: u64) -> u64;
     async fn get_op_pos(&self, op_id: u64) -> usize;
-    fn get_validator_pk(&self) -> String;
+    fn get_validator_pk(&self) -> PublicKey;
     fn threshold(&self) -> usize;
 }
 
@@ -72,7 +71,7 @@ where
         self.cmt.get_leader(nonce).await
     }
 
-    pub fn get_validator_pk(&self) -> String {
+    pub fn get_validator_pk(&self) -> PublicKey {
         self.cmt.get_validator_pk()
     }
 
@@ -80,7 +79,7 @@ where
         self.cmt.get_op_pos(op_id).await
     }
 
-    pub async fn consensus_sign(&self, msg: Hash256) -> Result<(Signature, Vec<u64>), DvfError> {
-        self.cmt.consensus_sign(msg).await
+    pub async fn consensus_on_duty(&self, data: &[u8]) {
+        let _ = self.cmt.consensus_on_duty(data).await;
     }
 }

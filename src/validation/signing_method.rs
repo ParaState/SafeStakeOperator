@@ -7,7 +7,7 @@
 //! - Via a distributed operator committee
 
 use crate::node::config::{API_ADDRESS, COLLECT_PERFORMANCE_URL};
-use crate::node::dvfcore::DvfSigner;
+use crate::node::dvfcore::{DvfSigner, DvfType, BlockType};
 use crate::node::utils::{request_to_web_server, DvfPerformanceRequest, SignDigest};
 use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
 use crate::validation::http_metrics::metrics;
@@ -133,6 +133,37 @@ impl SigningContext {
 }
 
 impl SigningMethod {
+    pub async fn is_leader(&self, epoch: Epoch) -> bool {
+        match self {
+            SigningMethod::DistributedKeystore {dvf_signer, .. } => {
+                dvf_signer.is_aggregator(epoch.as_u64()).await
+            },
+            _ => {
+                false
+            }
+        }
+    }
+
+    pub async fn distributed_consensus_attestation(&self, domain_hash: Hash256, attestation_data: &AttestationData, ) {
+        match self {
+            SigningMethod::DistributedKeystore {dvf_signer, .. } => {
+                let data = bincode::serialize(attestation_data).unwrap();
+                dvf_signer.consensus_on_duty(domain_hash, DvfType::Attester, &data).await;
+            },
+            _ => {}
+        }
+    }
+
+    pub async fn distributed_consensus_block<T: EthSpec, Payload: AbstractExecPayload<T>>(&self, domain_hash: Hash256, block: &BeaconBlock<T, Payload>, block_type: BlockType) {
+        match self {
+            SigningMethod::DistributedKeystore {dvf_signer, .. } => {
+                let data = bincode::serialize(block).unwrap();
+                dvf_signer.consensus_on_duty(domain_hash, DvfType::Proposer(block_type), &data).await
+            },
+            _ => {}
+        }
+    }
+
     /// Return whether this signing method requires local slashing protection.
     pub fn requires_local_slashing_protection(
         &self,
@@ -329,7 +360,7 @@ impl SigningMethod {
                 };
                 let is_aggregator = dvf_signer
                     .is_aggregator(
-                        signing_epoch.as_u64() + dvf_signer.operator_committee.validator_id(),
+                        signing_epoch.as_u64(),
                     )
                     .await;
                 log::info!(
@@ -346,72 +377,39 @@ impl SigningMethod {
                 // Following LocalKeystore, if the code logic reaches here, then it has already passed all checks of this duty, and
                 // it is safe (from this operator's point of view) to sign it locally.
                 dvf_signer.local_sign_and_store(signing_root).await;
-                if duty == "PROPOSER" {
-                    if dvf_signer.is_propose_aggregator(signing_epoch.as_u64()).await {
-                        log::info!("[Dvf {}/{}] Leader trying to achieve {} consensus and aggregate duty signatures",
-                            dvf_signer.operator_id,
-                            dvf_signer.operator_committee.validator_id(),
-                            duty
-                        );
-                        let task_timeout = Duration::from_secs(seconds_per_slot * 2 / 3);
-                        let timeout = sleep(task_timeout);
-                        let work = dvf_signer.consensus_sign(signing_root);
-                        let dt: DateTime<Utc> = Utc::now();
-                        tokio::select! {
-                            result = work => {
-                                match result {
-                                    Ok((signature, ids)) => {
-                                        // [Issue] Several same reports will be sent to server from different aggregators
-                                        Self::dvf_report::<T>(slot, duty, dvf_signer.validator_public_key(), dvf_signer.operator_id(), ids, dt, &dvf_signer.node_secret).await?;
-                                        Ok(signature)
-                                    },
-                                    Err(e) => {
-                                        Err(Error::CommitteeSignFailed(format!("{:?}", e)))
-                                    }
+                if !only_aggregator || (only_aggregator && is_aggregator) {
+                    log::debug!("[Dvf {}/{}] Leader trying to achieve duty consensus and aggregate duty signatures",
+                        dvf_signer.operator_id,
+                        dvf_signer.operator_committee.validator_id()
+                    );
+                    // Should NOT take more than a slot duration for two reasons:
+                    // 1. if longer than slot duration, it might affect duty retrieval for other VAs (for example, previously,
+                    // I set this to be the epoch remaining time for selection proof, so bad committee (VA) might take several mintues
+                    // to timeout, making duties of other VAs outdated.)
+                    // 2. most duties should complete in a slot
+                    let task_timeout = Duration::from_secs(seconds_per_slot * 2 / 3);
+                    let timeout = sleep(task_timeout);
+                    let work = dvf_signer.threshold_sign(signing_root);
+                    let dt: DateTime<Utc> = Utc::now();
+                    tokio::select! {
+                        result = work => {
+                            match result {
+                                Ok((signature, ids)) => {
+                                    // [Issue] Several same reports will be sent to server from different aggregators
+                                    Self::dvf_report::<T>(slot, duty, dvf_signer.validator_public_key().as_hex_string(), dvf_signer.operator_id(), ids, dt, &dvf_signer.node_secret).await?;
+                                    Ok(signature)
+                                },
+                                Err(e) => {
+                                    Err(Error::CommitteeSignFailed(format!("{:?}", e)))
                                 }
                             }
-                            _ = timeout => {
-                                Err(Error::CommitteeSignFailed(format!("Timeout")))
-                            }
                         }
-                    } else {
-                        Err(Error::NotLeader)
+                        _ = timeout => {
+                            Err(Error::CommitteeSignFailed(format!("Timeout")))
+                        }
                     }
                 } else {
-                    if !only_aggregator || (only_aggregator && is_aggregator) {
-                        log::debug!("[Dvf {}/{}] Leader trying to achieve duty consensus and aggregate duty signatures",
-                            dvf_signer.operator_id,
-                            dvf_signer.operator_committee.validator_id()
-                        );
-                        // Should NOT take more than a slot duration for two reasons:
-                        // 1. if longer than slot duration, it might affect duty retrieval for other VAs (for example, previously,
-                        // I set this to be the epoch remaining time for selection proof, so bad committee (VA) might take several mintues
-                        // to timeout, making duties of other VAs outdated.)
-                        // 2. most duties should complete in a slot
-                        let task_timeout = Duration::from_secs(seconds_per_slot * 2 / 3);
-                        let timeout = sleep(task_timeout);
-                        let work = dvf_signer.threshold_sign(signing_root);
-                        let dt: DateTime<Utc> = Utc::now();
-                        tokio::select! {
-                            result = work => {
-                                match result {
-                                    Ok((signature, ids)) => {
-                                        // [Issue] Several same reports will be sent to server from different aggregators
-                                        Self::dvf_report::<T>(slot, duty, dvf_signer.validator_public_key(), dvf_signer.operator_id(), ids, dt, &dvf_signer.node_secret).await?;
-                                        Ok(signature)
-                                    },
-                                    Err(e) => {
-                                        Err(Error::CommitteeSignFailed(format!("{:?}", e)))
-                                    }
-                                }
-                            }
-                            _ = timeout => {
-                                Err(Error::CommitteeSignFailed(format!("Timeout")))
-                            }
-                        }
-                    } else {
-                        Err(Error::NotLeader)
-                    }
+                    Err(Error::NotLeader)
                 }
             }
         }

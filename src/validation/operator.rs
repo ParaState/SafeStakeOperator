@@ -4,13 +4,13 @@ use std::time::Duration;
 
 use crate::node::config::{
     base_to_consensus_addr, base_to_mempool_addr, base_to_signature_addr, base_to_transaction_addr,
-    is_addr_invalid,
+    is_addr_invalid, base_to_duties_addr
 };
 use crate::utils::error::DvfError;
 use async_trait::async_trait;
 use bytes::Bytes;
 use downcast_rs::DowncastSync;
-use log::{debug, warn};
+use log::{debug, warn, info};
 use network::{DvfMessage, ReliableSender, SimpleSender, VERSION};
 use tokio::time::{sleep_until, timeout, Instant};
 use types::{Hash256, Keypair, PublicKey, Signature};
@@ -35,6 +35,10 @@ pub trait TOperator: DowncastSync + Sync + Send {
     fn signature_address(&self) -> SocketAddr {
         base_to_signature_addr(self.base_address())
     }
+    fn duties_address(&self) -> SocketAddr {
+        base_to_duties_addr(self.base_address())
+    }
+    async fn consensus_on_duty(&self, msg: &[u8]);
 }
 impl_downcast!(sync TOperator);
 
@@ -77,6 +81,10 @@ impl TOperator for LocalOperator {
     fn base_address(&self) -> SocketAddr {
         self.base_address
     }
+
+    async fn consensus_on_duty(&self, _msg: &[u8]) {
+        return ;
+    }
 }
 
 impl LocalOperator {
@@ -113,7 +121,7 @@ impl TOperator for RemoteOperator {
             return Err(DvfError::SocketAddrUnknown);
         }
 
-        let n_try: u64 = 2;
+        let n_try: u64 = 1;
         let timeout_mill: u64 = 600;
         let sleep_mill: u64 = 300;
         let dvf_message = DvfMessage {
@@ -180,6 +188,58 @@ impl TOperator for RemoteOperator {
 
     fn base_address(&self) -> SocketAddr {
         self.base_address
+    }
+
+    async fn consensus_on_duty(&self, msg: &[u8]) {
+        // skip this function quickly
+        if is_addr_invalid(self.base_address()) {
+            warn!("invalid socket address");
+            return ;
+        }
+        let n_try: u64 = 1;
+        let timeout_mill: u64 = 800;
+        let sleep_mill: u64 = 300;
+        let dvf_message = DvfMessage {
+            version: VERSION,
+            validator_id: self.validator_id,
+            message: msg.to_vec(),
+        };
+
+        let serialize_msg = bincode::serialize(&dvf_message).unwrap();
+        for i in 0..n_try {
+            let receiver = self
+                .network
+                .send(self.duties_address(), Bytes::from(serialize_msg.clone()))
+                .await;
+            let result = timeout(Duration::from_millis(timeout_mill), receiver).await;
+            match result {
+                Ok(output) => match output {
+                    Ok(data) =>  {
+                        info!("Received consensus response from [{}/{}]: {:?}", self.operator_id, self.validator_id, std::str::from_utf8(&data));
+                    },
+                    Err(_) => {
+                        warn!("recv is interrupted.");
+                    }
+                },
+                Err(e) => {
+                    warn!(
+                        "Retry from operator {}/{}, error: {}",
+                        self.operator_id, self.validator_id, e
+                    );
+                }
+            }
+            if i < n_try - 1 {
+                let next_try_instant = Instant::now() + Duration::from_millis(sleep_mill);
+                sleep_until(next_try_instant).await;
+            }
+        }
+        warn!(
+            "Failed to receive a signature from operator {}/{} ({:?})",
+            self.operator_id,
+            self.validator_id,
+            self.signature_address()
+        );
+
     }
 }
 

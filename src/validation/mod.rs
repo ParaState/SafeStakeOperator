@@ -1,6 +1,6 @@
 mod attestation_service;
 mod beacon_node_fallback;
-mod block_service;
+pub mod block_service;
 mod check_synced;
 mod cli;
 mod config;
@@ -11,7 +11,7 @@ mod key_cache;
 mod latency;
 mod notifier;
 mod preparation_service;
-mod signing_method;
+pub mod signing_method;
 mod sync_committee_service;
 
 pub mod account_utils;
@@ -256,11 +256,36 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             .await
             .map_err(|e| format!("Dvf node creation failed: {}", e))?;
 
+        
+        // Initialize slashing protection before initializing validators
+        //
+        // Create the slashing database if there are no validators, even if
+        // `init_slashing_protection` is not supplied. There is no risk in creating a slashing
+        // database without any validators in it.
+        let slashing_db_path = config.validator_dir.join(SLASHING_PROTECTION_FILENAME);
+        let slashing_protection = if config.init_slashing_protection || validator_defs.is_empty() {
+            SlashingDatabase::open_or_create(&slashing_db_path).map_err(|e| {
+                format!(
+                    "Failed to open or create slashing protection database: {:?}",
+                    e
+                )
+            })
+        } else {
+            SlashingDatabase::open(&slashing_db_path).map_err(|e| {
+                format!(
+                    "Failed to open slashing protection database: {:?}.\n\
+                     Ensure that `slashing_protection.sqlite` is in {:?} folder",
+                    e, config.validator_dir
+                )
+            })
+        }?;
+
         let mut validators = InitializedValidators::from_definitions(
             validator_defs,
             config.validator_dir.clone(),
             Some(node.clone()),
             log.clone(),
+            slashing_protection.clone()
         )
         .await
         .map_err(|e| format!("Unable to initialize validators: {:?}", e))?;
@@ -282,28 +307,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             );
         }
 
-        // Initialize slashing protection.
-        //
-        // Create the slashing database if there are no validators, even if
-        // `init_slashing_protection` is not supplied. There is no risk in creating a slashing
-        // database without any validators in it.
-        let slashing_db_path = config.validator_dir.join(SLASHING_PROTECTION_FILENAME);
-        let slashing_protection = if config.init_slashing_protection || voting_pubkeys.is_empty() {
-            SlashingDatabase::open_or_create(&slashing_db_path).map_err(|e| {
-                format!(
-                    "Failed to open or create slashing protection database: {:?}",
-                    e
-                )
-            })
-        } else {
-            SlashingDatabase::open(&slashing_db_path).map_err(|e| {
-                format!(
-                    "Failed to open slashing protection database: {:?}.\n\
-                     Ensure that `slashing_protection.sqlite` is in {:?} folder",
-                    e, config.validator_dir
-                )
-            })
-        }?;
+        
 
         // Check validator registration with slashing protection, or auto-register all validators.
         if config.init_slashing_protection {

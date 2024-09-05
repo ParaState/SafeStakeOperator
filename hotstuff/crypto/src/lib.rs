@@ -207,6 +207,12 @@ impl Signature {
             .expect("Unexpected signature length")
     }
 
+    pub fn from_bytes(sig: &[u8]) -> Self {
+        let part1 = sig[..32].try_into().expect("Unexpected signature length");
+        let part2 = sig[32..64].try_into().expect("Unexpected signature length");
+        Signature { part1, part2 }
+    }
+
     pub fn verify(&self, digest: &Digest, public_key: &PublicKey) -> Result<(), CryptoError> {
         let signature = secp256k1::ecdsa::Signature::from_compact(&self.flatten()).expect("compact signatures are 64 bytes; DER signatures are 68-72 bytes");
         let message = secp256k1::Message::from_slice(&digest.0).expect("messages must be 32 bytes and are expected to be hashes");

@@ -147,8 +147,8 @@ impl SigningMethod {
     pub async fn distributed_consensus_attestation(&self, domain_hash: Hash256, attestation_data: &AttestationData, ) {
         match self {
             SigningMethod::DistributedKeystore {dvf_signer, .. } => {
-                let data = bincode::serialize(attestation_data).unwrap();
-                dvf_signer.consensus_on_duty(domain_hash, DvfType::Attester, &data).await;
+                let data = serde_json::to_string(attestation_data).unwrap();
+                dvf_signer.consensus_on_duty(domain_hash, DvfType::Attester, data.as_bytes()).await;
             },
             _ => {}
         }
@@ -157,8 +157,8 @@ impl SigningMethod {
     pub async fn distributed_consensus_block<T: EthSpec, Payload: AbstractExecPayload<T>>(&self, domain_hash: Hash256, block: &BeaconBlock<T, Payload>, block_type: BlockType) {
         match self {
             SigningMethod::DistributedKeystore {dvf_signer, .. } => {
-                let data = bincode::serialize(block).unwrap();
-                dvf_signer.consensus_on_duty(domain_hash, DvfType::Proposer(block_type), &data).await
+                let data = serde_json::to_string(block).unwrap();
+                dvf_signer.consensus_on_duty(domain_hash, DvfType::Proposer(block_type), data.as_bytes()).await
             },
             _ => {}
         }

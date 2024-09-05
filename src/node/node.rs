@@ -4,7 +4,7 @@ use crate::deposit::get_distributed_deposit;
 use crate::exit::get_distributed_voluntary_exit;
 use crate::network::io_committee::{SecureNetIOChannel, SecureNetIOCommittee};
 use crate::node::config::{
-    base_to_consensus_addr, base_to_mempool_addr, base_to_signature_addr, base_to_transaction_addr,
+    base_to_consensus_addr, base_to_mempool_addr, base_to_signature_addr, base_to_duties_addr,
     NodeConfig, API_ADDRESS, DB_FILENAME, DISCOVERY_PORT_OFFSET, DKG_PORT_OFFSET,
     PRESTAKE_SIGNATURE_URL, STAKE_SIGNATURE_URL, VALIDATOR_PK_URL,
 };
@@ -97,7 +97,7 @@ impl<T: EthSpec> Node<T> {
         let signature_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let duties_handler_map = Arc::new(RwLock::new(HashMap::new()));
 
-        let duties_address = with_wildcard_ip(base_to_transaction_addr(config.base_address));
+        let duties_address = with_wildcard_ip(base_to_duties_addr(config.base_address));
         NetworkReceiver::spawn(
             duties_address,
             Arc::clone(&duties_handler_map),

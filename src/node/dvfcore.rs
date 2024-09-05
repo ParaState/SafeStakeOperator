@@ -217,7 +217,7 @@ impl<E: EthSpec> MessageHandler for DvfDutyCheckHandler<E> {
         }
         match check_msg.check_type {
             DvfType::Attester => {
-                let attestation_data: AttestationData = match bincode::deserialize(&check_msg.data) {
+                let attestation_data: AttestationData = match serde_json::from_slice(&check_msg.data) {
                     Ok(a) => a,
                     Err(_) => {
                         let _ = writer.send(Bytes::from("failed to deserialize attestation data")).await;
@@ -256,7 +256,7 @@ impl<E: EthSpec> MessageHandler for DvfDutyCheckHandler<E> {
             DvfType::Proposer(block_type) => {
                 match block_type {
                     BlockType::Full => {
-                        let block : BeaconBlock<E, FullPayload<E>> = match bincode::deserialize(&check_msg.data) {
+                        let block : BeaconBlock<E, FullPayload<E>> = match serde_json::from_slice(&check_msg.data) {
                             Ok(b) => b,
                             Err(_) => {
                                 let _ = writer.send(Bytes::from( "failed to deserialize full proposal block")).await;
@@ -267,7 +267,7 @@ impl<E: EthSpec> MessageHandler for DvfDutyCheckHandler<E> {
                         self.sign_block(writer, block, check_msg.domain_hash).await;
                     },
                     BlockType::Blinded => {
-                        let block : BeaconBlock<E, BlindedPayload<E>> = match bincode::deserialize(&check_msg.data) {
+                        let block : BeaconBlock<E, BlindedPayload<E>> = match serde_json::from_slice(&check_msg.data) {
                             Ok(b) => b,
                             Err(_) => {
                                 let _ = writer.send(Bytes::from( "failed to deserialize blinded proposal block")).await;

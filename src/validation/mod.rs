@@ -279,7 +279,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             })
         }?;
 
-        let mut validators = InitializedValidators::from_definitions(
+        let validators = InitializedValidators::from_definitions(
             validator_defs,
             config.validator_dir.clone(),
             Some(node.clone()),
@@ -290,10 +290,6 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         .map_err(|e| format!("Unable to initialize validators: {:?}", e))?;
 
         let voting_pubkeys: Vec<_> = validators.iter_voting_pubkeys().collect();
-        let pubkeys: Vec<_> = validators
-            .iter_voting_pubkeys()
-            .map(|p| p.clone())
-            .collect();
         info!(
             log,
             "Initialized validators";
@@ -326,10 +322,6 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
                         e
                     )
                 })?;
-        }
-
-        for pk in pubkeys {
-            let _ = validators.enable_keystore(&pk.decompress().unwrap()).await;
         }
 
         let last_beacon_node_index = config

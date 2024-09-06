@@ -1200,4 +1200,8 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
             }
         }
     }
+
+    pub async fn is_active(&self, pubkey: &PublicKey) -> Option<bool> {
+        self.validators.read().await.is_enabled(pubkey)
+    }
 }

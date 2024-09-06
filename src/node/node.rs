@@ -700,15 +700,20 @@ pub async fn activate_validator<T: EthSpec>(
 
     match validator_store {
         Some(validator_store) => {
-            validator_store
-                .start_validator_keystore(&validator_pk)
-                .await;
-            info!("[VA {}] validator {} activated", validator_id, validator_pk);
-            set_int_gauge(
-                &metrics::DVT_VC_BALANCE_USED_UP,
-                &[&validator_pk.as_hex_string()],
-                BALANCE_STILL_AVAILABLE,
-            );
+            match validator_store.is_active(&validator_pk).await {
+                Some(active) => {
+                    if !active {
+                        validator_store.start_validator_keystore(&validator_pk).await;
+                        info!("[VA {}] validator {} activated", validator_id, validator_pk);
+                        set_int_gauge(
+                            &metrics::DVT_VC_BALANCE_USED_UP,
+                            &[&validator_pk.as_hex_string()],
+                            BALANCE_STILL_AVAILABLE,
+                        );
+                    }
+                }
+                None => {}
+            }
             Ok(())
         }
         _ => {
@@ -769,13 +774,18 @@ pub async fn stop_validator<T: EthSpec>(
         let node_ = node.read().await;
         node_.validator_store.clone()
     };
-
-    cleanup_handler(node.clone(), validator_id).await;
+    
     match validator_store {
-        Some(validator_store) => {
-            validator_store.stop_validator_keystore(&validator_pk).await;
-            info!("[VA {}] stopped validator {}", validator_id, validator_pk);
-        }
+        Some(validator_store) => match validator_store.is_active(&validator_pk).await {
+            Some(active) => {
+                if active {
+                    cleanup_handler(node.clone(), validator_id).await;
+                    validator_store.stop_validator_keystore(&validator_pk).await;
+                    info!("[VA {}] stopped validator {}", validator_id, validator_pk);
+                }
+            }
+            None => {}
+        },
         _ => {
             return Err(format!(
                 "[VA {}] failed to stop validator {}. Error: no validator store is set. please wait, please wait",

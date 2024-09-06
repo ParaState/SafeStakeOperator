@@ -583,8 +583,8 @@ impl DvfCore {
         _committee: HotstuffCommittee,
         _keypair: Keypair,
         _tx_consensus: MonitoredSender<Hash256>,
-        _store: Store,
-        _exit: exit_future::Exit,
+        store: Store,
+        exit: exit_future::Exit,
     ) {
         // let node = node.read().await;
 
@@ -652,6 +652,14 @@ impl DvfCore {
         //     .run()
         //     .await
         // });
+
+        tokio::spawn(async move {
+            tokio::select! {
+                () = exit => {
+                    store.exit().await;
+                }
+            }
+        });
     }
 
     // pub async fn run(&mut self) {

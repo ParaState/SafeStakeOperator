@@ -157,39 +157,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 match event {
                     Event::Discovered(enr) => {
                         Discovery::process_enr(&store, enr).await;
-                        // if let Some(enr_ip) =  enr.ip4() {
-                        //     if let Some(discv_port) = enr.udp4() {
-                        //         match discv_port.checked_sub(DISCOVERY_PORT_OFFSET) {
-                        //             Some(port) => {
-                        //                 store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(enr_ip), port)).unwrap()).await;
-                        //             }
-                        //             None => {}
-                        //         }
-
-                        //     }
-                        // }
                     },
                     Event::SessionEstablished(enr,  _addr) => {
                         Discovery::process_enr(&store, enr).await;
-                        // if let Some(enr_ip) =  enr.ip4() {
-                        //     if let Some(discv_port) = enr.udp4() {
-                        //         match discv_port.checked_sub(DISCOVERY_PORT_OFFSET) {
-                        //             Some(port) => {
-                        //                 let socketaddr = SocketAddr::new(IpAddr::V4(enr_ip), port);
-                        //                 info!("A peer has established session: public key: {}, base addr: {:?}",
-                        //                 base64::encode(enr.public_key().encode()), socketaddr);
-                        //                 store.write(enr.public_key().encode(), bincode::serialize(&socketaddr).unwrap()).await;
-                        //             }
-                        //             None => {}
-                        //         }
-
-                        //     } else {
-                        //         let socketaddr = SocketAddr::new(IpAddr::V4(enr_ip), 26000);
-                        //         info!("A peer has established session with default port: public key: {}, base addr: {:?}",
-                        //         base64::encode(enr.public_key().encode()), socketaddr);
-                        //         store.write(enr.public_key().encode(), bincode::serialize(&socketaddr).unwrap()).await;
-                        //     }
-                        // }
                     },
                     Event::SocketUpdated(addr) => {
                         info!("Event::SocketUpdated: local ENR IP address has been updated, addr:{}", addr);

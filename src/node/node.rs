@@ -207,7 +207,7 @@ impl<T: EthSpec> Node<T> {
     pub fn process_contract_command(node: Arc<RwLock<Node<T>>>, db: Database) {
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(30)).await;
-            let mut query_interval = tokio::time::interval(Duration::from_secs(6));
+            let mut query_interval = tokio::time::interval(Duration::from_secs(1));
             loop {
                 query_interval.tick().await;
                 match db.get_contract_command().await {
@@ -260,7 +260,6 @@ impl<T: EthSpec> Node<T> {
                                 }
                             }
                             ContractCommand::ActivateValidator(validator) => {
-                                info!("ActivateValidator");
                                 let va_id = validator.id;
                                 let validator_pubkey = hex::encode(validator.public_key.clone());
                                 match activate_validator(node.clone(), validator).await {
@@ -275,7 +274,6 @@ impl<T: EthSpec> Node<T> {
                                 }
                             }
                             ContractCommand::StopValidator(validator) => {
-                                info!("StopValidator");
                                 let va_id = validator.id;
                                 let validator_pubkey = hex::encode(validator.public_key.clone());
                                 match stop_validator(node.clone(), validator).await {
@@ -689,10 +687,6 @@ pub async fn activate_validator<T: EthSpec>(
     let validator_id = validator.id;
     let validator_pk = BlsPublicKey::deserialize(&validator.public_key)
         .map_err(|e| format!("Unable to deserialize validator public key: {:?}", e))?;
-    info!(
-        "[VA {}] activating validator {}...",
-        validator_id, validator_pk
-    );
     let validator_store = {
         let node_ = node.read().await;
         node_.validator_store.clone()
@@ -732,10 +726,6 @@ pub async fn remove_validator<T: EthSpec>(
     let validator_id = validator.id;
     let validator_pk = BlsPublicKey::deserialize(&validator.public_key)
         .map_err(|e| format!("[VA {}] Deserialize error ({:?})", validator_id, e))?;
-    info!(
-        "[VA {}] removing validator {}...",
-        validator_id, validator_pk
-    );
     let (validator_dir, secret_dir, validator_store) = {
         let node_ = node.read().await;
         let validator_dir = node_.config.validator_dir.clone();
@@ -766,10 +756,6 @@ pub async fn stop_validator<T: EthSpec>(
     let validator_id = validator.id;
     let validator_pk = BlsPublicKey::deserialize(&validator.public_key)
         .map_err(|e| format!("[VA {}] Deserialize error ({:?})", validator_id, e))?;
-    info!(
-        "[VA {}] stopping validator {}...",
-        validator_id, validator_pk
-    );
     let validator_store = {
         let node_ = node.read().await;
         node_.validator_store.clone()

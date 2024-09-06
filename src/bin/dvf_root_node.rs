@@ -3,7 +3,6 @@ use bytes::Bytes;
 use futures::prelude::*;
 use hsconfig::Export as _;
 use hsconfig::Secret;
-use lighthouse_network::discv5::enr::EnrPublicKey;
 use lighthouse_network::discv5::{
     enr::{CombinedKey, Enr},
     ConfigBuilder, Discv5, Event, ListenConfig,
@@ -13,12 +12,12 @@ use network::{MessageHandler, Receiver as NetworkReceiver, Writer as NetworkWrit
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
 use store::Store;
 use tokio::sync::RwLock;
-
+use dvf::node::discovery::Discovery;
 pub const DEFAULT_SECRET_DIR: &str = "node_key.json";
 pub const DEFAULT_STORE_DIR: &str = "boot_store";
 pub const DEFAULT_ROOT_DIR: &str = ".lighthouse";
@@ -157,39 +156,40 @@ async fn main() -> Result<(), Box<dyn Error>> {
             Some(event) = event_stream.recv() => {
                 match event {
                     Event::Discovered(enr) => {
-                        if let Some(enr_ip) =  enr.ip4() {
-                            if let Some(discv_port) = enr.udp4() {
-                                match discv_port.checked_sub(DISCOVERY_PORT_OFFSET) {
-                                    Some(port) => {
-                                        store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(enr_ip), port)).unwrap()).await;
-                                    }
-                                    None => {}
-                                }
+                        Discovery::process_enr(&store, enr).await;
+                        // if let Some(enr_ip) =  enr.ip4() {
+                        //     if let Some(discv_port) = enr.udp4() {
+                        //         match discv_port.checked_sub(DISCOVERY_PORT_OFFSET) {
+                        //             Some(port) => {
+                        //                 store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(enr_ip), port)).unwrap()).await;
+                        //             }
+                        //             None => {}
+                        //         }
 
-                            }
-                        }
+                        //     }
+                        // }
                     },
                     Event::SessionEstablished(enr,  _addr) => {
+                        Discovery::process_enr(&store, enr).await;
+                        // if let Some(enr_ip) =  enr.ip4() {
+                        //     if let Some(discv_port) = enr.udp4() {
+                        //         match discv_port.checked_sub(DISCOVERY_PORT_OFFSET) {
+                        //             Some(port) => {
+                        //                 let socketaddr = SocketAddr::new(IpAddr::V4(enr_ip), port);
+                        //                 info!("A peer has established session: public key: {}, base addr: {:?}",
+                        //                 base64::encode(enr.public_key().encode()), socketaddr);
+                        //                 store.write(enr.public_key().encode(), bincode::serialize(&socketaddr).unwrap()).await;
+                        //             }
+                        //             None => {}
+                        //         }
 
-                        if let Some(enr_ip) =  enr.ip4() {
-                            if let Some(discv_port) = enr.udp4() {
-                                match discv_port.checked_sub(DISCOVERY_PORT_OFFSET) {
-                                    Some(port) => {
-                                        let socketaddr = SocketAddr::new(IpAddr::V4(enr_ip), port);
-                                        info!("A peer has established session: public key: {}, base addr: {:?}",
-                                        base64::encode(enr.public_key().encode()), socketaddr);
-                                        store.write(enr.public_key().encode(), bincode::serialize(&socketaddr).unwrap()).await;
-                                    }
-                                    None => {}
-                                }
-
-                            } else {
-                                let socketaddr = SocketAddr::new(IpAddr::V4(enr_ip), 26000);
-                                info!("A peer has established session with default port: public key: {}, base addr: {:?}",
-                                base64::encode(enr.public_key().encode()), socketaddr);
-                                store.write(enr.public_key().encode(), bincode::serialize(&socketaddr).unwrap()).await;
-                            }
-                        }
+                        //     } else {
+                        //         let socketaddr = SocketAddr::new(IpAddr::V4(enr_ip), 26000);
+                        //         info!("A peer has established session with default port: public key: {}, base addr: {:?}",
+                        //         base64::encode(enr.public_key().encode()), socketaddr);
+                        //         store.write(enr.public_key().encode(), bincode::serialize(&socketaddr).unwrap()).await;
+                        //     }
+                        // }
                     },
                     Event::SocketUpdated(addr) => {
                         info!("Event::SocketUpdated: local ENR IP address has been updated, addr:{}", addr);

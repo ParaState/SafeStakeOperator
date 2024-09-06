@@ -458,7 +458,7 @@ impl DvfSigner {
             .map_err(|e| DvfError::StoreError(format!("Failed to create store: {:?}", e)))?;
 
         let (signal, exit) = exit_future::signal();
-        Node::spawn_committee_ip_monitor(node_para, committee_def.clone(), exit);
+        Node::spawn_committee_ip_monitor(node_para, committee_def.clone(), exit.clone());
 
         node.signature_handler_map.write().await.insert(
             validator_id,
@@ -486,17 +486,13 @@ impl DvfSigner {
         );
         info!("Insert duties handler for validator: {}", validator_id);
 
-        // DvfCore::spawn(
-        //     operator_id,
-        //     node_para.clone(),
-        //     committee_def.validator_id,
-        //     hotstuff_committee,
-        //     keypair.clone(),
-        //     tx_consensus,
-        //     store.clone(),
-        //     exit.clone(),
-        // )
-        // .await;
+        DvfCore::spawn(
+            operator_id,
+            committee_def.validator_id,
+            store.clone(),
+            exit.clone(),
+        )
+        .await;
 
         Ok(Self {
             signal: Some(signal),
@@ -576,13 +572,9 @@ unsafe impl Send for DvfCore {}
 unsafe impl Sync for DvfCore {}
 
 impl DvfCore {
-    pub async fn spawn<T: EthSpec>(
+    pub async fn spawn(
         operator_id: u64,
-        _node: Arc<RwLock<Node<T>>>,
         validator_id: u64,
-        _committee: HotstuffCommittee,
-        _keypair: Keypair,
-        _tx_consensus: MonitoredSender<Hash256>,
         store: Store,
         exit: exit_future::Exit,
     ) {

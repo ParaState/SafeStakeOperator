@@ -5,7 +5,7 @@ use crate::exit::get_distributed_voluntary_exit;
 use crate::network::io_committee::{SecureNetIOChannel, SecureNetIOCommittee};
 use crate::node::config::{
     base_to_duties_addr, base_to_signature_addr, NodeConfig, API_ADDRESS, DB_FILENAME,
-    DISCOVERY_PORT_OFFSET, DKG_PORT_OFFSET, PRESTAKE_SIGNATURE_URL, STAKE_SIGNATURE_URL,
+    DKG_PORT_OFFSET, PRESTAKE_SIGNATURE_URL, STAKE_SIGNATURE_URL,
     VALIDATOR_PK_URL,
 };
 use crate::node::contract::{
@@ -151,7 +151,7 @@ impl<T: EthSpec> Node<T> {
         let base_port = config.base_address.port();
         let discovery = Discovery::spawn(
             self_ip,
-            base_port + DISCOVERY_PORT_OFFSET,
+            base_port,
             secret.clone(),
             config.boot_enrs.clone(),
             config.base_store_path.clone(),
@@ -435,9 +435,9 @@ impl<T: EthSpec> Node<T> {
                         let node_lock = node.read().await;
                         // Query IP for each operator in this committee. If any of them changed, should restart the VA.
                         let mut restart = false;
+                        
                         for i in 0..committee_def.node_public_keys.len() {
-                            let boot_idx = rand::random::<usize>() % 2;
-                            if let Some(addr) = node_lock.discovery.query_addr_from_boot(boot_idx, &committee_def.node_public_keys[i].0).await {
+                            if let Some(addr) = node_lock.discovery.query_addr(&committee_def.node_public_keys[i].0).await {
                                 if let Some(socket) = committee_def.base_socket_addresses[i].as_mut() {
                                     if *socket != addr {
                                         info!("op id: {}, local committee definition address {}, queried result {}", committee_def.operator_ids[i], socket, addr);

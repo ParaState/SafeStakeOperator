@@ -15,7 +15,7 @@ pub const NODE_KEY_FILENAME: &str = "node_key.json";
 pub const NODE_KEY_HEX_FILENAME: &str = "node_key_hex.json";
 pub const DB_FILENAME: &str = "dvf_node_db";
 
-pub const DEFAULT_BASE_PORT: u16 = 25_000;
+pub const DEFAULT_BASE_PORT: u16 = 26_000;
 pub const TRANSACTION_PORT_OFFSET: u16 = 0;
 pub const MEMPOOL_PORT_OFFSET: u16 = 1;
 pub const CONSENSUS_PORT_OFFSET: u16 = 2;

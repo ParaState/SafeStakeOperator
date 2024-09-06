@@ -67,7 +67,7 @@ impl Discovery {
                     None => DEFAULT_BASE_PORT
                 };
                 store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(ip), discv_port)).unwrap()).await;
-                info!("0x{} seq set to {}, socket address {}:{}", base64::encode(enr.public_key().encode()), seq, ip, discv_port);
+                info!("{} seq set to {}, socket address {}:{}", base64::encode(enr.public_key().encode()), seq, ip, discv_port);
             }
         }
     }

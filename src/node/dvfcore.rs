@@ -61,20 +61,31 @@ pub enum BlockType {
 #[derive(Clone)]
 pub struct DvfSignatureReceiverHandler {
     pub store: Store,
+    pub keypair: Keypair
 }
 
 #[async_trait]
 impl MessageHandler for DvfSignatureReceiverHandler {
     async fn dispatch(&self, writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
         let msg: Vec<u8> = message.slice(..).to_vec();
-        match self.store.read(msg).await {
+        match self.store.read(msg.clone()).await {
             Ok(value) => match value {
                 Some(data) => {
                     let _ = writer.send(Bytes::from(data)).await;
                 }
                 None => {
-                    let _ = writer
+                    if msg.len() != 32 {
+                        let _ = writer
                         .send(Bytes::from("can't find signature, please wait"))
+                        .await;
+                        return Ok(());
+                    }
+                    let signing_root: [u8; 32] = msg.try_into().unwrap();
+                    let sig = self.keypair.sk.sign(Hash256::from(signing_root));
+                    let serialized_signature = bincode::serialize(&sig).unwrap();
+                    // save to local db
+                    let _ = writer
+                        .send(Bytes::from(serialized_signature))
                         .await;
                 }
             },
@@ -464,6 +475,7 @@ impl DvfSigner {
             validator_id,
             DvfSignatureReceiverHandler {
                 store: store.clone(),
+                keypair: keypair.clone()
             },
         );
         info!("Insert signature handler for validator: {}", validator_id);

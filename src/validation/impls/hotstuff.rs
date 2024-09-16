@@ -171,4 +171,11 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
     fn get_validator_pk(&self) -> PublicKey {
         self.validator_public_key.clone()
     }
+
+    async fn is_leader_active(&self, nonce: u64) -> bool {
+        let leader = self.get_leader(nonce).await;
+        let operators = &self.operators.read().await;
+        let operator = operators.get(&leader).unwrap().read().await;
+        operator.is_active().await
+    }
 }

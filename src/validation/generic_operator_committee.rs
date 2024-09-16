@@ -22,6 +22,7 @@ pub trait TOperatorCommittee: Send {
     async fn sign(&self, msg: Hash256) -> Result<(Signature, Vec<u64>), DvfError>;
     async fn get_leader(&self, nonce: u64) -> u64;
     async fn get_op_pos(&self, op_id: u64) -> usize;
+    async fn is_leader_active(&self, nonce: u64) -> bool;
     fn get_validator_pk(&self) -> PublicKey;
     fn threshold(&self) -> usize;
 }
@@ -81,5 +82,9 @@ where
 
     pub async fn consensus_on_duty(&self, data: &[u8]) {
         let _ = self.cmt.consensus_on_duty(data).await;
+    }
+
+    pub async fn is_leader_active(&self, nonce: u64) -> bool {
+        self.cmt.is_leader_active(nonce).await
     }
 }

@@ -1,4 +1,4 @@
-use crate::node::config::{DISCOVERY_PORT_OFFSET, DEFAULT_BASE_PORT};
+use crate::node::config::{DEFAULT_BASE_PORT, DISCOVERY_PORT_OFFSET};
 use crate::DEFAULT_CHANNEL_CAPACITY;
 use bytes::Bytes;
 use dvf_version::VERSION;
@@ -50,24 +50,40 @@ impl Discovery {
         let seq = enr.seq();
         let mut seq_key = pk.clone();
         seq_key.append(&mut "seq number".as_bytes().to_vec());
-        if store.read(seq_key.clone()).await.unwrap().map_or(true, |read_seq| {
-            let read_seq = u64::from_le_bytes(read_seq.try_into().unwrap());
-            seq > read_seq
-        }) {
+        if store
+            .read(seq_key.clone())
+            .await
+            .unwrap()
+            .map_or(true, |read_seq| {
+                let read_seq = u64::from_le_bytes(read_seq.try_into().unwrap());
+                seq > read_seq
+            })
+        {
             store.write(seq_key, seq.to_le_bytes().to_vec()).await;
             if let Some(ip) = enr.ip4() {
                 let discv_port = match enr.udp4() {
                     Some(port) => match port.checked_sub(DISCOVERY_PORT_OFFSET) {
                         Some(p) => p,
-                        None => { 
+                        None => {
                             error!("error happens when get port {}", port);
-                            return ;
+                            return;
                         }
                     },
-                    None => DEFAULT_BASE_PORT
+                    None => DEFAULT_BASE_PORT,
                 };
-                store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(ip), discv_port)).unwrap()).await;
-                info!("{} seq set to {}, socket address {}:{}", base64::encode(enr.public_key().encode()), seq, ip, discv_port);
+                store
+                    .write(
+                        enr.public_key().encode(),
+                        bincode::serialize(&SocketAddr::new(IpAddr::V4(ip), discv_port)).unwrap(),
+                    )
+                    .await;
+                info!(
+                    "{} seq set to {}, socket address {}:{}",
+                    base64::encode(enr.public_key().encode()),
+                    seq,
+                    ip,
+                    discv_port
+                );
             }
         }
     }
@@ -112,8 +128,7 @@ impl Discovery {
             builder.seq(seq);
             builder.build(&enr_key).unwrap()
         };
-        let base_address =
-            SocketAddr::new(ip, udp_port);
+        let base_address = SocketAddr::new(ip, udp_port);
         info!("Node ENR ip: {}, port: {}", ip, udp_port);
         info!("Node public key: {}", secret.name.encode_base64());
         info!("Node id: {}", base64::encode(local_enr.node_id().raw()));

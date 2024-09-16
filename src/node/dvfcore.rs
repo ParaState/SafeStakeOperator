@@ -1,3 +1,7 @@
+use crate::node::config::{
+    base_to_consensus_addr, base_to_mempool_addr, base_to_signature_addr, base_to_transaction_addr,
+    invalid_addr,
+};
 use crate::node::node::Node;
 use crate::node::utils::SignDigest;
 use crate::utils::error::DvfError;
@@ -8,12 +12,14 @@ use crate::validation::OperatorCommittee;
 use async_trait::async_trait;
 use bls::{Hash256, PublicKey as BlsPublicKey, Signature};
 use bytes::Bytes;
+use consensus::Committee as ConsensusCommittee;
 use futures::SinkExt;
 use hsconfig::Committee as HotstuffCommittee;
 use hscrypto::Digest;
 use hsutils::monitored_channel::MonitoredSender;
 use keccak_hash::keccak;
 use log::{error, info, warn};
+use mempool::Committee as MempoolCommittee;
 use network::{MessageHandler, Writer};
 use serde::{Deserialize, Serialize};
 use slashing_protection::SlashingDatabase;
@@ -58,9 +64,31 @@ pub enum BlockType {
     Full,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum DutySafety {
+    Invalid,
+    Safe,
+    NotSafe,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DutyConsensusResponse {
+    safety: DutySafety,
+    message: String,
+}
+
 #[derive(Clone)]
 pub struct DvfSignatureReceiverHandler {
     pub store: Store,
+}
+
+async fn reply(writer: &mut Writer, safety: DutySafety, message: String) {
+    let response = DutyConsensusResponse {
+        safety: safety,
+        message: message,
+    };
+    let serialzed_msg = bincode::serialize(&response).unwrap();
+    let _ = writer.send(Bytes::from(serialzed_msg));
 }
 
 #[async_trait]
@@ -85,8 +113,28 @@ impl MessageHandler for DvfSignatureReceiverHandler {
                 error!("can't read database, {}", e)
             }
         }
-        // Give the change to schedule other tasks.
-        //   tokio::task::yield_now().await;
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct DvfActiveReceiverHandler {
+    pub store: Store,
+    pub keypair: Keypair,
+}
+
+#[async_trait]
+impl MessageHandler for DvfActiveReceiverHandler {
+    async fn dispatch(&self, writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
+        let data: Vec<u8> = message.slice(..).to_vec();
+        if data.len() != 32 {
+            let _ = writer.send(Bytes::from("invalid message format, length must be 32"));
+            return Ok(());
+        }
+        let msg = Hash256::from_slice(&data[..]);
+        let sig = self.keypair.sk.sign(msg);
+        let serialized_signature = bincode::serialize(&sig).unwrap();
+        let _ = writer.send(Bytes::from(serialized_signature));
         Ok(())
     }
 }
@@ -137,44 +185,53 @@ impl<E: EthSpec> DvfDutyCheckHandler<E> {
             Ok(Safe::Valid) => {
                 let signable_msg = SignableMessage::BeaconBlock(&block);
                 let signing_root = signable_msg.signing_root(domain_hash);
-                info!("valid block duty, local sign and store {}", &signing_root);
+                info!(
+                    "valid proposal duty, local sign and store {}",
+                    &signing_root
+                );
                 let sig = self.keypair.sk.sign(signing_root);
                 let serialized_signature = bincode::serialize(&sig).unwrap();
                 // save to local db
                 let key = signing_root.as_bytes().into();
                 self.store.write(key, serialized_signature).await;
-                let _ = writer
-                    .send(Bytes::from(format!(
-                        "successfully consensus proposal on {}",
-                        signing_root
-                    )))
-                    .await;
+                reply(
+                    writer,
+                    DutySafety::Safe,
+                    format!("successfully consensus proposal on {}", signing_root),
+                )
+                .await;
             }
             Ok(Safe::SameData) => {
-                let _ = writer
-                    .send(Bytes::from("Skipping signing of previously signed block"))
-                    .await;
+                reply(
+                    writer,
+                    DutySafety::Safe,
+                    format!("skipping signing of previously signed block"),
+                )
+                .await;
                 info!("Skipping signing of previously signed block");
             }
             Err(NotSafe::UnregisteredValidator(pk)) => {
-                let _ = writer
-                    .send(Bytes::from(format!(
+                reply(
+                    writer,
+                    DutySafety::NotSafe,
+                    format!(
                         "Not signing block for unregistered validator public_key {:?}",
                         pk
-                    )))
-                    .await;
+                    ),
+                )
+                .await;
                 warn!(
-                    "Not signing block for unregistered validator public_key {}",
-                    format!("{:?}", pk)
+                    "Not signing block for unregistered validator public_key {:?}",
+                    pk
                 );
             }
             Err(e) => {
-                let _ = writer
-                    .send(Bytes::from(format!(
-                        "Not signing slashable block error {:?}",
-                        e
-                    )))
-                    .await;
+                reply(
+                    writer,
+                    DutySafety::NotSafe,
+                    format!("Not signing slashable block error {:?}", e),
+                )
+                .await;
                 error!("Not signing slashable block error {}", format!("{:?}", e));
             }
         }
@@ -187,10 +244,13 @@ impl<E: EthSpec> MessageHandler for DvfDutyCheckHandler<E> {
         let check_msg: DvfDutyCheckMessage = match bincode::deserialize(&message.slice(..)) {
             Ok(m) => m,
             Err(_) => {
-                let _ = writer
-                    .send(Bytes::from("failed to deserialize duty check msg"))
-                    .await;
-                error!("failed to deserialize duty check msg");
+                reply(
+                    writer,
+                    DutySafety::Invalid,
+                    format!("failed to deserialize duty consensus msg"),
+                )
+                .await;
+                error!("failed to deserialize duty consensus msg");
                 return Ok(());
             }
         };
@@ -199,7 +259,12 @@ impl<E: EthSpec> MessageHandler for DvfDutyCheckHandler<E> {
             Some(pk) => pk,
             None => {
                 return {
-                    let _ = writer.send(Bytes::from("failed to find operator")).await;
+                    reply(
+                        writer,
+                        DutySafety::Invalid,
+                        format!("failed to find operator"),
+                    )
+                    .await;
                     error!("failed to find operator");
                     Ok(())
                 }
@@ -210,11 +275,14 @@ impl<E: EthSpec> MessageHandler for DvfDutyCheckHandler<E> {
                 match hex::decode(s) {
                     Ok(s) => {
                         if s.len() != 64 {
-                            let _ = writer
-                                .send(Bytes::from(
-                                    "the length of the signature is not 64, ignore the message",
-                                ))
-                                .await;
+                            reply(
+                                writer,
+                                DutySafety::Invalid,
+                                format!(
+                                    "the length of the signature is not 64, ignore the message"
+                                ),
+                            )
+                            .await;
                             error!("the length of the signature is not 64, ignore the message");
                             return Ok(());
                         }
@@ -224,31 +292,36 @@ impl<E: EthSpec> MessageHandler for DvfDutyCheckHandler<E> {
                                 info!("successfully verified duty message");
                             }
                             Err(_) => {
-                                let _ = writer
-                                    .send(Bytes::from(
-                                        "failed to verify the signature of the duty message",
-                                    ))
-                                    .await;
+                                reply(
+                                    writer,
+                                    DutySafety::Invalid,
+                                    format!("failed to verify the signature of the duty message"),
+                                )
+                                .await;
                                 error!("failed to verify the signature of the duty message");
                                 return Ok(());
                             }
                         }
                     }
                     Err(_) => {
-                        let _ = writer
-                            .send(Bytes::from(
-                                "failed to decode signature, ignore the message",
-                            ))
-                            .await;
+                        reply(
+                            writer,
+                            DutySafety::Invalid,
+                            format!("failed to decode signature, ignore the message"),
+                        )
+                        .await;
                         error!("failed to decode signature, ignore the message");
                         return Ok(());
                     }
                 };
             }
             None => {
-                let _ = writer
-                    .send(Bytes::from("empty signature, ignore the message"))
-                    .await;
+                reply(
+                    writer,
+                    DutySafety::Invalid,
+                    format!("empty signature, ignore the message"),
+                )
+                .await;
                 error!("empty signature, ignore the message");
                 return Ok(());
             }
@@ -259,9 +332,12 @@ impl<E: EthSpec> MessageHandler for DvfDutyCheckHandler<E> {
                     match serde_json::from_slice(&check_msg.data) {
                         Ok(a) => a,
                         Err(_) => {
-                            let _ = writer
-                                .send(Bytes::from("failed to deserialize attestation data"))
-                                .await;
+                            reply(
+                                writer,
+                                DutySafety::Invalid,
+                                format!("failed to deserialize attestation data"),
+                            )
+                            .await;
                             error!("failed to deserialize attestation data");
                             return Ok(());
                         }
@@ -285,35 +361,36 @@ impl<E: EthSpec> MessageHandler for DvfDutyCheckHandler<E> {
                         // save to local db
                         let key = signing_root.as_bytes().into();
                         self.store.write(key, serialized_signature).await;
-                        let _ = writer
-                            .send(Bytes::from(format!(
-                                "successfully consensus attestation on {}",
-                                &signing_root
-                            )))
-                            .await;
+                        reply(
+                            writer,
+                            DutySafety::Safe,
+                            format!("successfully consensus attestation on {}", &signing_root),
+                        )
+                        .await;
                     }
                     Ok(Safe::SameData) => {
                         info!("Skipping signing of previously signed attestation");
-                        let _ = writer
-                            .send(Bytes::from(
-                                "Skipping signing of previously signed attestation",
-                            ))
-                            .await;
+                        reply(
+                            writer,
+                            DutySafety::Safe,
+                            format!("Skipping signing of previously signed attestation"),
+                        )
+                        .await;
                     }
                     Err(NotSafe::UnregisteredValidator(pk)) => {
-                        let _ = writer.send(Bytes::from(format!("Not signing attestation for unregistered validator public_key {:?}", pk))).await;
+                        reply(writer, DutySafety::NotSafe, format!("Not signing attestation for unregistered validator public_key {:?}", pk)).await;
                         warn!(
                             "Not signing attestation for unregistered validator public_key {}",
                             format!("{:?}", pk)
                         );
                     }
                     Err(e) => {
-                        let _ = writer
-                            .send(Bytes::from(format!(
-                                "Not signing slashable attestation {:?}",
-                                e
-                            )))
-                            .await;
+                        reply(
+                            writer,
+                            DutySafety::NotSafe,
+                            format!("Not signing slashable attestation {:?}", e),
+                        )
+                        .await;
                         error!("Not signing slashable attestation {}", format!("{:?}", e));
                     }
                 }
@@ -325,11 +402,12 @@ impl<E: EthSpec> MessageHandler for DvfDutyCheckHandler<E> {
                             match serde_json::from_slice(&check_msg.data) {
                                 Ok(b) => b,
                                 Err(_) => {
-                                    let _ = writer
-                                        .send(Bytes::from(
-                                            "failed to deserialize full proposal block",
-                                        ))
-                                        .await;
+                                    reply(
+                                        writer,
+                                        DutySafety::Invalid,
+                                        format!("failed to deserialize full proposal block"),
+                                    )
+                                    .await;
                                     error!("failed to deserialize full proposal block");
                                     return Ok(());
                                 }
@@ -341,11 +419,12 @@ impl<E: EthSpec> MessageHandler for DvfDutyCheckHandler<E> {
                             match serde_json::from_slice(&check_msg.data) {
                                 Ok(b) => b,
                                 Err(_) => {
-                                    let _ = writer
-                                        .send(Bytes::from(
-                                            "failed to deserialize blinded proposal block",
-                                        ))
-                                        .await;
+                                    reply(
+                                        writer,
+                                        DutySafety::Invalid,
+                                        format!("failed to deserialize blinded proposal block"),
+                                    )
+                                    .await;
                                     error!("failed to deserialize blinded proposal block");
                                     return Ok(());
                                 }
@@ -410,44 +489,6 @@ impl DvfSigner {
         operator_committee
             .add_operator(operator_id, local_operator)
             .await;
-
-        // Construct the committee for hotstuff protocol
-        // let epoch = 1;
-        // let stake = 1;
-        // let mempool_committee = MempoolCommittee::new(
-        //     committee_def
-        //         .node_public_keys
-        //         .iter()
-        //         .enumerate()
-        //         .map(|(i, pk)| {
-        //             let addr = committee_def.base_socket_addresses[i].unwrap_or(invalid_addr());
-        //             (
-        //                 pk.clone(),
-        //                 stake,
-        //                 base_to_transaction_addr(addr),
-        //                 base_to_mempool_addr(addr),
-        //                 base_to_signature_addr(addr),
-        //             )
-        //         })
-        //         .collect(),
-        //     epoch,
-        // );
-        // let consensus_committee = ConsensusCommittee::new(
-        //     committee_def
-        //         .node_public_keys
-        //         .iter()
-        //         .enumerate()
-        //         .map(|(i, pk)| {
-        //             let addr = committee_def.base_socket_addresses[i].unwrap_or(invalid_addr());
-        //             (pk.clone(), stake, base_to_consensus_addr(addr))
-        //         })
-        //         .collect(),
-        //     epoch,
-        // );
-        // let hotstuff_committee = HotstuffCommittee {
-        //     mempool: mempool_committee,
-        //     consensus: consensus_committee,
-        // };
 
         let store_path = node
             .config
@@ -525,7 +566,14 @@ impl DvfSigner {
 
     pub async fn is_aggregator(&self, nonce: u64) -> bool {
         self.operator_committee.get_leader(nonce).await == self.operator_id
-            || self.operator_committee.get_leader(nonce + 1).await == self.operator_id
+    }
+
+    pub async fn is_next_aggregator(&self, nonce: u64) -> bool {
+        self.operator_committee.get_leader(nonce + 1).await == self.operator_id
+    }
+
+    pub async fn is_leader_active(&self, nonce: u64) -> bool {
+        self.operator_committee.is_leader_active(nonce).await
     }
 
     pub async fn consensus_on_duty(&self, domain_hash: Hash256, check_type: DvfType, data: &[u8]) {
@@ -555,6 +603,49 @@ impl DvfSigner {
     pub fn operator_id(&self) -> u64 {
         self.operator_id
     }
+
+    pub fn hotstuff_committee(
+        &self,
+        committee_def: OperatorCommitteeDefinition,
+    ) -> HotstuffCommittee {
+        // Construct the committee for hotstuff protocol
+        let epoch = 1;
+        let stake = 1;
+        let mempool_committee = MempoolCommittee::new(
+            committee_def
+                .node_public_keys
+                .iter()
+                .enumerate()
+                .map(|(i, pk)| {
+                    let addr = committee_def.base_socket_addresses[i].unwrap_or(invalid_addr());
+                    (
+                        pk.clone(),
+                        stake,
+                        base_to_transaction_addr(addr),
+                        base_to_mempool_addr(addr),
+                        base_to_signature_addr(addr),
+                    )
+                })
+                .collect(),
+            epoch,
+        );
+        let consensus_committee = ConsensusCommittee::new(
+            committee_def
+                .node_public_keys
+                .iter()
+                .enumerate()
+                .map(|(i, pk)| {
+                    let addr = committee_def.base_socket_addresses[i].unwrap_or(invalid_addr());
+                    (pk.clone(), stake, base_to_consensus_addr(addr))
+                })
+                .collect(),
+            epoch,
+        );
+        HotstuffCommittee {
+            mempool: mempool_committee,
+            consensus: consensus_committee,
+        }
+    }
 }
 
 pub struct DvfCore {
@@ -572,12 +663,7 @@ unsafe impl Send for DvfCore {}
 unsafe impl Sync for DvfCore {}
 
 impl DvfCore {
-    pub async fn spawn(
-        operator_id: u64,
-        validator_id: u64,
-        store: Store,
-        exit: exit_future::Exit,
-    ) {
+    pub async fn spawn(operator_id: u64, validator_id: u64, store: Store, exit: exit_future::Exit) {
         // let node = node.read().await;
 
         // let (tx_commit, rx_commit) =

@@ -90,6 +90,14 @@ pub fn base_to_duties_addr(base_addr: SocketAddr) -> SocketAddr {
     }
 }
 
+pub fn base_to_active_addr(base_addr: SocketAddr) -> SocketAddr {
+    if is_addr_invalid(base_addr) {
+        base_addr
+    } else {
+        SocketAddr::new(base_addr.ip(), base_addr.port() + MEMPOOL_PORT_OFFSET)
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct NodeConfig {
     pub base_address: SocketAddr,

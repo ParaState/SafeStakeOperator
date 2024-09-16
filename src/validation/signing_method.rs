@@ -134,9 +134,14 @@ impl SigningContext {
 
 impl SigningMethod {
     pub async fn is_leader(&self, epoch: Epoch) -> bool {
+        let nonce = epoch.as_u64();
         match self {
             SigningMethod::DistributedKeystore { dvf_signer, .. } => {
-                dvf_signer.is_aggregator(epoch.as_u64()).await
+                if dvf_signer.is_leader_active(nonce).await {
+                    dvf_signer.is_aggregator(nonce).await
+                } else {
+                    dvf_signer.is_next_aggregator(nonce).await
+                }
             }
             _ => false,
         }
@@ -369,7 +374,7 @@ impl SigningMethod {
                         (e.epoch.start_slot(T::slots_per_epoch()), "VA_EXIT", true)
                     }
                 };
-                let is_aggregator = dvf_signer.is_aggregator(signing_epoch.as_u64()).await;
+                let is_aggregator = dvf_signer.is_aggregator(signing_epoch.as_u64()).await || dvf_signer.is_next_aggregator(signing_epoch.as_u64()).await;
                 log::info!(
                     "[Dvf {}/{}] Signing\t-\tSlot: {}.\tEpoch: {}.\tType: {}.\tRoot: {:?}. Is aggregator {}",
                     dvf_signer.operator_id,

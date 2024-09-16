@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use bytes::Bytes;
+use dvf::node::discovery::Discovery;
 use futures::prelude::*;
 use hsconfig::Export as _;
 use hsconfig::Secret;
@@ -17,7 +18,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use store::Store;
 use tokio::sync::RwLock;
-use dvf::node::discovery::Discovery;
 pub const DEFAULT_SECRET_DIR: &str = "node_key.json";
 pub const DEFAULT_STORE_DIR: &str = "boot_store";
 pub const DEFAULT_ROOT_DIR: &str = ".lighthouse";

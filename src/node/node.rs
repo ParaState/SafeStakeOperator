@@ -4,9 +4,8 @@ use crate::deposit::get_distributed_deposit;
 use crate::exit::get_distributed_voluntary_exit;
 use crate::network::io_committee::{SecureNetIOChannel, SecureNetIOCommittee};
 use crate::node::config::{
-    base_to_duties_addr, base_to_signature_addr, NodeConfig, API_ADDRESS, DB_FILENAME,
-    DKG_PORT_OFFSET, PRESTAKE_SIGNATURE_URL, STAKE_SIGNATURE_URL,
-    VALIDATOR_PK_URL,
+    base_to_active_addr, base_to_duties_addr, base_to_signature_addr, NodeConfig, API_ADDRESS,
+    DB_FILENAME, DKG_PORT_OFFSET, PRESTAKE_SIGNATURE_URL, STAKE_SIGNATURE_URL, VALIDATOR_PK_URL,
 };
 use crate::node::contract::{
     Contract, ContractCommand, EncryptedSecretKeys, Initiator, InitiatorStoreRecord, OperatorIds,
@@ -36,12 +35,10 @@ use crate::validation::{
     validator_store::ValidatorStore,
 };
 use bls::{Keypair as BlsKeypair, PublicKey as BlsPublicKey, SecretKey as BlsSecretKey};
-use consensus::ConsensusReceiverHandler;
 use eth2_keystore::KeystoreBuilder;
 use hsconfig::Export as _;
 use hsconfig::{ConfigError, Secret};
 use log::{error, info, warn};
-use mempool::{MempoolReceiverHandler, TxReceiverHandler};
 use network::Receiver as NetworkReceiver;
 use slot_clock::SystemTimeSlotClock;
 use std::collections::HashMap;
@@ -70,11 +67,12 @@ fn with_wildcard_ip(mut addr: SocketAddr) -> SocketAddr {
 pub struct Node<T: EthSpec> {
     pub config: NodeConfig,
     pub secret: Secret,
-    pub tx_handler_map: Arc<RwLock<HashMap<u64, TxReceiverHandler>>>,
-    pub mempool_handler_map: Arc<RwLock<HashMap<u64, MempoolReceiverHandler>>>,
-    pub consensus_handler_map: Arc<RwLock<HashMap<u64, ConsensusReceiverHandler>>>,
+    // pub tx_handler_map: Arc<RwLock<HashMap<u64, TxReceiverHandler>>>,
+    // pub mempool_handler_map: Arc<RwLock<HashMap<u64, MempoolReceiverHandler>>>,
+    // pub consensus_handler_map: Arc<RwLock<HashMap<u64, ConsensusReceiverHandler>>>,
     pub signature_handler_map: Arc<RwLock<HashMap<u64, DvfSignatureReceiverHandler>>>,
     pub duties_handler_map: Arc<RwLock<HashMap<u64, DvfDutyCheckHandler<T>>>>,
+    pub active_handler_map: Arc<RwLock<HashMap<u64, DvfDutyCheckHandler<T>>>>,
     pub validator_store: Option<Arc<ValidatorStore<SystemTimeSlotClock, T>>>,
     pub discovery: Arc<Discovery>,
     pub db: Database,
@@ -91,17 +89,24 @@ impl<T: EthSpec> Node<T> {
         create_node_key_hex_backup(config.node_key_hex_path.clone(), &secret)?;
         info!("node public key {}", secret.name.encode_base64());
 
-        let tx_handler_map = Arc::new(RwLock::new(HashMap::new()));
-        let mempool_handler_map = Arc::new(RwLock::new(HashMap::new()));
-        let consensus_handler_map = Arc::new(RwLock::new(HashMap::new()));
+        // let tx_handler_map = Arc::new(RwLock::new(HashMap::new()));
+        // let mempool_handler_map = Arc::new(RwLock::new(HashMap::new()));
+        // let consensus_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let signature_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let duties_handler_map = Arc::new(RwLock::new(HashMap::new()));
-
+        let active_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let duties_address = with_wildcard_ip(base_to_duties_addr(config.base_address));
+        let active_address = with_wildcard_ip(base_to_active_addr(config.base_address));
         NetworkReceiver::spawn(
             duties_address,
             Arc::clone(&duties_handler_map),
             "duties consensus",
+        );
+
+        NetworkReceiver::spawn(
+            active_address,
+            Arc::clone(&active_handler_map),
+            "active handler",
         );
         info!(
             "Node {} listening to duties consensus on {}",
@@ -170,11 +175,12 @@ impl<T: EthSpec> Node<T> {
         let node = Self {
             config,
             secret: secret.clone(),
-            tx_handler_map: Arc::clone(&tx_handler_map),
-            mempool_handler_map: Arc::clone(&mempool_handler_map),
-            consensus_handler_map: Arc::clone(&consensus_handler_map),
+            // tx_handler_map: Arc::clone(&tx_handler_map),
+            // mempool_handler_map: Arc::clone(&mempool_handler_map),
+            // consensus_handler_map: Arc::clone(&consensus_handler_map),
             signature_handler_map: Arc::clone(&signature_handler_map),
-            duties_handler_map: Arc::clone(&duties_handler_map),
+            duties_handler_map: duties_handler_map,
+            active_handler_map: active_handler_map,
             validator_store: None,
             discovery: Arc::new(discovery),
             db: db.clone(),
@@ -435,7 +441,7 @@ impl<T: EthSpec> Node<T> {
                         let node_lock = node.read().await;
                         // Query IP for each operator in this committee. If any of them changed, should restart the VA.
                         let mut restart = false;
-                        
+
                         for i in 0..committee_def.node_public_keys.len() {
                             if let Some(addr) = node_lock.discovery.query_addr(&committee_def.node_public_keys[i].0).await {
                                 if let Some(socket) = committee_def.base_socket_addresses[i].as_mut() {
@@ -760,7 +766,7 @@ pub async fn stop_validator<T: EthSpec>(
         let node_ = node.read().await;
         node_.validator_store.clone()
     };
-    
+
     match validator_store {
         Some(validator_store) => match validator_store.is_active(&validator_pk).await {
             Some(active) => {
@@ -1108,22 +1114,24 @@ pub async fn set_validator_fee_recipient<T: EthSpec>(
 
 pub async fn cleanup_handler<T: EthSpec>(node: Arc<RwLock<Node<T>>>, validator_id: u64) {
     let node_ = node.read().await;
-    let _ = node_.tx_handler_map.write().await.remove(&validator_id);
-    let _ = node_
-        .mempool_handler_map
-        .write()
-        .await
-        .remove(&validator_id);
-    let _ = node_
-        .consensus_handler_map
-        .write()
-        .await
-        .remove(&validator_id);
+    // let _ = node_.tx_handler_map.write().await.remove(&validator_id);
+    // let _ = node_
+    //     .mempool_handler_map
+    //     .write()
+    //     .await
+    //     .remove(&validator_id);
+    // let _ = node_
+    //     .consensus_handler_map
+    //     .write()
+    //     .await
+    //     .remove(&validator_id);
     let _ = node_
         .signature_handler_map
         .write()
         .await
         .remove(&validator_id);
+    let _ = node_.duties_handler_map.write().await.remove(&validator_id);
+    let _ = node_.active_handler_map.write().await.remove(&validator_id);
 }
 
 pub async fn cleanup_keystore<T: EthSpec>(

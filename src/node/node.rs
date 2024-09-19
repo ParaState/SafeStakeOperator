@@ -15,7 +15,7 @@ use crate::node::contract::{
 use crate::node::{
     db::{self, Database},
     discovery::Discovery,
-    dvfcore::{DvfDutyCheckHandler, DvfSignatureReceiverHandler},
+    dvfcore::{DvfDutyCheckHandler, DvfSignatureReceiverHandler, DvfActiveReceiverHandler},
     status_report::StatusReport,
     utils::{
         convert_address_to_withdraw_crendentials, request_to_web_server, DepositRequest,
@@ -72,7 +72,7 @@ pub struct Node<T: EthSpec> {
     // pub consensus_handler_map: Arc<RwLock<HashMap<u64, ConsensusReceiverHandler>>>,
     pub signature_handler_map: Arc<RwLock<HashMap<u64, DvfSignatureReceiverHandler>>>,
     pub duties_handler_map: Arc<RwLock<HashMap<u64, DvfDutyCheckHandler<T>>>>,
-    pub active_handler_map: Arc<RwLock<HashMap<u64, DvfDutyCheckHandler<T>>>>,
+    pub active_handler_map: Arc<RwLock<HashMap<u64, DvfActiveReceiverHandler>>>,
     pub validator_store: Option<Arc<ValidatorStore<SystemTimeSlotClock, T>>>,
     pub discovery: Arc<Discovery>,
     pub db: Database,

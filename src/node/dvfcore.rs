@@ -526,7 +526,14 @@ impl DvfSigner {
             },
         );
         info!("Insert duties handler for validator: {}", validator_id);
-
+        node.active_handler_map.write().await.insert(
+            validator_id,
+            DvfActiveReceiverHandler {
+                store: store.clone(),
+                keypair: keypair.clone(),
+            }
+        );
+        info!("Insert active handler for validator: {}", validator_id);
         DvfCore::spawn(
             operator_id,
             committee_def.validator_id,

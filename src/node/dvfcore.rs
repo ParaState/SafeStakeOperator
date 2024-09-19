@@ -88,7 +88,7 @@ async fn reply(writer: &mut Writer, safety: DutySafety, message: String) {
         message: message,
     };
     let serialzed_msg = bincode::serialize(&response).unwrap();
-    let _ = writer.send(Bytes::from(serialzed_msg));
+    let _ = writer.send(Bytes::from(serialzed_msg)).await;
 }
 
 #[async_trait]
@@ -134,7 +134,7 @@ impl MessageHandler for DvfActiveReceiverHandler {
         let msg = Hash256::from_slice(&data[..]);
         let sig = self.keypair.sk.sign(msg);
         let serialized_signature = bincode::serialize(&sig).unwrap();
-        let _ = writer.send(Bytes::from(serialized_signature));
+        let _ = writer.send(Bytes::from(serialized_signature)).await;
         Ok(())
     }
 }

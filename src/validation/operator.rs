@@ -11,7 +11,7 @@ use crate::utils::error::DvfError;
 use async_trait::async_trait;
 use bytes::Bytes;
 use downcast_rs::DowncastSync;
-use log::{debug, info, warn};
+use log::{debug, info, warn, error};
 use network::{DvfMessage, ReliableSender, SimpleSender, VERSION};
 use tokio::time::{sleep_until, timeout, Instant};
 use types::{Hash256, Keypair, PublicKey, Signature};
@@ -157,7 +157,7 @@ impl TOperator for RemoteOperator {
                             return Ok(bls_signature);
                         }
                         Err(_) => {
-                            warn!(
+                            debug!(
                                 "Deserialize failed from operator {}/{}, retry..., msg: {:?} received data: {:?}",
                                 self.operator_id, self.validator_id, msg, std::str::from_utf8(&data)
                             );
@@ -225,7 +225,8 @@ impl TOperator for RemoteOperator {
                     Ok(data) => {
                         let resp = match bincode::deserialize::<DutyConsensusResponse>(&data) {
                             Ok(r) => r,
-                            Err(_) => {
+                            Err(e) => {
+                                error!("failed to deserialize response data, {:?}", e);
                                 return;
                             }
                         };

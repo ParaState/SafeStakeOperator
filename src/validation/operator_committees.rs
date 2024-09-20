@@ -27,6 +27,7 @@ impl OperatorCommittee {
             let operator = RemoteOperator::new(
                 def.validator_id,
                 def.operator_ids[i],
+                def.node_public_keys[i].clone(),
                 def.operator_public_keys[i].clone(),
                 addr,
             );

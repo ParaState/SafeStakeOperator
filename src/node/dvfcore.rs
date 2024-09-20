@@ -15,7 +15,7 @@ use bytes::Bytes;
 use consensus::Committee as ConsensusCommittee;
 use futures::SinkExt;
 use hsconfig::Committee as HotstuffCommittee;
-use hscrypto::Digest;
+use hscrypto::{Digest, SecretKey as HotstuffSecretKey, Signature as HotstuffSignature};
 use hsutils::monitored_channel::MonitoredSender;
 use keccak_hash::keccak;
 use log::{error, info, warn};
@@ -120,7 +120,7 @@ impl MessageHandler for DvfSignatureReceiverHandler {
 #[derive(Clone)]
 pub struct DvfActiveReceiverHandler {
     pub store: Store,
-    pub keypair: Keypair,
+    pub secret: HotstuffSecretKey,
 }
 
 #[async_trait]
@@ -131,8 +131,8 @@ impl MessageHandler for DvfActiveReceiverHandler {
             let _ = writer.send(Bytes::from("invalid message format, length must be 32"));
             return Ok(());
         }
-        let msg = Hash256::from_slice(&data[..]);
-        let sig = self.keypair.sk.sign(msg);
+        let msg: [u8; 32] = data.try_into().unwrap();
+        let sig = HotstuffSignature::new(&Digest::from(&msg), &self.secret);
         let serialized_signature = bincode::serialize(&sig).unwrap();
         let _ = writer.send(Bytes::from(serialized_signature)).await;
         Ok(())
@@ -530,7 +530,7 @@ impl DvfSigner {
             validator_id,
             DvfActiveReceiverHandler {
                 store: store.clone(),
-                keypair: keypair.clone(),
+                secret: node_secret.clone(),
             }
         );
         info!("Insert active handler for validator: {}", validator_id);

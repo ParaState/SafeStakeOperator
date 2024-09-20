@@ -15,6 +15,7 @@ use log::{debug, info, warn, error};
 use network::{DvfMessage, ReliableSender, SimpleSender, VERSION};
 use tokio::time::{sleep_until, timeout, Instant};
 use types::{Hash256, Keypair, PublicKey, Signature};
+use hscrypto::{PublicKey as HotstuffPublicKey, Signature as HotstuffSignature, Digest};
 pub enum OperatorMessage {}
 
 #[async_trait]
@@ -115,7 +116,8 @@ impl LocalOperator {
 pub struct RemoteOperator {
     pub validator_id: u64,
     pub operator_id: u64,
-    pub operator_public_key: PublicKey,
+    pub operator_node_pk: HotstuffPublicKey,
+    pub operator_shared_pk: PublicKey,
     // pub signature_address: SocketAddr,
     pub base_address: SocketAddr,
     network: ReliableSender,
@@ -189,7 +191,7 @@ impl TOperator for RemoteOperator {
     }
 
     fn public_key(&self) -> PublicKey {
-        self.operator_public_key.clone()
+        self.operator_shared_pk.clone()
     }
 
     async fn propose(&self, _msg: Hash256) {}
@@ -261,13 +263,14 @@ impl TOperator for RemoteOperator {
         }
 
         let n_try: u64 = 1;
-        let timeout_mill: u64 = 200;
+        let timeout_mill: u64 = 600;
         let sleep_mill: u64 = 300;
         let random_hash = Hash256::random();
+        let msg = random_hash.to_fixed_bytes();
         let dvf_message = DvfMessage {
             version: VERSION,
             validator_id: self.validator_id,
-            message: random_hash.to_fixed_bytes().to_vec(),
+            message: msg.to_vec(),
         };
 
         let serialize_msg = bincode::serialize(&dvf_message).unwrap();
@@ -279,12 +282,29 @@ impl TOperator for RemoteOperator {
             let result = timeout(Duration::from_millis(timeout_mill), receiver).await;
             match result {
                 Ok(output) => match output {
-                    Ok(data) => match bincode::deserialize::<Signature>(&data) {
+                    Ok(data) => match bincode::deserialize::<HotstuffSignature>(&data) {
                         Ok(sig) => {
-                            return sig.verify(&self.operator_public_key, random_hash);
+                            match sig.verify(&Digest::from(&msg), &self.operator_node_pk) {
+                                Ok(_) => {
+                                    info!(
+                                        "[{}/{}] is active",
+                                        self.operator_id, self.validator_id
+                                    );
+                                    return true;
+                                },
+                                Err(_) => {
+                                    warn!(
+                                        "[{}/{}] is not active!",
+                                        self.operator_id, self.validator_id
+                                    );
+                                }
+                            }
                         }
                         Err(_) => {
-                            return false;
+                            warn!(
+                                "[{}/{}] deserialize signature failed!",
+                                self.operator_id, self.validator_id
+                            );
                         }
                     },
                     Err(_) => {
@@ -311,13 +331,15 @@ impl RemoteOperator {
     pub fn new(
         validator_id: u64,
         operator_id: u64,
-        operator_public_key: PublicKey,
+        operator_node_pk: HotstuffPublicKey,
+        operator_shared_pk: PublicKey,
         base_address: SocketAddr,
     ) -> Self {
         Self {
             validator_id,
             operator_id,
-            operator_public_key,
+            operator_node_pk,
+            operator_shared_pk,
             base_address,
             network: ReliableSender::new(),
         }
@@ -332,11 +354,12 @@ async fn remote_operator_test() {
     logger.init();
     let validator_id = 1888062277302860207;
     let operator_id = 3;
-    let operator_public_key = PublicKey::deserialize(&hex::decode("86b85f1340b60b7f0c0fc73ef9ca59ce6ea8efc82c8d8d6590d2bf4fc34c9936779090932f19484b6a6942eb93d5e1c5").unwrap()).unwrap();
+    let operator_shared_pk = PublicKey::deserialize(&hex::decode("86b85f1340b60b7f0c0fc73ef9ca59ce6ea8efc82c8d8d6590d2bf4fc34c9936779090932f19484b6a6942eb93d5e1c5").unwrap()).unwrap();
     let remote_operator = RemoteOperator::new(
         validator_id,
         operator_id,
-        operator_public_key,
+        HotstuffPublicKey::default(),
+        operator_shared_pk,
         "13.228.88.177:26000".parse().unwrap(),
     );
     remote_operator

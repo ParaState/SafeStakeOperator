@@ -388,7 +388,7 @@ impl SigningMethod {
 
                 // Following LocalKeystore, if the code logic reaches here, then it has already passed all checks of this duty, and
                 // it is safe (from this operator's point of view) to sign it locally.
-                // dvf_signer.local_sign_and_store(signing_root).await;
+                dvf_signer.local_sign_and_store(signing_root).await;
                 if !only_aggregator || (only_aggregator && is_aggregator) {
                     log::debug!("[Dvf {}/{}] Leader trying to achieve duty consensus and aggregate duty signatures",
                         dvf_signer.operator_id,

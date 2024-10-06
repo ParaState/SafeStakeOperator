@@ -1,4 +1,4 @@
-# SafeStake: Running an Operator Node (on going)
+# SafeStake: Running an Operator Node
 
 _**Updates happen frequently! Our**_ [_**Github**_](https://github.com/ParaState/SafeStakeOperator) _**always has the latest operator node resources and setup instructions.**_
 
@@ -13,7 +13,7 @@ _**Updates happen frequently! Our**_ [_**Github**_](https://github.com/ParaState
   * (Standalone Mode Recommend)
     * CPU: 16
     * Memory: 32G
-    * Disk: 600GB
+    * Disk: 2TB
   * (Light Mode Recommend)
     * CPU: 2
     * Memory: 4G
@@ -65,7 +65,7 @@ Log in to your host cloud service provider, open the following firewall inbound 
 | Inbound/Ingress  | TCP         | 26005 | 0.0.0.0/0 | DKG port, which will listen only when DKG is triggered. By default, the port won't listen.|
 
 
-#### 2. SSH Login to your server ([jumpserver](https://www.jumpserver.org/) recommand)
+#### 2. SSH Login to your server (recommand [jumpserver](https://www.jumpserver.org/))
 
 #### 3. Install Docker and Docker compose
 
@@ -109,19 +109,20 @@ NOTE: This step is to provide a quick way to setup and run the execution client 
 ```bash
 cd dvf
 cp .env.example .env
-sudo docker compose -f docker-compose-operator.yml up geth -d
+sudo docker compose -f docker-compose-operator-mev.yml up geth -d
 # OR, if you use Nethermind/Besu/Erigon:
-# sudo docker compose -f docker-compose-operator.yml up nethermind -d
-# sudo docker compose -f docker-compose-operator.yml up besu -d
-# sudo docker compose -f docker-compose-operator.yml up erigon -d
-sudo docker compose -f docker-compose-operator.yml up lighthouse -d
+# sudo docker compose -f docker-compose-operator-mev.yml up nethermind -d
+# sudo docker compose -f docker-compose-operator-mev.yml up besu -d
+# sudo docker compose -f docker-compose-operator-mev.yml up erigon -d
+sudo docker compose -f docker-compose-operator-mev.yml up mev-boost -d
+sudo docker compose -f docker-compose-operator-mev.yml up lighthouse -d
 ```
 
 NOTE: Remember to open the `5052` firewall port for this host
 
 Syncing data may take several hours. You can use the command to see the latest logs of lighthouse to check if the data is synced:
 ```bash
-sudo docker compose -f docker-compose-operator.yml logs -f --tail 10 lighthouse
+sudo docker compose -f docker-compose-operator-mev.yml logs -f --tail 10 lighthouse
 ```
 
 Once the data is synced, you will see output like below:
@@ -163,7 +164,7 @@ BEACON_NODE_ENDPOINT=http://12.102.103.1:5052
 
 #### 10. Generate a registration public and private key
 ```bash
-sudo docker compose -f docker-compose-operator.yml up dvf_key_tool
+sudo docker compose -f docker-compose-operator-mev.yml up dvf_key_tool
 ```
 Output:
 ```
@@ -171,14 +172,14 @@ Output:
 dvf-dvf_key_tool-1  | INFO: node public key AtzozvDHiWUpO+oJph2ikv+EyBN5pdBXsfgZqLi0+Yqd
 dvf-dvf_key_tool-1 exited with code 0
 ```
-Save the public key, which will be used later. Or you can find the public key in the "name" field of the file `/data/operator/v1/holesky/node_key.json`
+Save the public key, which will be used later. Or you can find the public key in the "name" field of the file `/data/operator/v1/mainnet/node_key.json`
 
-#### 11. Go to [SafeStake website](https://holesky.safestake.xyz/):
+#### 11. Go to [SafeStake website](https://eth.safestake.xyz/):
 * Click "Join As Operator".
 
 <figure><img src="imgs/operatpr-setup1.png" alt=""><figcaption></figcaption></figure>
 
-* Select a wallet where you have enough holesky testnet token to pay minimum fee to sign a transaction.
+* Select a wallet where you have enough ETH to pay minimum fee to sign a transaction.
 <figure><img src="imgs/operatpr-setup2.png" alt=""><figcaption></figcaption></figure>
 
 
@@ -205,12 +206,12 @@ OPERATOR_ID= #The Operator ID is the ID you receive after registering the operat
 ```
 
 #### 13. (Optional) Customize the base port
-You are able to change the ports that will be exposed in case the default ports 26000-26005 conflict with the ports you are using. In the file `docker-compose-operator.yml`, change `--base-port=26000` to the port you want in the operator's start command.
+You are able to change the ports that will be exposed in case the default ports 26000-26005 conflict with the ports you are using. In the file `docker-compose-operator-mev.yml`, change `--base-port=26000` to the port you want in the operator's start command.
 
 #### 14. Start operator service
 
 ```bash
-sudo docker compose -f docker-compose-operator.yml up --force-recreate -d operator
+sudo docker compose -f docker-compose-operator-mev.yml up --force-recreate -d operator
 ```
 
 
@@ -224,7 +225,7 @@ sudo docker compose -f docker-compose-operator.yml up --force-recreate -d operat
 You can always view your public key in case you forget it with the command:
 
 ```
-sudo docker compose -f docker-compose-operator.yml logs -f operator | grep "node public key"
+sudo docker compose -f docker-compose-operator-mev.yml logs -f operator | grep "node public key"
 ```
 
 output
@@ -236,20 +237,20 @@ It is a good practice to back up your operator private key file
 > **Keep it safe and put it in a safe place!**
 
 ```
-/data/operator/v1/holesky/node_key.json
+/data/operator/v1/mainnet/node_key.json
 ```
 
 **`Your SafeStake Operator Node is now configured`**
 
-then you may go to [SafeStake website](https://holesky.safestake.xyz/) to register a validator and then choose your operator.
+then you may go to [SafeStake website](https://eth.safestake.xyz/) to register a validator and then choose your operator.
 
 ## Backup and Migration
 
 If you are using our default settings, all data other than configration files is stored in the folder `/data`. It is possible for Geth/Nethermind/Besu/Erigon and lighthouse to resync data in a new machine. For operator, it is important to always backup and copy the folder `/data/operator/` to the new machine before you start operator in the new machine.
 
-Some description of the folders and files under `/data/operator/v1/holesky/`:
+Some description of the folders and files under `/data/operator/v1/mainnet/`:
 ```
-── holesky
+── mainnet
     ├── contract_record.yml # record the current synced block number
     ├── dvf_node_db # hotstuff consensus files
     ├── node_key.json # operator's public and private key
@@ -265,7 +266,7 @@ graph TD;
     B --> |Yes| D[check if the following errors \nshown in the log of first 100 lines];
     D --> |?| E[Wrong scheme: https];
     E --> |solution| F["WS_URL in .env file should be set\n beginning with ws:// or wss:// instead of https://"];
-    F --> G[change the block number in the file\n /data/operator/v1/holesky/contract_record.yml to \na block number before the registration of the validator];
+    F --> G[change the block number in the file\n /data/operator/v1/mainnet/contract_record.yml to \na block number before the registration of the validator];
     G --> H[restart operator];
     D --> |?| K["Failed to connect to {ip}:26000"];
     K --> |solution| L[need to open the port 26000 to the internet,\n also carefully check if other firewall rules shown\n in the doc are set correctly in your server];

@@ -1,6 +1,6 @@
 mod attestation_service;
 mod beacon_node_fallback;
-mod block_service;
+pub mod block_service;
 mod check_synced;
 mod cli;
 mod config;
@@ -11,7 +11,7 @@ mod key_cache;
 mod latency;
 mod notifier;
 mod preparation_service;
-mod signing_method;
+pub mod signing_method;
 mod sync_committee_service;
 
 pub mod account_utils;
@@ -77,6 +77,7 @@ const WAITING_FOR_GENESIS_POLL_TIME: Duration = Duration::from_secs(12);
 /// This can help ensure that proper endpoint fallback occurs.
 const HTTP_ATTESTATION_TIMEOUT_QUOTIENT: u32 = 4;
 const HTTP_ATTESTER_DUTIES_TIMEOUT_QUOTIENT: u32 = 4;
+const HTTP_ATTESTATION_SUBSCRIPTIONS_TIMEOUT_QUOTIENT: u32 = 24;
 const HTTP_LIVENESS_TIMEOUT_QUOTIENT: u32 = 4;
 const HTTP_PROPOSAL_TIMEOUT_QUOTIENT: u32 = 2;
 const HTTP_PROPOSER_DUTIES_TIMEOUT_QUOTIENT: u32 = 4;
@@ -112,16 +113,10 @@ async fn check_synced<T: SlotClock, E: EthSpec>(
             OfflineOnFailure::Yes,
             |beacon_node| async move {
                 if let Ok(response) = beacon_node.get_node_syncing().await {
-                    if let Some(is_optimistic) = response.data.is_optimistic {
-                        // "Optimistic" means the execution engine is not yet synced
-                        // https://github.com/sigp/lighthouse/blob/38514c07f222ff7783834c48cf5c0a6ee7f346d0/beacon_node/client/src/notifier.rs#L268
-                        if is_optimistic {
-                            Err("unsynced")
-                        } else {
-                            Ok(())
-                        }
+                    if response.data.is_optimistic {
+                        Err("unsynced")
                     } else {
-                        Err("unknown")
+                        Ok(())
                     }
                 } else {
                     Err("unknown")
@@ -159,6 +154,7 @@ pub struct ProductionValidatorClient<T: EthSpec> {
     doppelganger_service: Option<Arc<DoppelgangerService>>,
     preparation_service: PreparationService<SystemTimeSlotClock, T>,
     validator_store: Arc<ValidatorStore<SystemTimeSlotClock, T>>,
+    slot_clock: SystemTimeSlotClock,
     http_api_listen_addr: Option<SocketAddr>,
     config: Config,
     beacon_nodes: Arc<BeaconNodeFallback<SystemTimeSlotClock, T>>,
@@ -260,39 +256,13 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             .await
             .map_err(|e| format!("Dvf node creation failed: {}", e))?;
 
-        let validators = InitializedValidators::from_definitions(
-            validator_defs,
-            config.validator_dir.clone(),
-            Some(node.clone()),
-            log.clone(),
-        )
-        .await
-        .map_err(|e| format!("Unable to initialize validators: {:?}", e))?;
-
-        let voting_pubkeys: Vec<_> = validators.iter_voting_pubkeys().collect();
-
-        info!(
-            log,
-            "Initialized validators";
-            "disabled" => validators.num_total().saturating_sub(validators.num_enabled()),
-            "enabled" => validators.num_enabled(),
-        );
-
-        if voting_pubkeys.is_empty() {
-            warn!(
-                log,
-                "No enabled validators";
-                "hint" => "create validators via the API, or the `lighthouse account` CLI command"
-            );
-        }
-
-        // Initialize slashing protection.
+        // Initialize slashing protection before initializing validators
         //
         // Create the slashing database if there are no validators, even if
         // `init_slashing_protection` is not supplied. There is no risk in creating a slashing
         // database without any validators in it.
         let slashing_db_path = config.validator_dir.join(SLASHING_PROTECTION_FILENAME);
-        let slashing_protection = if config.init_slashing_protection || voting_pubkeys.is_empty() {
+        let slashing_protection = if config.init_slashing_protection || validator_defs.is_empty() {
             SlashingDatabase::open_or_create(&slashing_db_path).map_err(|e| {
                 format!(
                     "Failed to open or create slashing protection database: {:?}",
@@ -308,6 +278,32 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
                 )
             })
         }?;
+
+        let validators = InitializedValidators::from_definitions(
+            validator_defs,
+            config.validator_dir.clone(),
+            Some(node.clone()),
+            log.clone(),
+            slashing_protection.clone(),
+        )
+        .await
+        .map_err(|e| format!("Unable to initialize validators: {:?}", e))?;
+
+        let voting_pubkeys: Vec<_> = validators.iter_voting_pubkeys().collect();
+        info!(
+            log,
+            "Initialized validators";
+            "disabled" => validators.num_total().saturating_sub(validators.num_enabled()),
+            "enabled" => validators.num_enabled(),
+        );
+
+        if voting_pubkeys.is_empty() {
+            warn!(
+                log,
+                "No enabled validators";
+                "hint" => "create validators via the API, or the `lighthouse account` CLI command"
+            );
+        }
 
         // Check validator registration with slashing protection, or auto-register all validators.
         if config.init_slashing_protection {
@@ -364,6 +360,8 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
                 Timeouts {
                     attestation: slot_duration / HTTP_ATTESTATION_TIMEOUT_QUOTIENT,
                     attester_duties: slot_duration / HTTP_ATTESTER_DUTIES_TIMEOUT_QUOTIENT,
+                    attestation_subscriptions: slot_duration
+                        / HTTP_ATTESTATION_SUBSCRIPTIONS_TIMEOUT_QUOTIENT,
                     liveness: slot_duration / HTTP_LIVENESS_TIMEOUT_QUOTIENT,
                     proposal: slot_duration / HTTP_PROPOSAL_TIMEOUT_QUOTIENT,
                     proposer_duties: slot_duration / HTTP_PROPOSER_DUTIES_TIMEOUT_QUOTIENT,
@@ -572,7 +570,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         let sync_committee_service = SyncCommitteeService::new(
             duties_service.clone(),
             validator_store.clone(),
-            slot_clock,
+            slot_clock.clone(),
             beacon_nodes.clone(),
             context.service_context("sync_committee".into()),
         );
@@ -593,6 +591,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             preparation_service,
             validator_store,
             config,
+            slot_clock,
             http_api_listen_addr: None,
             genesis_time,
             beacon_nodes,
@@ -615,8 +614,13 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
                 api_secret,
                 validator_store: Some(self.validator_store.clone()),
                 validator_dir: Some(self.config.validator_dir.clone()),
+                secrets_dir: Some(self.config.secrets_dir.clone()),
+                graffiti_file: self.config.graffiti_file.clone(),
+                graffiti_flag: self.config.graffiti,
                 spec: self.context.eth2_config.spec.clone(),
                 config: self.config.http_api.clone(),
+                sse_logging_components: self.context.sse_logging_components.clone(),
+                slot_clock: self.slot_clock.clone(),
                 log: log.clone(),
                 _phantom: PhantomData,
             });

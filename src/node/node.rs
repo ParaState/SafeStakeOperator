@@ -4,9 +4,8 @@ use crate::deposit::get_distributed_deposit;
 use crate::exit::get_distributed_voluntary_exit;
 use crate::network::io_committee::{SecureNetIOChannel, SecureNetIOCommittee};
 use crate::node::config::{
-    base_to_consensus_addr, base_to_mempool_addr, base_to_signature_addr, base_to_transaction_addr,
-    NodeConfig, API_ADDRESS, DB_FILENAME, DISCOVERY_PORT_OFFSET, DKG_PORT_OFFSET,
-    PRESTAKE_SIGNATURE_URL, STAKE_SIGNATURE_URL, VALIDATOR_PK_URL,
+    base_to_active_addr, base_to_duties_addr, base_to_signature_addr, NodeConfig, API_ADDRESS,
+    DB_FILENAME, DKG_PORT_OFFSET, PRESTAKE_SIGNATURE_URL, STAKE_SIGNATURE_URL, VALIDATOR_PK_URL,
 };
 use crate::node::contract::{
     Contract, ContractCommand, EncryptedSecretKeys, Initiator, InitiatorStoreRecord, OperatorIds,
@@ -16,7 +15,7 @@ use crate::node::contract::{
 use crate::node::{
     db::{self, Database},
     discovery::Discovery,
-    dvfcore::DvfSignatureReceiverHandler,
+    dvfcore::{DvfDutyCheckHandler, DvfSignatureReceiverHandler, DvfActiveReceiverHandler},
     status_report::StatusReport,
     utils::{
         convert_address_to_withdraw_crendentials, request_to_web_server, DepositRequest,
@@ -36,12 +35,10 @@ use crate::validation::{
     validator_store::ValidatorStore,
 };
 use bls::{Keypair as BlsKeypair, PublicKey as BlsPublicKey, SecretKey as BlsSecretKey};
-use consensus::ConsensusReceiverHandler;
 use eth2_keystore::KeystoreBuilder;
 use hsconfig::Export as _;
 use hsconfig::{ConfigError, Secret};
 use log::{error, info, warn};
-use mempool::{MempoolReceiverHandler, TxReceiverHandler};
 use network::Receiver as NetworkReceiver;
 use slot_clock::SystemTimeSlotClock;
 use std::collections::HashMap;
@@ -56,7 +53,7 @@ use validator_dir::insecure_keys::INSECURE_PASSWORD;
 use web3::types::H160;
 
 const THRESHOLD: u64 = 3;
-pub const COMMITTEE_IP_HEARTBEAT_INTERVAL: u64 = 180;
+pub const COMMITTEE_IP_HEARTBEAT_INTERVAL: u64 = 1800;
 pub const BALANCE_USED_UP: i64 = 1;
 pub const BALANCE_STILL_AVAILABLE: i64 = 0;
 // type InitiatorStore =
@@ -70,10 +67,12 @@ fn with_wildcard_ip(mut addr: SocketAddr) -> SocketAddr {
 pub struct Node<T: EthSpec> {
     pub config: NodeConfig,
     pub secret: Secret,
-    pub tx_handler_map: Arc<RwLock<HashMap<u64, TxReceiverHandler>>>,
-    pub mempool_handler_map: Arc<RwLock<HashMap<u64, MempoolReceiverHandler>>>,
-    pub consensus_handler_map: Arc<RwLock<HashMap<u64, ConsensusReceiverHandler>>>,
+    // pub tx_handler_map: Arc<RwLock<HashMap<u64, TxReceiverHandler>>>,
+    // pub mempool_handler_map: Arc<RwLock<HashMap<u64, MempoolReceiverHandler>>>,
+    // pub consensus_handler_map: Arc<RwLock<HashMap<u64, ConsensusReceiverHandler>>>,
     pub signature_handler_map: Arc<RwLock<HashMap<u64, DvfSignatureReceiverHandler>>>,
+    pub duties_handler_map: Arc<RwLock<HashMap<u64, DvfDutyCheckHandler<T>>>>,
+    pub active_handler_map: Arc<RwLock<HashMap<u64, DvfActiveReceiverHandler>>>,
     pub validator_store: Option<Arc<ValidatorStore<SystemTimeSlotClock, T>>>,
     pub discovery: Arc<Discovery>,
     pub db: Database,
@@ -90,39 +89,58 @@ impl<T: EthSpec> Node<T> {
         create_node_key_hex_backup(config.node_key_hex_path.clone(), &secret)?;
         info!("node public key {}", secret.name.encode_base64());
 
-        let tx_handler_map = Arc::new(RwLock::new(HashMap::new()));
-        let mempool_handler_map = Arc::new(RwLock::new(HashMap::new()));
-        let consensus_handler_map = Arc::new(RwLock::new(HashMap::new()));
+        // let tx_handler_map = Arc::new(RwLock::new(HashMap::new()));
+        // let mempool_handler_map = Arc::new(RwLock::new(HashMap::new()));
+        // let consensus_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let signature_handler_map = Arc::new(RwLock::new(HashMap::new()));
-
-        let transaction_address = with_wildcard_ip(base_to_transaction_addr(config.base_address));
+        let duties_handler_map = Arc::new(RwLock::new(HashMap::new()));
+        let active_handler_map = Arc::new(RwLock::new(HashMap::new()));
+        let duties_address = with_wildcard_ip(base_to_duties_addr(config.base_address));
+        let active_address = with_wildcard_ip(base_to_active_addr(config.base_address));
         NetworkReceiver::spawn(
-            transaction_address,
-            Arc::clone(&tx_handler_map),
-            "transaction",
-        );
-        info!(
-            "Node {} listening to client transactions on {}",
-            secret.name, transaction_address
+            duties_address,
+            Arc::clone(&duties_handler_map),
+            "duties consensus",
         );
 
-        let mempool_address = with_wildcard_ip(base_to_mempool_addr(config.base_address));
-        NetworkReceiver::spawn(mempool_address, Arc::clone(&mempool_handler_map), "mempool");
-        info!(
-            "Node {} listening to mempool messages on {}",
-            secret.name, mempool_address
-        );
-
-        let consensus_address = with_wildcard_ip(base_to_consensus_addr(config.base_address));
         NetworkReceiver::spawn(
-            consensus_address,
-            Arc::clone(&consensus_handler_map),
-            "consensus",
+            active_address,
+            Arc::clone(&active_handler_map),
+            "active handler",
         );
         info!(
-            "Node {} listening to consensus messages on {}",
-            secret.name, consensus_address
+            "Node {} listening to duties consensus on {}",
+            secret.name, duties_address
         );
+
+        // let transaction_address = with_wildcard_ip(base_to_transaction_addr(config.base_address));
+        // NetworkReceiver::spawn(
+        //     transaction_address,
+        //     Arc::clone(&tx_handler_map),
+        //     "transaction",
+        // );
+        // info!(
+        //     "Node {} listening to client transactions on {}",
+        //     secret.name, transaction_address
+        // );
+
+        // let mempool_address = with_wildcard_ip(base_to_mempool_addr(config.base_address));
+        // NetworkReceiver::spawn(mempool_address, Arc::clone(&mempool_handler_map), "mempool");
+        // info!(
+        //     "Node {} listening to mempool messages on {}",
+        //     secret.name, mempool_address
+        // );
+
+        // let consensus_address = with_wildcard_ip(base_to_consensus_addr(config.base_address));
+        // NetworkReceiver::spawn(
+        //     consensus_address,
+        //     Arc::clone(&consensus_handler_map),
+        //     "consensus",
+        // );
+        // info!(
+        //     "Node {} listening to consensus messages on {}",
+        //     secret.name, consensus_address
+        // );
 
         let signature_address = with_wildcard_ip(base_to_signature_addr(config.base_address));
         NetworkReceiver::spawn(
@@ -138,7 +156,7 @@ impl<T: EthSpec> Node<T> {
         let base_port = config.base_address.port();
         let discovery = Discovery::spawn(
             self_ip,
-            base_port + DISCOVERY_PORT_OFFSET,
+            base_port,
             secret.clone(),
             config.boot_enrs.clone(),
             config.base_store_path.clone(),
@@ -157,10 +175,12 @@ impl<T: EthSpec> Node<T> {
         let node = Self {
             config,
             secret: secret.clone(),
-            tx_handler_map: Arc::clone(&tx_handler_map),
-            mempool_handler_map: Arc::clone(&mempool_handler_map),
-            consensus_handler_map: Arc::clone(&consensus_handler_map),
+            // tx_handler_map: Arc::clone(&tx_handler_map),
+            // mempool_handler_map: Arc::clone(&mempool_handler_map),
+            // consensus_handler_map: Arc::clone(&consensus_handler_map),
             signature_handler_map: Arc::clone(&signature_handler_map),
+            duties_handler_map: duties_handler_map,
+            active_handler_map: active_handler_map,
             validator_store: None,
             discovery: Arc::new(discovery),
             db: db.clone(),
@@ -172,7 +192,7 @@ impl<T: EthSpec> Node<T> {
         StatusReport::spawn(
             base_address,
             *SELF_OPERATOR_ID.get().unwrap(),
-            secret.secret,
+            secret.secret.clone(),
         );
 
         info!("Node {} successfully booted", secret.name);
@@ -192,7 +212,8 @@ impl<T: EthSpec> Node<T> {
 
     pub fn process_contract_command(node: Arc<RwLock<Node<T>>>, db: Database) {
         tokio::spawn(async move {
-            let mut query_interval = tokio::time::interval(Duration::from_secs(6));
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            let mut query_interval = tokio::time::interval(Duration::from_secs(1));
             loop {
                 query_interval.tick().await;
                 match db.get_contract_command().await {
@@ -245,7 +266,6 @@ impl<T: EthSpec> Node<T> {
                                 }
                             }
                             ContractCommand::ActivateValidator(validator) => {
-                                info!("ActivateValidator");
                                 let va_id = validator.id;
                                 let validator_pubkey = hex::encode(validator.public_key.clone());
                                 match activate_validator(node.clone(), validator).await {
@@ -260,7 +280,6 @@ impl<T: EthSpec> Node<T> {
                                 }
                             }
                             ContractCommand::StopValidator(validator) => {
-                                info!("StopValidator");
                                 let va_id = validator.id;
                                 let validator_pubkey = hex::encode(validator.public_key.clone());
                                 match stop_validator(node.clone(), validator).await {
@@ -363,7 +382,27 @@ impl<T: EthSpec> Node<T> {
                                         db.delete_contract_command(id).await;
                                     }
                                     Err(e) => {
-                                        error!("Failed to process remove initiator ready: {}", e);
+                                        error!("Failed to process remove initiator: {}", e);
+                                        db.updatetime_contract_command(id).await;
+                                    }
+                                }
+                            }
+                            ContractCommand::SetFeeRecipient(va_pk, fee_recipient_address) => {
+                                match set_validator_fee_recipient(
+                                    node.clone(),
+                                    va_pk,
+                                    fee_recipient_address,
+                                )
+                                .await
+                                {
+                                    Ok(_) => {
+                                        db.delete_contract_command(id).await;
+                                    }
+                                    Err(e) => {
+                                        error!(
+                                            "Failed to set validator fee recipient address: {:?}",
+                                            e
+                                        );
                                         db.updatetime_contract_command(id).await;
                                     }
                                 }
@@ -402,8 +441,9 @@ impl<T: EthSpec> Node<T> {
                         let node_lock = node.read().await;
                         // Query IP for each operator in this committee. If any of them changed, should restart the VA.
                         let mut restart = false;
+
                         for i in 0..committee_def.node_public_keys.len() {
-                            if let Some(addr) = node_lock.discovery.query_addr(&   committee_def.node_public_keys[i].0).await {
+                            if let Some(addr) = node_lock.discovery.query_addr(&committee_def.node_public_keys[i].0).await {
                                 if let Some(socket) = committee_def.base_socket_addresses[i].as_mut() {
                                     if *socket != addr {
                                         info!("op id: {}, local committee definition address {}, queried result {}", committee_def.operator_ids[i], socket, addr);
@@ -440,27 +480,6 @@ impl<T: EthSpec> Node<T> {
                                     error!("Unable to find validator with public key {:?}", validator_pk);
                                 }
                             }
-                            // loop {
-                            //     match restart_validator(node.clone(), committee_def.validator_id, committee_def.validator_public_key.clone()).await {
-                            //         Ok(_) => {
-                            //             info!("Successfully restart validator: {}, pk: {}",
-                            //                 committee_def.validator_id, committee_def.validator_public_key);
-                            //             break;
-                            //         }
-                            //         Err(DvfError::ValidatorStoreNotReady) => {
-                            //             error!("Failed to restart validator: {}, pk: {}. Error:
-                            //                 validator store is not ready yet, will try again in 1 minute.",
-                            //                 committee_def.validator_id, committee_def.validator_public_key);
-                            //             tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-                            //             continue;
-                            //         }
-                            //         Err(e) => {
-                            //             error!("Failed to restart validator: {}, pk: {}. Error: {:?}",
-                            //                 committee_def.validator_id, committee_def.validator_public_key, e);
-                            //             break;
-                            //         }
-                            //     };
-                            // }
                         }
                     }
                     () = exit_clone => {
@@ -642,7 +661,9 @@ pub async fn add_validator<T: EthSpec>(
                     None,
                     Some(validator.owner_address),
                     None,
-                    None,
+                    Some(node.config.builder_proposals),
+                    node.config.builder_boost_factor,
+                    Some(node.config.prefer_builder_proposals),
                     committee_def_path,
                     keystore_share.master_id,
                     keystore_share.share_id,
@@ -672,10 +693,6 @@ pub async fn activate_validator<T: EthSpec>(
     let validator_id = validator.id;
     let validator_pk = BlsPublicKey::deserialize(&validator.public_key)
         .map_err(|e| format!("Unable to deserialize validator public key: {:?}", e))?;
-    info!(
-        "[VA {}] activating validator {}...",
-        validator_id, validator_pk
-    );
     let validator_store = {
         let node_ = node.read().await;
         node_.validator_store.clone()
@@ -683,15 +700,20 @@ pub async fn activate_validator<T: EthSpec>(
 
     match validator_store {
         Some(validator_store) => {
-            validator_store
-                .start_validator_keystore(&validator_pk)
-                .await;
-            info!("[VA {}] validator {} activated", validator_id, validator_pk);
-            set_int_gauge(
-                &metrics::DVT_VC_BALANCE_USED_UP,
-                &[&validator_pk.as_hex_string()],
-                BALANCE_STILL_AVAILABLE,
-            );
+            match validator_store.is_active(&validator_pk).await {
+                Some(active) => {
+                    if !active {
+                        validator_store.start_validator_keystore(&validator_pk).await;
+                        info!("[VA {}] validator {} activated", validator_id, validator_pk);
+                        set_int_gauge(
+                            &metrics::DVT_VC_BALANCE_USED_UP,
+                            &[&validator_pk.as_hex_string()],
+                            BALANCE_STILL_AVAILABLE,
+                        );
+                    }
+                }
+                None => {}
+            }
             Ok(())
         }
         _ => {
@@ -710,10 +732,6 @@ pub async fn remove_validator<T: EthSpec>(
     let validator_id = validator.id;
     let validator_pk = BlsPublicKey::deserialize(&validator.public_key)
         .map_err(|e| format!("[VA {}] Deserialize error ({:?})", validator_id, e))?;
-    info!(
-        "[VA {}] removing validator {}...",
-        validator_id, validator_pk
-    );
     let (validator_dir, secret_dir, validator_store) = {
         let node_ = node.read().await;
         let validator_dir = node_.config.validator_dir.clone();
@@ -744,21 +762,22 @@ pub async fn stop_validator<T: EthSpec>(
     let validator_id = validator.id;
     let validator_pk = BlsPublicKey::deserialize(&validator.public_key)
         .map_err(|e| format!("[VA {}] Deserialize error ({:?})", validator_id, e))?;
-    info!(
-        "[VA {}] stopping validator {}...",
-        validator_id, validator_pk
-    );
     let validator_store = {
         let node_ = node.read().await;
         node_.validator_store.clone()
     };
 
-    cleanup_handler(node.clone(), validator_id).await;
     match validator_store {
-        Some(validator_store) => {
-            validator_store.stop_validator_keystore(&validator_pk).await;
-            info!("[VA {}] stopped validator {}", validator_id, validator_pk);
-        }
+        Some(validator_store) => match validator_store.is_active(&validator_pk).await {
+            Some(active) => {
+                if active {
+                    cleanup_handler(node.clone(), validator_id).await;
+                    validator_store.stop_validator_keystore(&validator_pk).await;
+                    info!("[VA {}] stopped validator {}", validator_id, validator_pk);
+                }
+            }
+            None => {}
+        },
         _ => {
             return Err(format!(
                 "[VA {}] failed to stop validator {}. Error: no validator store is set. please wait, please wait",
@@ -1065,24 +1084,54 @@ pub async fn restart_validator<T: EthSpec>(
     }
 }
 
+pub async fn set_validator_fee_recipient<T: EthSpec>(
+    node: Arc<RwLock<Node<T>>>,
+    validator_pk: Vec<u8>,
+    fee_recipient_address: H160,
+) -> Result<(), DvfError> {
+    info!(
+        "setting fee recipient to {} for validator {}...",
+        fee_recipient_address,
+        hex::encode(validator_pk.clone())
+    );
+    let validator_store = {
+        let node_ = node.read().await;
+        node_.validator_store.clone()
+    };
+    match validator_store {
+        Some(validator_store) => {
+            validator_store
+                .set_fee_recipient_for_validator(
+                    &BlsPublicKey::deserialize(&validator_pk).unwrap(),
+                    fee_recipient_address,
+                )
+                .await;
+            Ok(())
+        }
+        _ => Err(DvfError::ValidatorStoreNotReady),
+    }
+}
+
 pub async fn cleanup_handler<T: EthSpec>(node: Arc<RwLock<Node<T>>>, validator_id: u64) {
     let node_ = node.read().await;
-    let _ = node_.tx_handler_map.write().await.remove(&validator_id);
-    let _ = node_
-        .mempool_handler_map
-        .write()
-        .await
-        .remove(&validator_id);
-    let _ = node_
-        .consensus_handler_map
-        .write()
-        .await
-        .remove(&validator_id);
+    // let _ = node_.tx_handler_map.write().await.remove(&validator_id);
+    // let _ = node_
+    //     .mempool_handler_map
+    //     .write()
+    //     .await
+    //     .remove(&validator_id);
+    // let _ = node_
+    //     .consensus_handler_map
+    //     .write()
+    //     .await
+    //     .remove(&validator_id);
     let _ = node_
         .signature_handler_map
         .write()
         .await
         .remove(&validator_id);
+    let _ = node_.duties_handler_map.write().await.remove(&validator_id);
+    let _ = node_.active_handler_map.write().await.remove(&validator_id);
 }
 
 pub async fn cleanup_keystore<T: EthSpec>(

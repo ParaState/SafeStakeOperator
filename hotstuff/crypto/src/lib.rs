@@ -7,6 +7,8 @@ use std::convert::{TryFrom, TryInto};
 use std::fmt;
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::oneshot;
+use zeroize::Zeroize;
+
 #[cfg(test)]
 #[path = "tests/crypto_tests.rs"]
 pub mod crypto_tests;
@@ -64,7 +66,7 @@ pub trait Hash {
 }
 
 /// Represents a public key (in bytes).
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Zeroize)]
 pub struct PublicKey(pub [u8; 33]);
 
 impl Default for PublicKey {
@@ -124,7 +126,7 @@ impl AsRef<[u8]> for PublicKey {
 }
 
 /// Represents a secret key (in bytes).
-#[derive(Clone)]
+#[derive(Clone, Zeroize)]
 pub struct SecretKey(pub [u8; 32]);
 
 impl SecretKey {
@@ -203,6 +205,12 @@ impl Signature {
             .concat()
             .try_into()
             .expect("Unexpected signature length")
+    }
+
+    pub fn from_bytes(sig: &[u8]) -> Self {
+        let part1 = sig[..32].try_into().expect("Unexpected signature length");
+        let part2 = sig[32..64].try_into().expect("Unexpected signature length");
+        Signature { part1, part2 }
     }
 
     pub fn verify(&self, digest: &Digest, public_key: &PublicKey) -> Result<(), CryptoError> {

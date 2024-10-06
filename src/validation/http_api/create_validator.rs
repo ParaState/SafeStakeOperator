@@ -22,7 +22,7 @@ use validator_dir::Builder as ValidatorDirBuilder;
 ///
 /// If `key_derivation_path_offset` is supplied then the EIP-2334 validator index will start at
 /// this point.
-pub async fn create_validators_mnemonic<P: AsRef<Path>, T: 'static + SlotClock, E: EthSpec>(
+pub async fn _create_validators_mnemonic<P: AsRef<Path>, T: 'static + SlotClock, E: EthSpec>(
     mnemonic_opt: Option<Mnemonic>,
     key_derivation_path_offset: Option<u32>,
     validator_requests: &[api_types::ValidatorRequest],
@@ -142,6 +142,8 @@ pub async fn create_validators_mnemonic<P: AsRef<Path>, T: 'static + SlotClock, 
                 request.suggested_fee_recipient,
                 request.gas_limit,
                 request.builder_proposals,
+                request.builder_boost_factor,
+                request.prefer_builder_proposals,
             )
             .await
             .map_err(|e| {
@@ -167,7 +169,7 @@ pub async fn create_validators_mnemonic<P: AsRef<Path>, T: 'static + SlotClock, 
     Ok((validators, mnemonic))
 }
 
-pub async fn create_validators_web3signer<T: 'static + SlotClock, E: EthSpec>(
+pub async fn _create_validators_web3signer<T: 'static + SlotClock, E: EthSpec>(
     validators: Vec<ValidatorDefinition>,
     validator_store: &ValidatorStore<T, E>,
 ) -> Result<(), warp::Rejection> {

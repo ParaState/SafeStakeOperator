@@ -154,6 +154,17 @@ pub fn cli_app() -> Command {
                 .display_order(0)
                 .required(true)
         )
+        // .arg(
+        //     Arg::new("extra-contract")
+        //         .long("extra-contract")
+        //         .value_name("EXTRA_CONTRACT")
+        //         .help(
+        //             "This is the address of extra contract"
+        //         )
+        //         .action(ArgAction::Set)
+        //         .display_order(0)
+        //         .required(true)
+        // )
         .arg(
             Arg::new("init-slashing-protection")
                 .long("init-slashing-protection")
@@ -401,5 +412,26 @@ pub fn cli_app() -> Command {
                 .default_value("500")
                 .action(ArgAction::Set)
                 .display_order(0),
+        )
+        .arg(
+            Arg::new("builder-boost-factor")
+                .long("builder-boost-factor")
+                .value_name("UINT64")
+                .help("Defines the boost factor, \
+                    a percentage multiplier to apply to the builder's payload value \
+                    when choosing between a builder payload header and payload from \
+                    the local execution node.")
+                .conflicts_with("prefer-builder-proposals")
+                .action(ArgAction::Set)
+                .display_order(0)
+        )
+        .arg(
+            Arg::new("prefer-builder-proposals")
+                .long("prefer-builder-proposals")
+                .help("If this flag is set, Lighthouse will always prefer blocks \
+                    constructed by builders, regardless of payload value.")
+                .action(ArgAction::SetTrue)
+                .help_heading(FLAG_HEADER)
+                .display_order(0)
         )
 }

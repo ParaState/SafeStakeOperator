@@ -7,7 +7,7 @@
 //! - Via a distributed operator committee
 
 use crate::node::config::{API_ADDRESS, COLLECT_PERFORMANCE_URL};
-use crate::node::dvfcore::DvfSigner;
+use crate::node::dvfcore::{BlockType, DvfSigner, DvfType};
 use crate::node::utils::{request_to_web_server, DvfPerformanceRequest, SignDigest};
 use crate::validation::eth2_keystore_share::keystore_share::KeystoreShare;
 use crate::validation::http_metrics::metrics;
@@ -133,6 +133,68 @@ impl SigningContext {
 }
 
 impl SigningMethod {
+    pub async fn is_leader(&self, epoch: Epoch) -> bool {
+        let nonce = epoch.as_u64();
+        match self {
+            SigningMethod::DistributedKeystore { dvf_signer, .. } => {
+                if dvf_signer.is_leader_active(nonce).await {
+                    dvf_signer.is_aggregator(nonce).await
+                } else {
+                    dvf_signer.is_next_aggregator(nonce).await
+                }
+            }
+            _ => false,
+        }
+    }
+
+    pub async fn distributed_consensus_attestation(
+        &self,
+        domain_hash: Hash256,
+        attestation_data: &AttestationData,
+    ) {
+        match self {
+            SigningMethod::DistributedKeystore { dvf_signer, .. } => {
+                let data = serde_json::to_string(attestation_data).unwrap();
+                dvf_signer
+                    .consensus_on_duty(domain_hash, DvfType::Attester, data.as_bytes())
+                    .await;
+            }
+            _ => {}
+        }
+    }
+
+    pub async fn distributed_consensus_block<T: EthSpec, Payload: AbstractExecPayload<T>>(
+        &self,
+        domain_hash: Hash256,
+        block: &BeaconBlock<T, Payload>,
+        block_type: BlockType,
+    ) {
+        match self {
+            SigningMethod::DistributedKeystore { dvf_signer, .. } => {
+                let data = serde_json::to_string(block).unwrap();
+                dvf_signer
+                    .consensus_on_duty(domain_hash, DvfType::Proposer(block_type), data.as_bytes())
+                    .await
+            }
+            _ => {}
+        }
+    }
+
+    /// Return whether this signing method requires local slashing protection.
+    pub fn requires_local_slashing_protection(
+        &self,
+        enable_web3signer_slashing_protection: bool,
+    ) -> bool {
+        match self {
+            // Slashing protection is ALWAYS required for local keys. DO NOT TURN THIS OFF.
+            SigningMethod::LocalKeystore { .. } => true,
+            SigningMethod::DistributedKeystore { .. } => true,
+            // Slashing protection is only required for remote signer keys when the configuration
+            // dictates that it is desired.
+            SigningMethod::Web3Signer { .. } => enable_web3signer_slashing_protection,
+        }
+    }
+
     /// Return the signature of `signable_message`, with respect to the `signing_context`.
     pub async fn get_signature<T: EthSpec, Payload: AbstractExecPayload<T>>(
         &self,
@@ -286,7 +348,7 @@ impl SigningMethod {
                     SignableMessage::AttestationData(a) => (a.slot, "ATTESTER", true),
                     SignableMessage::BeaconBlock(b) => (b.slot(), "PROPOSER", true),
                     SignableMessage::SignedAggregateAndProof(x) => {
-                        (x.aggregate.data.slot, "AGGREGATE", true)
+                        (x.aggregate().data().slot, "AGGREGATE", true)
                     }
                     SignableMessage::SelectionProof(s) => {
                         // Every operator should be able to get selection proof signature,
@@ -312,11 +374,7 @@ impl SigningMethod {
                         (e.epoch.start_slot(T::slots_per_epoch()), "VA_EXIT", true)
                     }
                 };
-                let is_aggregator = dvf_signer
-                    .is_aggregator(
-                        signing_epoch.as_u64() + dvf_signer.operator_committee.validator_id(),
-                    )
-                    .await;
+                let is_aggregator = dvf_signer.is_aggregator(signing_epoch.as_u64()).await || dvf_signer.is_next_aggregator(signing_epoch.as_u64()).await;
                 log::info!(
                     "[Dvf {}/{}] Signing\t-\tSlot: {}.\tEpoch: {}.\tType: {}.\tRoot: {:?}. Is aggregator {}",
                     dvf_signer.operator_id,
@@ -331,7 +389,6 @@ impl SigningMethod {
                 // Following LocalKeystore, if the code logic reaches here, then it has already passed all checks of this duty, and
                 // it is safe (from this operator's point of view) to sign it locally.
                 dvf_signer.local_sign_and_store(signing_root).await;
-
                 if !only_aggregator || (only_aggregator && is_aggregator) {
                     log::debug!("[Dvf {}/{}] Leader trying to achieve duty consensus and aggregate duty signatures",
                         dvf_signer.operator_id,
@@ -351,7 +408,7 @@ impl SigningMethod {
                             match result {
                                 Ok((signature, ids)) => {
                                     // [Issue] Several same reports will be sent to server from different aggregators
-                                    Self::dvf_report::<T>(slot, duty, dvf_signer.validator_public_key(), dvf_signer.operator_id(), ids, dt, &dvf_signer.node_secret).await?;
+                                    Self::dvf_report::<T>(slot, duty, dvf_signer.validator_public_key().as_hex_string(), dvf_signer.operator_id(), ids, dt, &dvf_signer.node_secret).await?;
                                     Ok(signature)
                                 },
                                 Err(e) => {

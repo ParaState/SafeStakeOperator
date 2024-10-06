@@ -19,9 +19,11 @@ use slog::{info, Logger};
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
+use std::time::Duration;
 use types::{Address, GRAFFITI_BYTES_LEN};
 
 pub const DEFAULT_BEACON_NODE: &str = "http://localhost:5052/";
+pub const DEFAULT_WEB3SIGNER_KEEP_ALIVE: Option<Duration> = Some(Duration::from_secs(20));
 
 /// Stores the core configuration for this validator instance.
 #[derive(Clone, Serialize, Deserialize)]
@@ -80,8 +82,16 @@ pub struct Config {
     pub enable_latency_measurement_service: bool,
     /// Defines the number of validators per `validator/register_validator` request sent to the BN.
     pub validator_registration_batch_size: usize,
-    /// Enables block production via the block v3 endpoint. This configuration option can be removed post deneb.
-    pub produce_block_v3: bool,
+    /// Enable slashing protection even while using web3signer keys.
+    pub enable_web3signer_slashing_protection: bool,
+    /// Specifies the boost factor, a percentage multiplier to apply to the builder's payload value.
+    pub builder_boost_factor: Option<u64>,
+    /// If true, Lighthouse will prefer builder proposals, if available.
+    pub prefer_builder_proposals: bool,
+    /// Whether we are running with distributed network support.
+    pub distributed: bool,
+    pub web3_signer_keep_alive_timeout: Option<Duration>,
+    pub web3_signer_max_idle_connections: Option<usize>,
     /// Used for Dvf
     pub dvf_node_config: NodeConfig,
 }
@@ -124,7 +134,12 @@ impl Default for Config {
             broadcast_topics: vec![ApiTopic::Subscriptions],
             enable_latency_measurement_service: true,
             validator_registration_batch_size: 500,
-            produce_block_v3: false,
+            enable_web3signer_slashing_protection: true,
+            builder_boost_factor: None,
+            prefer_builder_proposals: false,
+            distributed: false,
+            web3_signer_keep_alive_timeout: DEFAULT_WEB3SIGNER_KEEP_ALIVE,
+            web3_signer_max_idle_connections: None,
             dvf_node_config: NodeConfig::default(),
         }
     }
@@ -147,6 +162,10 @@ impl Config {
         let network_contract: String = parse_required(cli_args, "network-contract")?;
         info!(log, "read network contract"; "network-contract" => &network_contract);
         NETWORK_CONTRACT.set(network_contract).unwrap();
+
+        // let extra_contract: String = parse_required(cli_args, "extra-contract")?;
+        // info!(log, "read extra contract"; "extra-contract" => &extra_contract);
+        // EXTRA_CONTRACT.set(extra_contract).unwrap();
 
         let self_ip: Ipv4Addr = parse_required(cli_args, "ip")?;
         info!(log, "read node ip"; "ip" => &self_ip.to_string());
@@ -208,14 +227,6 @@ impl Config {
             .dvf_node_config
             .set_beacon_nodes(config.beacon_nodes.clone());
 
-        // if let Some(proposer_nodes) = parse_optional::<String>(cli_args, "proposer_nodes")? {
-        //     config.proposer_nodes = proposer_nodes
-        //         .split(',')
-        //         .map(SensitiveUrl::parse)
-        //         .collect::<Result<_, _>>()
-        //         .map_err(|e| format!("Unable to parse proposer node URL: {:?}", e))?;
-        // }
-
         config.disable_auto_discover = cli_args.get_flag("disable-auto-discover");
         config.init_slashing_protection = cli_args.get_flag("init-slashing-protection");
         config.use_long_timeouts = cli_args.get_flag("use-long-timeouts");
@@ -247,12 +258,6 @@ impl Config {
                 config.graffiti = Some(graffiti.into());
             }
         }
-
-        // if let Some(input_fee_recipient) =
-        //     parse_optional::<Address>(cli_args, "suggested-fee-recipient")?
-        // {
-        //     config.fee_recipient = Some(input_fee_recipient);
-        // }
 
         if let Some(tls_certs) = parse_optional::<String>(cli_args, "beacon-nodes-tls-certs")? {
             config.beacon_nodes_tls_certs = Some(tls_certs.split(',').map(PathBuf::from).collect());
@@ -358,10 +363,12 @@ impl Config {
 
         if cli_args.get_flag("builder-proposals") {
             config.builder_proposals = true;
+            config.dvf_node_config.builder_proposals = true;
         }
 
-        if cli_args.get_flag("produce-block-v3") {
-            config.produce_block_v3 = true;
+        if cli_args.get_flag("prefer-builder-proposals") {
+            config.prefer_builder_proposals = true;
+            config.dvf_node_config.prefer_builder_proposals = true;
         }
 
         config.gas_limit = cli_args
@@ -373,15 +380,10 @@ impl Config {
             })
             .transpose()?;
 
-        // if let Some(registration_timestamp_override) =
-        //     cli_args.value_of("builder-registration-timestamp-override")
-        // {
-        //     config.builder_registration_timestamp_override = Some(
-        //         registration_timestamp_override
-        //             .parse::<u64>()
-        //             .map_err(|_| "builder-registration-timestamp-override is not a valid u64.")?,
-        //     );
-        // }
+        config.builder_boost_factor = parse_optional(cli_args, "builder-boost-factor")?;
+
+        config.dvf_node_config.builder_boost_factor =
+            parse_optional(cli_args, "builder-boost-factor")?;
 
         config.validator_registration_batch_size =
             parse_required(cli_args, "validator-registration-batch-size")?;

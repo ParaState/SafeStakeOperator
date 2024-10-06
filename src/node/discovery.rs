@@ -1,5 +1,4 @@
-use crate::node::config::DISCOVERY_PORT_OFFSET;
-use crate::validation::http_metrics::metrics::{self, inc_counter};
+use crate::node::config::{DEFAULT_BASE_PORT, DISCOVERY_PORT_OFFSET};
 use crate::DEFAULT_CHANNEL_CAPACITY;
 use bytes::Bytes;
 use dvf_version::VERSION;
@@ -25,7 +24,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::{timeout, Interval};
 pub const DEFAULT_DISCOVERY_IP_STORE: &str = "discovery_ip_store";
-pub const DISCOVER_HEARTBEAT_INTERVAL: u64 = 60;
+pub const DISCOVER_HEARTBEAT_INTERVAL: u64 = 60 * 5;
 pub const DEFAULT_DISCOVERY_PORT: u16 = 26004;
 pub struct Discovery {
     secret: Secret,
@@ -45,6 +44,50 @@ impl Drop for Discovery {
 }
 
 impl Discovery {
+    pub async fn process_enr(store: &Store, enr: Enr<CombinedKey>) {
+        // check seq in the enr
+        let pk = enr.public_key().encode();
+        let seq = enr.seq();
+        let mut seq_key = pk.clone();
+        seq_key.append(&mut "seq number".as_bytes().to_vec());
+        if store
+            .read(seq_key.clone())
+            .await
+            .unwrap()
+            .map_or(true, |read_seq| {
+                let read_seq = u64::from_le_bytes(read_seq.try_into().unwrap());
+                seq > read_seq
+            })
+        {
+            store.write(seq_key, seq.to_le_bytes().to_vec()).await;
+            if let Some(ip) = enr.ip4() {
+                let discv_port = match enr.udp4() {
+                    Some(port) => match port.checked_sub(DISCOVERY_PORT_OFFSET) {
+                        Some(p) => p,
+                        None => {
+                            error!("error happens when get port {}", port);
+                            return;
+                        }
+                    },
+                    None => DEFAULT_BASE_PORT,
+                };
+                store
+                    .write(
+                        enr.public_key().encode(),
+                        bincode::serialize(&SocketAddr::new(IpAddr::V4(ip), discv_port)).unwrap(),
+                    )
+                    .await;
+                info!(
+                    "{} seq set to {}, socket address {}:{}",
+                    base64::encode(enr.public_key().encode()),
+                    seq,
+                    ip,
+                    discv_port
+                );
+            }
+        }
+    }
+
     pub async fn spawn(
         ip: IpAddr,
         udp_port: u16,
@@ -79,13 +122,13 @@ impl Discovery {
         let local_enr = {
             let mut builder = Enr::builder();
             builder.ip(ip);
-            if udp_port != DEFAULT_DISCOVERY_PORT {
-                builder.udp4(udp_port);
+            if udp_port != DEFAULT_BASE_PORT {
+                builder.udp4(udp_port.checked_add(DISCOVERY_PORT_OFFSET).unwrap());
             }
             builder.seq(seq);
             builder.build(&enr_key).unwrap()
         };
-        let base_address = SocketAddr::new(ip, udp_port - DISCOVERY_PORT_OFFSET);
+        let base_address = SocketAddr::new(ip, udp_port);
         info!("Node ENR ip: {}, port: {}", ip, udp_port);
         info!("Node public key: {}", secret.name.encode_base64());
         info!("Node id: {}", base64::encode(local_enr.node_id().raw()));
@@ -94,7 +137,7 @@ impl Discovery {
         // default configuration without packet filtering
         let config = ConfigBuilder::new(ListenConfig::Ipv4 {
             ip: "0.0.0.0".parse().unwrap(),
-            port: udp_port,
+            port: udp_port.checked_add(DISCOVERY_PORT_OFFSET).unwrap(),
         })
         .build();
 
@@ -132,13 +175,7 @@ impl Discovery {
                                 debug!("Find Node result succeeded: {} nodes", v.len());
                                 // found a list of ENR's print their NodeIds
                                 for enr in v {
-                                    if let Some(ip) = enr.ip4() {
-                                        if let Some(discv_port) = enr.udp4() {
-                                            // update public key socket address
-                                            store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(ip), discv_port - DISCOVERY_PORT_OFFSET)).unwrap()).await;
-                                            set_metrics(&store, enr.public_key().encode()).await;
-                                        }
-                                    };
+                                    Discovery::process_enr(&store, enr).await;
                                 };
                             }
                         }
@@ -147,31 +184,21 @@ impl Discovery {
                     Some(event) = event_stream.recv() => {
                         match event {
                             Event::Discovered(enr) => {
-                                if let Some(ip) = enr.ip4() {
-                                    // update public key ip
-                                    if let Some(discv_port) = enr.udp4() {
-                                        // update public key socket address
-                                        store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(ip), discv_port - DISCOVERY_PORT_OFFSET)).unwrap()).await;
-                                        set_metrics(&store, enr.public_key().encode()).await;
-                                    }
-                                };
+                                Discovery::process_enr(&store, enr).await;
                             },
                             Event::SessionEstablished(enr, _addr) => {
-                                if let Some(ip) = enr.ip4() {
-                                    // update public key ip
-                                    if let Some(discv_port) = enr.udp4() {
-                                        // update public key socket address
-                                        store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(ip), discv_port - DISCOVERY_PORT_OFFSET)).unwrap()).await;
-                                        set_metrics(&store, enr.public_key().encode()).await;
-                                    }
-                                };
+                                Discovery::process_enr(&store, enr).await;
                             },
                             Event::SocketUpdated(addr) => {
                                 info!("Discv5Event::SocketUpdated: local ENR IP address has been updated, addr:{}", addr);
                                 match addr {
                                     V4(v4addr) => {
-                                        store.write(local_enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(v4addr.ip().clone()), v4addr.port() - DISCOVERY_PORT_OFFSET)).unwrap()).await;
-                                        set_metrics(&store, local_enr.public_key().encode()).await;
+                                        match v4addr.port().checked_sub(DISCOVERY_PORT_OFFSET) {
+                                            Some(port) => {
+                                                store.write(local_enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(v4addr.ip().clone()), port)).unwrap()).await;
+                                            }
+                                            None => {}
+                                        }
                                     }
                                     V6(_) => {}
                                 }
@@ -193,7 +220,7 @@ impl Discovery {
             store: store_clone,
             boot_enrs,
             discv5_service_handle,
-            base_port: udp_port - DISCOVERY_PORT_OFFSET,
+            base_port: udp_port,
         };
 
         // immediately initiate a discover request to annouce ourself
@@ -306,6 +333,13 @@ impl Discovery {
     }
 
     pub async fn query_addr_from_boot(&self, boot_idx: usize, pk: &[u8]) -> Option<SocketAddr> {
+        if self.secret.name.0.as_slice() == pk {
+            return Some(SocketAddr::new(
+                IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+                self.base_port,
+            ));
+        }
+
         if boot_idx >= self.boot_enrs.len() {
             error!("Invalid boot index");
             return None;
@@ -369,28 +403,9 @@ impl Discovery {
     }
 }
 
-async fn is_new_op(store: &Store, pk: Vec<u8>) -> bool {
-    match store.read(pk).await {
-        Ok(r) => match r {
-            Some(_) => false,
-            None => true,
-        },
-        Err(e) => {
-            error!("Failed to read from node {}", e);
-            false
-        }
-    }
-}
-
-async fn set_metrics(store: &Store, pk: Vec<u8>) {
-    if is_new_op(store, pk).await {
-        inc_counter(&metrics::DVT_VC_CONNECTED_NODES)
-    }
-}
-
 #[tokio::test]
 async fn test_query_boot() {
-    let pk = base64::decode("AlHMbjSr1CfYquNBvPz0mNTiKN71YRbmGV5RvCeKT95p").unwrap();
+    let pk = base64::decode("A2trBAZoZsNEOrpqzXF4E2mv04IapvtdJ3kiPSZDyNAz").unwrap();
     let dvf_message = DvfMessage {
         version: VERSION,
         validator_id: 0,
@@ -414,8 +429,8 @@ async fn test_query_boot() {
     let boot_enrs: Vec<Enr<CombinedKey>> =
         serde_yaml::from_reader(file).expect("Unable to parse boot enr");
     let socketaddr = SocketAddr::new(
-        IpAddr::V4(boot_enrs[0].ip4().expect("boot enr ip should not be empty")),
-        boot_enrs[0]
+        IpAddr::V4(boot_enrs[1].ip4().expect("boot enr ip should not be empty")),
+        boot_enrs[1]
             .udp4()
             .expect("boot enr port should not be empty"),
     );

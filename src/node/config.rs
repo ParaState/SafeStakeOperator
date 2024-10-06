@@ -15,7 +15,7 @@ pub const NODE_KEY_FILENAME: &str = "node_key.json";
 pub const NODE_KEY_HEX_FILENAME: &str = "node_key_hex.json";
 pub const DB_FILENAME: &str = "dvf_node_db";
 
-pub const DEFAULT_BASE_PORT: u16 = 25_000;
+pub const DEFAULT_BASE_PORT: u16 = 26_000;
 pub const TRANSACTION_PORT_OFFSET: u16 = 0;
 pub const MEMPOOL_PORT_OFFSET: u16 = 1;
 pub const CONSENSUS_PORT_OFFSET: u16 = 2;
@@ -82,6 +82,22 @@ pub fn base_to_signature_addr(base_addr: SocketAddr) -> SocketAddr {
     }
 }
 
+pub fn base_to_duties_addr(base_addr: SocketAddr) -> SocketAddr {
+    if is_addr_invalid(base_addr) {
+        base_addr
+    } else {
+        SocketAddr::new(base_addr.ip(), base_addr.port() + TRANSACTION_PORT_OFFSET)
+    }
+}
+
+pub fn base_to_active_addr(base_addr: SocketAddr) -> SocketAddr {
+    if is_addr_invalid(base_addr) {
+        base_addr
+    } else {
+        SocketAddr::new(base_addr.ip(), base_addr.port() + MEMPOOL_PORT_OFFSET)
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct NodeConfig {
     pub base_address: SocketAddr,
@@ -92,6 +108,9 @@ pub struct NodeConfig {
     pub secrets_dir: PathBuf,
     pub boot_enrs: Vec<Enr<CombinedKey>>,
     pub beacon_nodes: Vec<SensitiveUrl>,
+    pub builder_proposals: bool,
+    pub builder_boost_factor: Option<u64>,
+    pub prefer_builder_proposals: bool,
 }
 
 impl Default for NodeConfig {
@@ -149,6 +168,9 @@ impl NodeConfig {
             secrets_dir,
             boot_enrs,
             beacon_nodes: Vec::new(),
+            builder_proposals: false,
+            builder_boost_factor: None,
+            prefer_builder_proposals: false,
         }
     }
 

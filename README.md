@@ -28,7 +28,7 @@ In the SafeStake ecosystem, there is no need for stakers to deploy validators as
 
 ### Run a SafeStake Operator Node
 
-Please refer to the step-by-step instructions [here](docs/safestake-running-an-operator-node-on-going.md).
+Please refer to the step-by-step instructions [here](docs/safestake-running-an-operator-node.md).
 
 ## SafeStake White Paper
 

@@ -275,7 +275,7 @@ graph TD;
 ## Validator
 
 ### Registration
-Before registering a validator in SafeStake website, users need to deposit a validator first and the wait the validator to become active. Then users need provide the keystore file and select either 4 operators which require at least 3 operators to do attestations or 7 operators which require at least 5 operators to do attestations. Finally, users need to deposit DVT to make operators start attestions for this validator.
+Before registering a validator in SafeStake website, users need to deposit a validator first and the wait the validator to become active. Then users need provide the keystore file and select 4 operators which require at least 3 operators to do attestations. Finally, users need to deposit DVT to make operators start attestions for this validator.
 <figure><img src="imgs/committe-size.png" alt=""><figcaption></figcaption></figure>
 
 ### Remove

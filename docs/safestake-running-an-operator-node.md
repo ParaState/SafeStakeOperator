@@ -1,4 +1,4 @@
-# SafeStake: Running an Operator Node (on going)
+# SafeStake: Running an Operator Node
 
 _**Updates happen frequently! Our**_ [_**Github**_](https://github.com/ParaState/SafeStakeOperator) _**always has the latest operator node resources and setup instructions.**_
 
@@ -114,6 +114,7 @@ sudo docker compose -f docker-compose-operator-mev.yml up geth -d
 # sudo docker compose -f docker-compose-operator-mev.yml up nethermind -d
 # sudo docker compose -f docker-compose-operator-mev.yml up besu -d
 # sudo docker compose -f docker-compose-operator-mev.yml up erigon -d
+sudo docker compose -f docker-compose-operator-mev.yml up mev-boost -d
 sudo docker compose -f docker-compose-operator-mev.yml up lighthouse -d
 ```
 

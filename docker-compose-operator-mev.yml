@@ -65,7 +65,6 @@ services:
         "--http-address=0.0.0.0",
         "--http-port=5052",
         "--staking",
-        "--http-allow-sync-stalled",
         "--execution-endpoint=http://127.0.0.1:8551",
         "--metrics",
         "--metrics-address=0.0.0.0",

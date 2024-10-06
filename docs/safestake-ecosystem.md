@@ -33,7 +33,7 @@ The SafeStake framework employs committees of non-trusting tech-savvy operators 
 
 It is worth noting that in other staking infrastructure provider where similar initializer operators specify the execution layer address that collects priority fees and MEV extraction, oracles are used to monitor and help prevent malicious operators from stealing those fees. SafeStake's design is simplified and more effective. The validator private key is decentralized so no single operator determines the execution layer address, preventing them from stealing the funds.
 
-To `run` an operator node on the SafeStake network, refer to the instructions [here](safestake-running-an-operator-node-on-going.md).
+To `run` an operator node on the SafeStake network, refer to the instructions [here](safestake-running-an-operator-node.md).
 
 ### SafeStake Service Provider / ParaState DAO
 

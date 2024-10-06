@@ -1,7 +1,7 @@
 version: '3'
 services:
   geth:
-    image: ethereum/client-go:v1.14.7
+    image: ethereum/client-go:v1.14.11
     pull_policy: always
     restart: unless-stopped
     network_mode: "host"
@@ -38,7 +38,7 @@ services:
 
   lighthouse:
     network_mode: "host"
-    image: sigp/lighthouse:v5.2.1
+    image: sigp/lighthouse:v5.3.0
     pull_policy: always
     restart: unless-stopped
     volumes:
@@ -63,7 +63,7 @@ services:
         "--subscribe-all-subnets",
         "--import-all-attestations",
         "--validator-monitor-auto",
-        "--checkpoint-sync-url=https://checkpoint-sync.holesky.ethpandaops.io",
+        "--checkpoint-sync-url=https://sync-mainnet.beaconcha.in",
       ]
     expose:
       - "5052"
@@ -77,7 +77,6 @@ services:
     image: parastate/dvf-operator:${IMAGE_TAG}
     pull_policy: always
     restart: unless-stopped
-    #such as : lighthouse vc --builder-proposals/private-tx-proposals
     command:
       - /bin/sh
       - -c

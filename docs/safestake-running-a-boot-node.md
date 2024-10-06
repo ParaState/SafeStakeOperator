@@ -1,9 +1,9 @@
-# SafeStake: Running a Boot Node (on going)
+# SafeStake: Running a Boot Node
 
 **Updates happen frequently! Our** [**Github**](https://github.com/ParaState/SafeStakeOperator) **always has the latest operator node resources and setup instructions.**
 
 
-***NOTE: This tutorial is meant for SafeStake admininistrator. You DON'T need to read this if you are a user who wants to setup an operator node. Instead, you should read the [tutorial for operator node](./safestake-running-an-operator-node-on-going.md).***
+***NOTE: This tutorial is meant for SafeStake admininistrator. You DON'T need to read this if you are a user who wants to setup an operator node. Instead, you should read the [tutorial for operator node](./safestake-running-an-operator-node.md).***
 
 
 ## **Boot Node Service**

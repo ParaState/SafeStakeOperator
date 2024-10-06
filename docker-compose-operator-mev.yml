@@ -1,7 +1,7 @@
 version: '3'
 services:
   geth:
-    image: ethereum/client-go:v1.14.7
+    image: ethereum/client-go:v1.14.11
     pull_policy: always
     restart: unless-stopped
     network_mode: "host"
@@ -37,7 +37,7 @@ services:
       - "30303"
 
   mev-boost:
-    image: flashbots/mev-boost:1.6.1a3
+    image: flashbots/mev-boost:1.8
     network_mode: "host"
     pull_policy: always
     restart: unless-stopped
@@ -46,7 +46,7 @@ services:
       - "18550"
   lighthouse:
     network_mode: "host"
-    image: sigp/lighthouse:v5.2.1
+    image: sigp/lighthouse:v5.3.0
     pull_policy: always
     restart: unless-stopped
     volumes:
@@ -72,7 +72,7 @@ services:
         "--subscribe-all-subnets",
         "--import-all-attestations",
         "--validator-monitor-auto",
-        "--checkpoint-sync-url=https://checkpoint-sync.holesky.ethpandaops.io",
+        "--checkpoint-sync-url=https://sync-mainnet.beaconcha.in",
       ]
     expose:
       - "5052"

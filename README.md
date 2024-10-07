@@ -10,8 +10,8 @@
 
 ### SafeStake makes earning staking rewards safe and easy for all ETH holders.
 
-* `Stage 1 - Deposit 32 ETH` and choose a group of four operators to manage your validator.
-* `Stage 2 - Partnering with LST protocols to run 'Pooled Validator', empowring LST/LRT protocols to deploy validators on SafeStake platform to enhance security and improve performance resilience. 
+*  `Stage 1 - Deposit 32 ETH` and choose a group of four operators to manage your validator.
+*  `Stage 2` - Partnering with LST protocols to run 'Pooled Validator', empowring LST/LRT protocols to deploy validators on SafeStake platform to enhance security and improve performance resilience. 
 
 **SafeStake is the first ETH staking pool to implement distributed validator technology (DVT) written in Rust for increased decentralization, security, and reliability.**
 

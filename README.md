@@ -11,8 +11,7 @@
 ### SafeStake makes earning staking rewards safe and easy for all ETH holders.
 
 * `Stage 1 - Deposit 32 ETH` and choose a group of four operators to manage your validator.
-* `Stage 2 - Deposit 8 ETH` as an initializer to participate in running a 'Pooled Validator' and choose three additional operators to manage your validator.
-* `Stage 3 - Deposit ≥ 0.1 ETH but < 32 ETH` to participate in running a 'Pooled Validator.' Stake ETH in the SafeStake pool and get `sfETH` tokens in return. Your share of the pooled validator's rewards will be accrued automatically to your sfETH token balance and are completely liquid, allowing you the freedom to trade, buy, or sell your tokens any time you want.
+* `Stage 2 - Partnering with LST protocols to run 'Pooled Validator', empowring LST/LRT protocols to deploy validators on SafeStake platform to enhance security and improve performance resilience. 
 
 **SafeStake is the first ETH staking pool to implement distributed validator technology (DVT) written in Rust for increased decentralization, security, and reliability.**
 

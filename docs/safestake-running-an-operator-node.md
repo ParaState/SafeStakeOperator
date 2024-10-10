@@ -103,7 +103,7 @@ openssl rand -hex 32 | tr -d "\n" | sudo tee /data/jwt/jwtsecret
 git clone --recurse-submodules https://github.com/ParaState/SafeStakeOperator.git dvf
 ```
 
-#### 8. Running Geth/Nethermind/Besu/Erigon & Lighthouse Service
+#### 8. Running Geth/Nethermind/Besu/Erigon & mev-boost & Lighthouse Service 
 NOTE: This step is to provide a quick way to setup and run the execution client and consensus client. If you already have a node running execution client and consensus client, you can skip this step.
 
 ```bash
@@ -115,6 +115,7 @@ sudo docker compose -f docker-compose-operator-mev.yml up geth -d
 # sudo docker compose -f docker-compose-operator-mev.yml up besu -d
 # sudo docker compose -f docker-compose-operator-mev.yml up erigon -d
 sudo docker compose -f docker-compose-operator-mev.yml up mev-boost -d
+# in .env, set MEV_ENDPOINT to the url of mev-boost, e.g. http://127.0.0.1:18550 then start lighthouse
 sudo docker compose -f docker-compose-operator-mev.yml up lighthouse -d
 ```
 

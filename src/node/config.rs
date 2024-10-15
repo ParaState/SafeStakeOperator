@@ -30,7 +30,7 @@ pub const VALIDATOR_PK_URL: &str = "validator_pk";
 pub const PRESTAKE_SIGNATURE_URL: &str = "prestake_signature";
 pub const STAKE_SIGNATURE_URL: &str = "stake_signature";
 pub const TOPIC_NODE_INFO: &str = "dvf/topic_node_info";
-const BOOT_ENRS_CONFIG_FILE: &str = "boot_config/boot_enrs.yaml";
+pub const BOOT_ENRS_CONFIG_FILE: &str = "boot_config/boot_enrs.yaml";
 
 lazy_static! {
     // [Issue] SocketAddr::new is not yet a const fn in stable release.

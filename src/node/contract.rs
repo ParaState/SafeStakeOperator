@@ -38,7 +38,7 @@ pub static SELF_OPERATOR_ID: OnceCell<u32> = OnceCell::const_new();
 pub static DEFAULT_TRANSPORT_URL: OnceCell<String> = OnceCell::const_new();
 pub static REGISTRY_CONTRACT: OnceCell<String> = OnceCell::const_new();
 pub static NETWORK_CONTRACT: OnceCell<String> = OnceCell::const_new();
-// pub static EXTRA_CONTRACT: OnceCell<String> = OnceCell::const_new();
+pub static CONFIG_CONTRACT: OnceCell<String> = OnceCell::const_new();
 pub static DATABASE: OnceCell<Database> = OnceCell::const_new();
 const QUERY_LOGS_INTERVAL: u64 = 60;
 const QUERY_BLOCK_INTERVAL: u64 = 500;
@@ -455,7 +455,7 @@ impl Contract {
         let va_filter_builder = FilterBuilder::default()
             .address(vec![
                 Address::from_slice(&hex::decode(NETWORK_CONTRACT.get().unwrap()).unwrap()),
-                // Address::from_slice(&hex::decode(EXTRA_CONTRACT.get().unwrap()).unwrap()),
+                Address::from_slice(&hex::decode(CONFIG_CONTRACT.get().unwrap()).unwrap()),
             ])
             .topics(
                 Some(vec![va_reg_topic, va_rm_topic, fee_receipient_set_topic]),
@@ -805,10 +805,16 @@ pub async fn process_validator_registration(
             .into_iter()
             .map(|s| base64::decode(s).unwrap())
             .collect();
+        let fee_recipient_address = match db.query_owner_fee_recipient(address.clone()).await.map_err(|_| {
+            ContractError::DatabaseError
+        })? {
+            Some(a) => a,
+            None => address
+        };
         //send command to node
         let validator = Validator {
             id: validator_id,
-            owner_address: address,
+            owner_address: fee_recipient_address,
             public_key: va_pk.try_into().unwrap(),
             releated_operators: op_ids,
             active: true,
@@ -1173,19 +1179,9 @@ pub async fn process_fee_recipient_set(raw_log: Log, db: &Database) -> Result<()
                 indexed: true,
             },
             EventParam {
-                name: "pubkey".to_string(),
-                kind: ParamType::Bytes,
-                indexed: false,
-            },
-            EventParam {
-                name: "feeReceiptAddress".to_string(),
+                name: "newAddress".to_string(),
                 kind: ParamType::Address,
                 indexed: true,
-            },
-            EventParam {
-                name: "updateCount".to_string(),
-                kind: ParamType::Uint(32),
-                indexed: false,
             },
         ],
         anonymous: false,
@@ -1201,39 +1197,19 @@ pub async fn process_fee_recipient_set(raw_log: Log, db: &Database) -> Result<()
         .clone()
         .into_address()
         .ok_or(ContractError::LogParseError)?;
-    let pubkey = log.params[1]
-        .value
-        .clone()
-        .into_bytes()
-        .ok_or(ContractError::LogParseError)?;
-    let fee_recipient_address = log.params[2]
+    let fee_recipient_address = log.params[1]
         .value
         .clone()
         .into_address()
         .ok_or(ContractError::LogParseError)?;
 
-    if pubkey.iter().all(|&x| x == 0) {
-        // public key is zero
-        for v in db.query_validator_by_address(owner).await.unwrap().iter() {
-            let cmd = ContractCommand::SetFeeRecipient(v.public_key.clone(), fee_recipient_address);
-            db.insert_contract_command(v.id, serde_json::to_string(&cmd).unwrap())
-                .await;
-        }
-    } else {
-        match db
-            .query_validator_by_public_key(hex::encode(pubkey.clone()))
-            .await
-            .unwrap()
-        {
-            Some(v) => {
-                let cmd = ContractCommand::SetFeeRecipient(pubkey, fee_recipient_address);
-                db.insert_contract_command(v.id, serde_json::to_string(&cmd).unwrap())
-                    .await;
-            }
-            None => {
-                info!("set fee recipient not releated to this operator");
-            }
-        }
+    db.upsert_owner_fee_recipient(owner, fee_recipient_address).await;
+
+    // public key is zero
+    for v in db.query_validator_by_address(owner).await.unwrap().iter() {
+        let cmd = ContractCommand::SetFeeRecipient(v.public_key.clone(), fee_recipient_address);
+        db.insert_contract_command(v.id, serde_json::to_string(&cmd).unwrap())
+            .await;
     }
 
     Ok(())

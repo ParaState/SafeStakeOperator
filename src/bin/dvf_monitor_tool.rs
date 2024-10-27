@@ -83,6 +83,7 @@ async fn main() {
         serde_yaml::from_reader(file).expect("Unable to parse boot enr");
     
     let op_addrs = query_socket_address_from_boot(boot_enrs, op_pk).await;
+    info!("node addre {:?}", op_addrs);
     if op_addrs.is_empty() {
         panic!("failed to query op socket address from boot node");
     }

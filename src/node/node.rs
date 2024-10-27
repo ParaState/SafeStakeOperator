@@ -651,6 +651,8 @@ pub async fn add_validator<T: EthSpec>(
         default_keystore_share_path(&keystore_share, validator_dir.clone());
     let voting_keystore_share_password_path =
         default_keystore_share_password_path(&keystore_share, secret_dir.clone());
+
+    
     match &node.validator_store {
         Some(validator_store) => {
             let _ = validator_store

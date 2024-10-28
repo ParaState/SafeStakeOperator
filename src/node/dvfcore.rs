@@ -33,8 +33,10 @@ use store::Store;
 use tokio::sync::RwLock;
 use types::{
     AbstractExecPayload, AttestationData, BeaconBlock, BlindedPayload, EthSpec, FullPayload,
-    Keypair,
+    Keypair, ExecPayload
 };
+use crate::node::db::Database;
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DvfInfo {
     pub validator_id: u64,
@@ -147,6 +149,7 @@ pub struct DvfDutyCheckMessage {
     pub data: Vec<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sign_hex: Option<String>,
+    pub pubkey: Vec<u8>
 }
 
 impl DvfDutyCheckMessage {
@@ -167,6 +170,7 @@ pub struct DvfDutyCheckHandler<E: EthSpec> {
     pub validator_pk: BlsPublicKey,
     pub operator_pks: HashMap<u64, hscrypto::PublicKey>,
     pub keypair: Keypair,
+    pub db: Database,
     _phantom: PhantomData<E>,
 }
 
@@ -412,6 +416,17 @@ impl<E: EthSpec> MessageHandler for DvfDutyCheckHandler<E> {
                                     return Ok(());
                                 }
                             };
+                        let fee_recipient = block.body().execution_payload().unwrap().fee_recipient();
+                        if self.db.check_validator_fee_recipient(check_msg.pubkey, fee_recipient).await.unwrap() {
+                            reply(
+                                writer,
+                                DutySafety::Invalid,
+                                format!("fee recipient is not consistent"),
+                            )
+                            .await;
+                            error!("fee recipient is not consistent");
+                            return Ok(());
+                        }
                         self.sign_block(writer, block, check_msg.domain_hash).await;
                     }
                     BlockType::Blinded => {
@@ -429,6 +444,17 @@ impl<E: EthSpec> MessageHandler for DvfDutyCheckHandler<E> {
                                     return Ok(());
                                 }
                             };
+                        let fee_recipient = block.body().execution_payload().unwrap().fee_recipient();
+                        if self.db.check_validator_fee_recipient(check_msg.pubkey, fee_recipient).await.unwrap() {
+                            reply(
+                                writer,
+                                DutySafety::Invalid,
+                                format!("fee recipient is not consistent"),
+                            )
+                            .await;
+                            error!("fee recipient is not consistent");
+                            return Ok(());
+                        }
                         self.sign_block(writer, block, check_msg.domain_hash).await;
                     }
                 };
@@ -522,6 +548,7 @@ impl DvfSigner {
                 validator_pk: operator_committee.get_validator_pk(),
                 operator_pks,
                 keypair: keypair.clone(),
+                db: node.db.clone(),
                 _phantom: PhantomData,
             },
         );
@@ -590,6 +617,7 @@ impl DvfSigner {
             check_type,
             data: data.to_vec(),
             sign_hex: None,
+            pubkey: self.validator_public_key().serialize().to_vec()
         };
         match msg.sign_digest(&self.node_secret) {
             Ok(sign_hex) => msg.sign_hex = Some(sign_hex),

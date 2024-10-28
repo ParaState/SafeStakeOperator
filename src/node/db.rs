@@ -42,7 +42,8 @@ pub enum DbCommand {
     QueryAllValidatorPublicKeys(oneshot::Sender<DbResult<Vec<String>>>),
     QueryValidatorRegistrationTimestamp(String, oneshot::Sender<DbResult<u64>>),
     UpsertOwnerFeeRecipient(Address, Address),
-    QueryOwnerFeeRecipient(Address, oneshot::Sender<DbResult<Option<Address>>>)
+    QueryOwnerFeeRecipient(Address, oneshot::Sender<DbResult<Option<Address>>>),
+    CheckValidatorFeeRecipient(Vec<u8>, Address, oneshot::Sender<DbResult<bool>>)
 }
 
 #[derive(Clone, Debug)]
@@ -255,6 +256,10 @@ impl Database {
                     }
                     DbCommand::QueryOwnerFeeRecipient(owner, sender) => {
                         let response = query_owner_fee_recipient(&mut conn, owner);
+                        let _ = sender.send(response);
+                    }
+                    DbCommand::CheckValidatorFeeRecipient(pubkey, fee_recipient, sender) => {
+                        let response = check_validator_fee_recipient(&mut conn, pubkey, fee_recipient);
                         let _ = sender.send(response);
                     }
                 }
@@ -662,6 +667,23 @@ impl Database {
         receiver
             .await
             .expect("Failed to receive reply of query fee recipient address from db")
+    }
+
+    pub async fn check_validator_fee_recipient(
+        &self,
+        pubkey: Vec<u8>,
+        fee_recipient: Address
+    ) -> DbResult<bool> {
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self.channel.send(DbCommand::CheckValidatorFeeRecipient(pubkey, fee_recipient, sender)).await {
+            panic!(
+                "Failed to send check validator fee recipient address to store: {}",
+                e
+            );
+        }
+        receiver
+            .await
+            .expect("Failed to receive reply of check validator fee recipient address from db")
     }
 }
 
@@ -1281,6 +1303,38 @@ pub fn query_owner_fee_recipient(conn: &Connection, owner: Address) -> DbResult<
     }
 }
 
+pub fn check_validator_fee_recipient(conn: &Connection, pubkey: Vec<u8>, fee_recipient: Address) -> DbResult<bool> {
+    let pk = hex::encode(pubkey);
+    match conn.prepare("select owner_fee_recipient.fee_recipient from validators join owner_fee_recipient on validators.owner_address = owner_fee_recipient.owner where validators.public_key = (?)") {
+        Ok(mut stmt) => {
+            let mut rows = stmt.query([pk.clone()])?;
+            while let Some(row) = rows.next()? {
+                let res: String = row.get(0)?;
+                return Ok(res == format!("{0:0x}", fee_recipient));
+            }
+        }
+        Err(e) => {
+            error!("Can't prepare statement {}", e);
+            return Err(e);
+        }
+    }
+    match conn.prepare("select owner_address from validators where public_key = (?)") {
+        Ok(mut stmt) => {
+            let mut rows = stmt.query([pk])?;
+            while let Some(row) = rows.next()? {
+                let res: String = row.get(0)?;
+                return Ok(res == format!("{0:0x}", fee_recipient));
+            }
+        }
+        Err(e) => {
+            error!("Can't prepare statement {}", e);
+            return Err(e);
+        }
+    }
+
+    Ok(false)
+}
+
 #[tokio::test]
 async fn test_fee_recipient() {
     let mut logger =
@@ -1290,13 +1344,29 @@ async fn test_fee_recipient() {
     let _ = Database::new("/tmp/test.db").unwrap();
     let mut conn = Connection::open("/tmp/test.db").unwrap();
     let owner = Address::random();
+    let mut rng = rand::thread_rng();
+    let mut dest = [0u8; 48];
+    rng.fill_bytes(&mut dest);
+    let pubkey = dest.to_vec();
+    let validator = Validator {
+        id: 1,
+        owner_address: owner.clone(),
+        public_key: pubkey.clone(),
+        releated_operators: vec![],
+        active: true
+    };
+    insert_validator(&mut conn, validator, 0);
+    assert_eq!(check_validator_fee_recipient(&conn, pubkey.clone(), owner).unwrap(), true);
     let fee_recipient = Address::random();
     let new_fee_recipient = Address::random();
+    assert_eq!(check_validator_fee_recipient(&conn, pubkey.clone(), fee_recipient).unwrap(), false);
     assert_eq!(query_owner_fee_recipient(&conn, owner), Ok(None));
     upsert_owner_fee_recipient(&conn, owner, fee_recipient);
+    assert_eq!(check_validator_fee_recipient(&conn, pubkey.clone(), fee_recipient).unwrap(), true);
     assert_eq!(query_owner_fee_recipient(&conn, owner), Ok(Some(fee_recipient)));
     upsert_owner_fee_recipient(&conn, owner, new_fee_recipient);
     assert_eq!(query_owner_fee_recipient(&conn, owner), Ok(Some(new_fee_recipient)));
+    assert_eq!(check_validator_fee_recipient(&conn, pubkey.clone(), new_fee_recipient).unwrap(), true);
 }
 
 #[tokio::test]

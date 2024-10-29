@@ -259,6 +259,10 @@ Some description of the folders and files under `/data/operator/v1/mainnet/`:
     ├── validators # data files of the validators that the operator is serving, inherited from the native folder of lighthouse validator client, including slashing_protection.sqlite, etc.
 ```
 
+## Monitoring
+
+You can use prometheus to fetch metrics from port `5064` of operator and monitor if the metric `vc_signed_attestations_total{status="success"}` is increasing to know if your operator is active.
+
 ## Common issues troubleshooting
 ```mermaid
 graph TD;

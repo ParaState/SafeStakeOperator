@@ -33,7 +33,7 @@ const CONTRACT_INI_REG_EVENT_NAME: &str = "InitiatorRegistration";
 const CONTRACT_MINIPOOL_CREATED_EVENT_NAME: &str = "InitiatorMiniPoolCreated";
 const CONTRACT_MINIPOOL_READY_EVENT_NAME: &str = "InitiatorMiniPoolReady";
 const CONTRACT_INI_RM_EVENT_NAME: &str = "InitiatorRemoval";
-const CONTRACT_FEE_RECIPIENT_SET_EVENT_NAME: &str = "FeeReceiptAddressSet";
+const CONTRACT_FEE_RECIPIENT_SET_EVENT_NAME: &str = "FeeRecipientAddressChanged";
 pub static SELF_OPERATOR_ID: OnceCell<u32> = OnceCell::const_new();
 pub static DEFAULT_TRANSPORT_URL: OnceCell<String> = OnceCell::const_new();
 pub static REGISTRY_CONTRACT: OnceCell<String> = OnceCell::const_new();
@@ -319,7 +319,7 @@ impl TopicHandler for FeeRecipientSetHandler {
         _web3: &Web3<WebSocket>,
     ) -> Result<(), ContractError> {
         process_fee_recipient_set(log, db).await.map_err(|e| {
-            error!("error happens when process initiator removal");
+            error!("error happens when process set fee recipient");
             e
         })
     }

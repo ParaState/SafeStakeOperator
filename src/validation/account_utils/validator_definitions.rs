@@ -48,6 +48,31 @@ pub enum Error {
     UnableToOpenKeystore(eth2_keystore::Error),
     /// The validator directory could not be created.
     UnableToCreateValidatorDir(PathBuf),
+    UnableToReadKeystorePassword(String),
+    KeystoreWithoutPassword,
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize, Hash, Eq)]
+pub struct Web3SignerDefinition {
+    pub url: String,
+    /// Path to a .pem file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub root_certificate_path: Option<PathBuf>,
+    /// Specifies a request timeout.
+    ///
+    /// The timeout is applied from when the request starts connecting until the response body has finished.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_timeout_ms: Option<u64>,
+
+    /// Path to a PKCS12 file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_identity_path: Option<PathBuf>,
+
+    /// Password for the PKCS12 file.
+    ///
+    /// An empty password will be used if this is omitted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_identity_password: Option<String>,
 }
 
 /// Defines how the validator client should attempt to sign messages for this validator.
@@ -67,27 +92,7 @@ pub enum SigningDefinition {
     ///
     /// https://github.com/ConsenSys/web3signer
     #[serde(rename = "web3signer")]
-    Web3Signer {
-        url: String,
-        /// Path to a .pem file.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        root_certificate_path: Option<PathBuf>,
-        /// Specifies a request timeout.
-        ///
-        /// The timeout is applied from when the request starts connecting until the response body has finished.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        request_timeout_ms: Option<u64>,
-
-        /// Path to a PKCS12 file.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        client_identity_path: Option<PathBuf>,
-
-        /// Password for the PKCS12 file.
-        ///
-        /// An empty password will be used if this is omitted.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        client_identity_password: Option<String>,
-    },
+    Web3Signer(Web3SignerDefinition),
     /// A validator whose key is distributed among a set of operators.
     #[serde(rename = "distributed_keystore")]
     DistributedKeystore {
@@ -134,6 +139,12 @@ pub struct ValidatorDefinition {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub builder_proposals: Option<bool>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub builder_boost_factor: Option<u64>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefer_builder_proposals: Option<bool>,
+    #[serde(default)]
     pub description: String,
     #[serde(flatten)]
     pub signing_definition: SigningDefinition,
@@ -153,6 +164,8 @@ impl ValidatorDefinition {
         suggested_fee_recipient: Option<Address>,
         gas_limit: Option<u64>,
         builder_proposals: Option<bool>,
+        builder_boost_factor: Option<u64>,
+        prefer_builder_proposals: Option<bool>,
     ) -> Result<Self, Error> {
         let voting_keystore_path = voting_keystore_path.as_ref().into();
         let keystore =
@@ -167,6 +180,8 @@ impl ValidatorDefinition {
             suggested_fee_recipient,
             gas_limit,
             builder_proposals,
+            builder_boost_factor,
+            prefer_builder_proposals,
             signing_definition: SigningDefinition::LocalKeystore {
                 voting_keystore_path,
                 voting_keystore_password_path: None,
@@ -188,6 +203,8 @@ impl ValidatorDefinition {
         suggested_fee_recipient: Option<Address>,
         gas_limit: Option<u64>,
         builder_proposals: Option<bool>,
+        builder_boost_factor: Option<u64>,
+        prefer_builder_proposals: Option<bool>,
         operator_committee_definition_path: P,
         operator_committee_index: u64,
         operator_id: u64,
@@ -209,6 +226,8 @@ impl ValidatorDefinition {
             suggested_fee_recipient,
             gas_limit,
             builder_proposals,
+            builder_boost_factor,
+            prefer_builder_proposals,
             signing_definition: SigningDefinition::DistributedKeystore {
                 voting_keystore_share_path,
                 voting_keystore_share_password_path: Some(
@@ -366,6 +385,8 @@ impl ValidatorDefinitions {
                     suggested_fee_recipient: None,
                     gas_limit: None,
                     builder_proposals: None,
+                    builder_boost_factor: None,
+                    prefer_builder_proposals: None,
                     signing_definition: SigningDefinition::LocalKeystore {
                         voting_keystore_path,
                         voting_keystore_password_path,
@@ -489,6 +510,8 @@ impl ValidatorDefinitions {
                     suggested_fee_recipient: None,
                     gas_limit: None,
                     builder_proposals: None,
+                    builder_boost_factor: None,
+                    prefer_builder_proposals: None,
                     signing_definition: SigningDefinition::DistributedKeystore {
                         voting_keystore_share_path,
                         voting_keystore_share_password_path,
@@ -541,6 +564,10 @@ impl ValidatorDefinitions {
     /// Returns a mutable slice of all `ValidatorDefinition` in `self`.
     pub fn as_mut_slice(&mut self) -> &mut [ValidatorDefinition] {
         self.0.as_mut_slice()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }
 

@@ -7,6 +7,9 @@ use std::fs::{self, OpenOptions};
 use std::io::BufWriter;
 use std::io::Write as _;
 use thiserror::Error;
+use std::os::unix::fs::PermissionsExt;
+use std::fs::Permissions;
+use zeroize::Zeroize;
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -33,6 +36,8 @@ pub trait Export: Serialize + DeserializeOwned {
     fn write(&self, path: &str) -> Result<(), ConfigError> {
         let writer = || -> Result<(), std::io::Error> {
             let file = OpenOptions::new().create(true).write(true).open(path)?;
+            let permissions = Permissions::from_mode(0o600);
+            file.set_permissions(permissions)?;
             let mut writer = BufWriter::new(file);
             let data = serde_json::to_string_pretty(self).unwrap();
             writer.write_all(data.as_ref())?;
@@ -54,7 +59,8 @@ pub struct Parameters {
 
 impl Export for Parameters {}
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Zeroize)]
+#[zeroize(drop)]
 pub struct Secret {
     pub name: PublicKey,
     pub secret: SecretKey,

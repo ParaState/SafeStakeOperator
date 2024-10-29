@@ -28,6 +28,7 @@ use lighthouse_metrics::set_gauge;
 use lockfile::{Lockfile, LockfileError};
 use parking_lot::{MappedMutexGuard, Mutex, MutexGuard};
 use reqwest::{Certificate, Error as ReqwestError};
+use slashing_protection::SlashingDatabase;
 use slog::{debug, error, info, warn, Logger};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
@@ -35,6 +36,7 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use types::graffiti::GraffitiString;
 use types::{Address, EthSpec, Graffiti, Keypair, PublicKey, PublicKeyBytes};
 use validator_dir::Builder as ValidatorDirBuilder;
 
@@ -123,6 +125,8 @@ pub struct InitializedValidator {
     suggested_fee_recipient: Option<Address>,
     gas_limit: Option<u64>,
     builder_proposals: Option<bool>,
+    builder_boost_factor: Option<u64>,
+    prefer_builder_proposals: Option<bool>,
     /// The validators index in `state.validators`, to be updated by an external service.
     index: Option<u64>,
 }
@@ -157,6 +161,14 @@ impl InitializedValidator {
 
     pub fn get_gas_limit(&self) -> Option<u64> {
         self.gas_limit
+    }
+
+    pub fn get_builder_boost_factor(&self) -> Option<u64> {
+        self.builder_boost_factor
+    }
+
+    pub fn get_prefer_builder_proposals(&self) -> Option<bool> {
+        self.prefer_builder_proposals
     }
 
     pub fn get_builder_proposals(&self) -> Option<bool> {
@@ -203,6 +215,7 @@ impl InitializedValidator {
         key_cache: &mut KeyCache,
         key_stores: &mut HashMap<PathBuf, Keystore>,
         node: Option<Arc<RwLock<Node<T>>>>,
+        slashing_protection: SlashingDatabase,
     ) -> Result<Self, Error> {
         if !def.enabled {
             return Err(Error::UnableToInitializeDisabledValidator);
@@ -377,9 +390,14 @@ impl InitializedValidator {
                 let committee_def = OperatorCommitteeDefinition::from_file(committee_def_path)
                     .map_err(Error::UnableToParseCommitteeDefinition)?;
                 let validator_public_key = committee_def.validator_public_key.clone();
-                let signer = DvfSigner::spawn(node.unwrap(), voting_keypair, committee_def)
-                    .await
-                    .map_err(|e| Error::DvfError(format!("{:?}", e)))?;
+                let signer = DvfSigner::spawn(
+                    node.unwrap(),
+                    voting_keypair,
+                    committee_def,
+                    slashing_protection,
+                )
+                .await
+                .map_err(|e| Error::DvfError(format!("{:?}", e)))?;
 
                 SigningMethod::DistributedKeystore {
                     voting_keystore_share_path,
@@ -397,6 +415,8 @@ impl InitializedValidator {
             suggested_fee_recipient: def.suggested_fee_recipient,
             gas_limit: def.gas_limit,
             builder_proposals: def.builder_proposals,
+            builder_boost_factor: def.builder_boost_factor,
+            prefer_builder_proposals: def.prefer_builder_proposals,
             index: None,
         })
     }
@@ -480,6 +500,8 @@ pub struct InitializedValidators<T: EthSpec> {
     node: Option<Arc<RwLock<Node<T>>>>,
     /// For logging via `slog`.
     log: Logger,
+    /// For slashing protection in dvf signer
+    slashing_protection: SlashingDatabase,
 }
 
 impl<T: EthSpec> InitializedValidators<T> {
@@ -489,6 +511,7 @@ impl<T: EthSpec> InitializedValidators<T> {
         validators_dir: PathBuf,
         node: Option<Arc<RwLock<Node<T>>>>,
         log: Logger,
+        slashing_protection: SlashingDatabase,
     ) -> Result<Self, Error> {
         let mut this = Self {
             validators_dir,
@@ -496,6 +519,7 @@ impl<T: EthSpec> InitializedValidators<T> {
             validators: HashMap::<PublicKeyBytes, InitializedValidator>::default(),
             node,
             log,
+            slashing_protection,
         };
         this.update_validators().await?;
         Ok(this)
@@ -782,6 +806,83 @@ impl<T: EthSpec> InitializedValidators<T> {
         self.validators.get(public_key).and_then(|v| v.graffiti)
     }
 
+    /// Sets the `InitializedValidator` and `ValidatorDefinition` `graffiti` values.
+    ///
+    /// ## Notes
+    ///
+    /// Setting a validator `graffiti` will cause `self.definitions` to be updated and saved to
+    /// disk.
+    ///
+    /// Saves the `ValidatorDefinitions` to file, even if no definitions were changed.
+    pub fn set_graffiti(
+        &mut self,
+        voting_public_key: &PublicKey,
+        graffiti: GraffitiString,
+    ) -> Result<(), Error> {
+        if let Some(def) = self
+            .definitions
+            .as_mut_slice()
+            .iter_mut()
+            .find(|def| def.voting_public_key == *voting_public_key)
+        {
+            def.graffiti = Some(graffiti.clone());
+        }
+
+        if let Some(val) = self
+            .validators
+            .get_mut(&PublicKeyBytes::from(voting_public_key))
+        {
+            val.graffiti = Some(graffiti.into());
+        }
+
+        self.definitions
+            .save(&self.validators_dir)
+            .map_err(Error::UnableToSaveDefinitions)?;
+        Ok(())
+    }
+
+    /// Removes the `InitializedValidator` and `ValidatorDefinition` `graffiti` values.
+    ///
+    /// ## Notes
+    ///
+    /// Removing a validator `graffiti` will cause `self.definitions` to be updated and saved to
+    /// disk. The graffiti for the validator will then fall back to the process level default if
+    /// it is set.
+    ///
+    /// Saves the `ValidatorDefinitions` to file, even if no definitions were changed.
+    pub fn delete_graffiti(&mut self, voting_public_key: &PublicKey) -> Result<(), Error> {
+        if let Some(def) = self
+            .definitions
+            .as_mut_slice()
+            .iter_mut()
+            .find(|def| def.voting_public_key == *voting_public_key)
+        {
+            def.graffiti = None;
+        }
+
+        if let Some(val) = self
+            .validators
+            .get_mut(&PublicKeyBytes::from(voting_public_key))
+        {
+            val.graffiti = None;
+        }
+
+        self.definitions
+            .save(&self.validators_dir)
+            .map_err(Error::UnableToSaveDefinitions)?;
+
+        Ok(())
+    }
+
+    /// Returns a `HashMap` of `public_key` -> `graffiti` for all initialized validators.
+    pub fn get_all_validators_graffiti(&self) -> HashMap<&PublicKeyBytes, Option<Graffiti>> {
+        let mut result = HashMap::new();
+        for public_key in self.validators.keys() {
+            result.insert(public_key, self.graffiti(public_key));
+        }
+        result
+    }
+
     /// Returns the `suggested_fee_recipient` for a given public key specified in the
     /// `ValidatorDefinitions`.
     pub fn suggested_fee_recipient(&self, public_key: &PublicKeyBytes) -> Option<Address> {
@@ -802,6 +903,22 @@ impl<T: EthSpec> InitializedValidators<T> {
         self.validators
             .get(public_key)
             .and_then(|v| v.builder_proposals)
+    }
+
+    /// Returns the `builder_boost_factor` for a given public key specified in the
+    /// `ValidatorDefinitions`.
+    pub fn builder_boost_factor(&self, public_key: &PublicKeyBytes) -> Option<u64> {
+        self.validators
+            .get(public_key)
+            .and_then(|v| v.builder_boost_factor)
+    }
+
+    /// Returns the `prefer_builder_proposals` for a given public key specified in the
+    /// `ValidatorDefinitions`.
+    pub fn prefer_builder_proposals(&self, public_key: &PublicKeyBytes) -> Option<bool> {
+        self.validators
+            .get(public_key)
+            .and_then(|v| v.prefer_builder_proposals)
     }
 
     /// Returns an `Option` of a reference to an `InitializedValidator` for a given public key specified in the
@@ -1159,6 +1276,7 @@ impl<T: EthSpec> InitializedValidators<T> {
                             &mut key_stores,
                             //&mut committee_cache,
                             None,
+                            self.slashing_protection.clone(),
                         )
                         .await
                         {
@@ -1210,6 +1328,7 @@ impl<T: EthSpec> InitializedValidators<T> {
                             &mut key_stores,
                             //&mut committee_cache,
                             None,
+                            self.slashing_protection.clone(),
                         )
                         .await
                         {
@@ -1262,6 +1381,7 @@ impl<T: EthSpec> InitializedValidators<T> {
                             &mut key_stores,
                             //&mut committee_cache,
                             self.node.clone(),
+                            self.slashing_protection.clone(),
                         )
                         .await
                         {

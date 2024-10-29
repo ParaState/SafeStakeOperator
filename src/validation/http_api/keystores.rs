@@ -1,13 +1,9 @@
 //! Implementation of the standard keystore management API.
 use crate::validation::account_utils::ZeroizeString;
-use crate::validation::{
-    initialized_validators::Error, signing_method::SigningMethod, InitializedValidators,
-    ValidatorStore,
-};
+use crate::validation::{signing_method::SigningMethod, ValidatorStore};
 use eth2::lighthouse_vc::std_types::{
-    DeleteKeystoreStatus, DeleteKeystoresRequest, DeleteKeystoresResponse, ImportKeystoreStatus,
-    ImportKeystoresRequest, ImportKeystoresResponse, InterchangeJsonStr, KeystoreJsonStr,
-    ListKeystoresResponse, SingleKeystoreResponse, Status,
+    ImportKeystoreStatus, ImportKeystoresRequest, ImportKeystoresResponse, InterchangeJsonStr,
+    KeystoreJsonStr, ListKeystoresResponse, SingleKeystoreResponse, Status,
 };
 use eth2_keystore::Keystore;
 use futures::executor::block_on;
@@ -17,10 +13,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use task_executor::TaskExecutor;
 use tokio::runtime::Handle;
-use types::{EthSpec, PublicKeyBytes};
+use types::EthSpec;
 use validator_dir::Builder as ValidatorDirBuilder;
 use warp::Rejection;
-use warp_utils::reject::{custom_bad_request, custom_server_error};
+use warp_utils::reject::custom_bad_request;
 
 pub fn list<T: SlotClock + 'static, E: EthSpec>(
     validator_store: Arc<ValidatorStore<T, E>>,
@@ -58,7 +54,7 @@ pub fn list<T: SlotClock + 'static, E: EthSpec>(
     ListKeystoresResponse { data: keystores }
 }
 
-pub fn import<T: SlotClock + 'static, E: EthSpec>(
+pub fn _import<T: SlotClock + 'static, E: EthSpec>(
     request: ImportKeystoresRequest,
     validator_dir: PathBuf,
     validator_store: Arc<ValidatorStore<T, E>>,
@@ -127,7 +123,7 @@ pub fn import<T: SlotClock + 'static, E: EthSpec>(
             )
         } else if let Some(handle) = task_executor.handle() {
             // Import the keystore.
-            match import_single_keystore(
+            match _import_single_keystore(
                 keystore,
                 password,
                 validator_dir.clone(),
@@ -157,7 +153,7 @@ pub fn import<T: SlotClock + 'static, E: EthSpec>(
     Ok(ImportKeystoresResponse { data: statuses })
 }
 
-fn import_single_keystore<T: SlotClock + 'static, E: EthSpec>(
+fn _import_single_keystore<T: SlotClock + 'static, E: EthSpec>(
     keystore: Keystore,
     password: ZeroizeString,
     validator_dir_path: PathBuf,
@@ -209,97 +205,10 @@ fn import_single_keystore<T: SlotClock + 'static, E: EthSpec>(
             None,
             None,
             None,
+            None,
+            None,
         ))
         .map_err(|e| format!("failed to initialize validator: {:?}", e))?;
 
     Ok(ImportKeystoreStatus::Imported)
-}
-
-pub async fn delete<T: SlotClock + 'static, E: EthSpec>(
-    request: DeleteKeystoresRequest,
-    validator_store: Arc<ValidatorStore<T, E>>,
-    task_executor: TaskExecutor,
-    log: Logger,
-) -> Result<DeleteKeystoresResponse, Rejection> {
-    // Remove from initialized validators.
-    let initialized_validators_rwlock = validator_store.initialized_validators();
-    let mut initialized_validators = initialized_validators_rwlock.write().await;
-
-    let mut statuses = request
-        .pubkeys
-        .iter()
-        .map(|pubkey_bytes| {
-            match delete_single_keystore::<E>(
-                pubkey_bytes,
-                &mut initialized_validators,
-                task_executor.clone(),
-            ) {
-                Ok(status) => Status::ok(status),
-                Err(error) => {
-                    warn!(
-                        log,
-                        "Error deleting keystore";
-                        "pubkey" => ?pubkey_bytes,
-                        "error" => ?error,
-                    );
-                    Status::error(DeleteKeystoreStatus::Error, error)
-                }
-            }
-        })
-        .collect::<Vec<_>>();
-
-    // Use `update_validators` to update the key cache. It is safe to let the key cache get a bit out
-    // of date as it resets when it can't be decrypted. We update it just a single time to avoid
-    // continually resetting it after each key deletion.
-    if let Some(handle) = task_executor.handle() {
-        handle
-            .block_on(initialized_validators.update_validators())
-            .map_err(|e| custom_server_error(format!("unable to update key cache: {:?}", e)))?;
-    }
-
-    // Export the slashing protection data.
-    let slashing_protection = validator_store
-        .export_slashing_protection_for_keys(&request.pubkeys)
-        .map_err(|e| {
-            custom_server_error(format!("error exporting slashing protection: {:?}", e))
-        })?;
-
-    // Update stasuses based on availability of slashing protection data.
-    for (pubkey, status) in request.pubkeys.iter().zip(statuses.iter_mut()) {
-        if status.status == DeleteKeystoreStatus::NotFound
-            && slashing_protection
-                .data
-                .iter()
-                .any(|interchange_data| interchange_data.pubkey == *pubkey)
-        {
-            status.status = DeleteKeystoreStatus::NotActive;
-        }
-    }
-
-    Ok(DeleteKeystoresResponse {
-        data: statuses,
-        slashing_protection,
-    })
-}
-
-fn delete_single_keystore<T: EthSpec>(
-    pubkey_bytes: &PublicKeyBytes,
-    initialized_validators: &mut InitializedValidators<T>,
-    task_executor: TaskExecutor,
-) -> Result<DeleteKeystoreStatus, String> {
-    if let Some(handle) = task_executor.handle() {
-        let pubkey = pubkey_bytes
-            .decompress()
-            .map_err(|e| format!("invalid pubkey, {:?}: {:?}", pubkey_bytes, e))?;
-
-        match handle.block_on(initialized_validators.delete_definition_and_keystore(&pubkey)) {
-            Ok(_) => Ok(DeleteKeystoreStatus::Deleted),
-            Err(e) => match e {
-                Error::ValidatorNotInitialized(_) => Ok(DeleteKeystoreStatus::NotFound),
-                _ => Err(format!("unable to disable and delete: {:?}", e)),
-            },
-        }
-    } else {
-        Err("validator client shutdown".into())
-    }
 }

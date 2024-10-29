@@ -1,10 +1,9 @@
 use async_trait::async_trait;
 use bytes::Bytes;
-use dvf::utils::ip_util::get_public_ip;
+use dvf::node::discovery::Discovery;
 use futures::prelude::*;
 use hsconfig::Export as _;
 use hsconfig::Secret;
-use lighthouse_network::discv5::enr::EnrPublicKey;
 use lighthouse_network::discv5::{
     enr::{CombinedKey, Enr},
     ConfigBuilder, Discv5, Event, ListenConfig,
@@ -14,12 +13,11 @@ use network::{MessageHandler, Receiver as NetworkReceiver, Writer as NetworkWrit
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
 use store::Store;
 use tokio::sync::RwLock;
-
 pub const DEFAULT_SECRET_DIR: &str = "node_key.json";
 pub const DEFAULT_STORE_DIR: &str = "boot_store";
 pub const DEFAULT_ROOT_DIR: &str = ".lighthouse";
@@ -81,11 +79,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let store = Store::new(store_dir.to_str().unwrap()).unwrap();
     let secret_dir = base_dir.join(DEFAULT_SECRET_DIR);
 
-    let default_public_ip: Ipv4Addr = get_public_ip().parse().expect("valid ip");
     let ip = std::env::args()
         .nth(2)
         .map(|addr| addr.parse::<Ipv4Addr>().unwrap())
-        .unwrap_or(default_public_ip);
+        .unwrap();
 
     let port = {
         if let Some(udp_port) = std::env::args().nth(3) {
@@ -159,27 +156,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             Some(event) = event_stream.recv() => {
                 match event {
                     Event::Discovered(enr) => {
-                        if let Some(enr_ip) =  enr.ip4() {
-                            if let Some(discv_port) = enr.udp4() {
-                                store.write(enr.public_key().encode(), bincode::serialize(&SocketAddr::new(IpAddr::V4(enr_ip), discv_port - DISCOVERY_PORT_OFFSET)).unwrap()).await;
-                            }
-                        }
+                        Discovery::process_enr(&store, enr).await;
                     },
                     Event::SessionEstablished(enr,  _addr) => {
-
-                        if let Some(enr_ip) =  enr.ip4() {
-                            if let Some(discv_port) = enr.udp4() {
-                                let socketaddr = SocketAddr::new(IpAddr::V4(enr_ip), discv_port - DISCOVERY_PORT_OFFSET);
-                                info!("A peer has established session: public key: {}, base addr: {:?}",
-                                base64::encode(enr.public_key().encode()), socketaddr);
-                                store.write(enr.public_key().encode(), bincode::serialize(&socketaddr).unwrap()).await;
-                            } else {
-                                let socketaddr = SocketAddr::new(IpAddr::V4(enr_ip), 26000);
-                                info!("A peer has established session with default port: public key: {}, base addr: {:?}",
-                                base64::encode(enr.public_key().encode()), socketaddr);
-                                store.write(enr.public_key().encode(), bincode::serialize(&socketaddr).unwrap()).await;
-                            }
-                        }
+                        Discovery::process_enr(&store, enr).await;
                     },
                     Event::SocketUpdated(addr) => {
                         info!("Event::SocketUpdated: local ENR IP address has been updated, addr:{}", addr);

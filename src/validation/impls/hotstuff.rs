@@ -4,13 +4,13 @@ use crate::validation::{generic_operator_committee::TOperatorCommittee, operator
 use async_trait::async_trait;
 use bls::{Hash256, PublicKey, Signature};
 use futures::future::join_all;
-use log::{debug, info};
+use log::info;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::mpsc::Receiver;
-use tokio::sync::Notify;
 use tokio::sync::RwLock;
-use tokio::task::JoinHandle;
+// use tokio::sync::mpsc::Receiver;
+// use tokio::sync::Notify;
+// use tokio::task::JoinHandle;
 
 /// Provides the externally-facing operator committee type.
 pub mod types {
@@ -23,14 +23,14 @@ pub struct HotstuffOperatorCommittee {
     validator_public_key: PublicKey,
     operators: RwLock<HashMap<u64, Arc<RwLock<dyn TOperator>>>>,
     threshold_: usize,
-    consensus_notifications: Arc<RwLock<HashMap<Hash256, Arc<Notify>>>>,
-    thread_handle: JoinHandle<()>,
+    // consensus_notifications: Arc<RwLock<HashMap<Hash256, Arc<Notify>>>>,
+    // thread_handle: JoinHandle<()>,
 }
 
 impl Drop for HotstuffOperatorCommittee {
     fn drop(&mut self) {
         info!("Shutting down hotstuff operator committee");
-        self.thread_handle.abort();
+        // self.thread_handle.abort();
     }
 }
 
@@ -40,40 +40,40 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
         validator_id: u64,
         validator_public_key: PublicKey,
         t: usize,
-        mut rx_consensus: Receiver<Hash256>,
+        // mut rx_consensus: Receiver<Hash256>,
     ) -> Self {
-        let consensus_notifications: Arc<RwLock<HashMap<Hash256, Arc<Notify>>>> =
-            Arc::new(RwLock::new(HashMap::default()));
-        let consensus_notifications_clone = consensus_notifications.clone();
-        let thread_handle = tokio::spawn(async move {
-            loop {
-                match rx_consensus.recv().await {
-                    Some(value) => {
-                        debug!("Consensus achieved for msg {}", value);
-                        let notes = consensus_notifications_clone.write().await;
-                        if let Some(notify) = notes.get(&value) {
-                            notify.notify_one();
-                        }
-                        // else {
-                        //     let notify = Arc::new(Notify::new());
-                        //     notify.notify_one();
-                        //     notes.insert(value, notify);
-                        // }
-                    }
-                    None => {
-                        return;
-                    }
-                }
-            }
-        });
+        // let consensus_notifications: Arc<RwLock<HashMap<Hash256, Arc<Notify>>>> =
+        //     Arc::new(RwLock::new(HashMap::default()));
+        // let consensus_notifications_clone = consensus_notifications.clone();
+        // let thread_handle = tokio::spawn(async move {
+        //     loop {
+        //         match rx_consensus.recv().await {
+        //             Some(value) => {
+        //                 debug!("Consensus achieved for msg {}", value);
+        //                 let notes = consensus_notifications_clone.write().await;
+        //                 if let Some(notify) = notes.get(&value) {
+        //                     notify.notify_one();
+        //                 }
+        //                 // else {
+        //                 //     let notify = Arc::new(Notify::new());
+        //                 //     notify.notify_one();
+        //                 //     notes.insert(value, notify);
+        //                 // }
+        //             }
+        //             None => {
+        //                 return;
+        //             }
+        //         }
+        //     }
+        // });
 
         Self {
             validator_id,
             validator_public_key,
             operators: <_>::default(),
             threshold_: t,
-            consensus_notifications,
-            thread_handle,
+            // consensus_notifications,
+            // thread_handle,
         }
     }
 
@@ -104,44 +104,39 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
         ids.iter().position(|&id| id == op_id).unwrap()
     }
 
-    async fn consensus(&self, msg: Hash256) -> Result<(), DvfError> {
-        let notify = {
-            let mut notes = self.consensus_notifications.write().await;
-            if let Some(notify) = notes.get(&msg) {
-                notify.clone()
-            } else {
-                let notify = Arc::new(Notify::new());
-                notes.insert(msg, notify.clone());
-                notify
-            }
-        };
+    // async fn consensus(&self, msg: Hash256) -> Result<(), DvfError> {
+    //     let notify = {
+    //         let mut notes = self.consensus_notifications.write().await;
+    //         if let Some(notify) = notes.get(&msg) {
+    //             notify.clone()
+    //         } else {
+    //             let notify = Arc::new(Notify::new());
+    //             notes.insert(msg, notify.clone());
+    //             notify
+    //         }
+    //     };
 
-        let operators = self.operators.read().await;
-        for operator in operators.values() {
-            operator.read().await.propose(msg).await;
-        }
+    //     let operators = self.operators.read().await;
+    //     for operator in operators.values() {
+    //         operator.read().await.propose(msg).await;
+    //     }
+    //     notify.notified().await;
+    //     let mut notes = self.consensus_notifications.write().await;
+    //     notes.remove(&msg);
+    //     Ok(())
+    // }
 
-        // let notify = {
-        //     let mut notes = self.consensus_notifications.write().await;
-        //     if let Some(notify) = notes.get(&msg) {
-        //         notify.clone()
-        //     }
-        //     else {
-        //         let notify = Arc::new(Notify::new());
-        //         notes.insert(msg, notify.clone());
-        //         notify
-        //     }
-        // };
-        notify.notified().await;
-        let mut notes = self.consensus_notifications.write().await;
-        notes.remove(&msg);
+    async fn consensus_on_duty(&self, data: &[u8]) -> Result<(), DvfError> {
+        let operators = &self.operators.read().await;
+        let signing_futs = operators.keys().map(|operator_id| async move {
+            let operator = operators.get(operator_id).unwrap().read().await;
+            operator.consensus_on_duty(data).await
+        });
+        let _ = join_all(signing_futs).await;
         Ok(())
     }
 
     async fn sign(&self, msg: Hash256) -> Result<(Signature, Vec<u64>), DvfError> {
-        // Run consensus protocol
-        self.consensus(msg).await?;
-
         let operators = &self.operators.read().await;
         let signing_futs = operators.keys().map(|operator_id| async move {
             let operator = operators.get(operator_id).unwrap().read().await;
@@ -173,7 +168,14 @@ impl TOperatorCommittee for HotstuffOperatorCommittee {
         Ok((sig, ids))
     }
 
-    fn get_validator_pk(&self) -> String {
-        self.validator_public_key.as_hex_string()
+    fn get_validator_pk(&self) -> PublicKey {
+        self.validator_public_key.clone()
+    }
+
+    async fn is_leader_active(&self, nonce: u64) -> bool {
+        let leader = self.get_leader(nonce).await;
+        let operators = &self.operators.read().await;
+        let operator = operators.get(&leader).unwrap().read().await;
+        operator.is_active().await
     }
 }

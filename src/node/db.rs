@@ -1337,6 +1337,7 @@ pub fn check_validator_fee_recipient(conn: &Connection, pubkey: Vec<u8>, fee_rec
 
 #[tokio::test]
 async fn test_fee_recipient() {
+    use rand::RngCore;
     let mut logger =
         env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
     logger.format_timestamp_millis();

@@ -417,7 +417,7 @@ impl<E: EthSpec> MessageHandler for DvfDutyCheckHandler<E> {
                                 }
                             };
                         let fee_recipient = block.body().execution_payload().unwrap().fee_recipient();
-                        if self.db.check_validator_fee_recipient(check_msg.pubkey, fee_recipient).await.unwrap() {
+                        if !self.db.check_validator_fee_recipient(check_msg.pubkey, fee_recipient).await.unwrap() {
                             reply(
                                 writer,
                                 DutySafety::Invalid,
@@ -445,7 +445,7 @@ impl<E: EthSpec> MessageHandler for DvfDutyCheckHandler<E> {
                                 }
                             };
                         let fee_recipient = block.body().execution_payload().unwrap().fee_recipient();
-                        if self.db.check_validator_fee_recipient(check_msg.pubkey, fee_recipient).await.unwrap() {
+                        if !self.db.check_validator_fee_recipient(check_msg.pubkey, fee_recipient).await.unwrap() {
                             reply(
                                 writer,
                                 DutySafety::Invalid,

@@ -1176,12 +1176,12 @@ pub async fn process_fee_recipient_set(raw_log: Log, db: &Database) -> Result<()
             EventParam {
                 name: "owner".to_string(),
                 kind: ParamType::Address,
-                indexed: true,
+                indexed: false,
             },
             EventParam {
                 name: "newAddress".to_string(),
                 kind: ParamType::Address,
-                indexed: true,
+                indexed: false,
             },
         ],
         anonymous: false,

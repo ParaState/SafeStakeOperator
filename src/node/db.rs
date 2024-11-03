@@ -1336,6 +1336,19 @@ pub fn check_validator_fee_recipient(conn: &Connection, pubkey: Vec<u8>, fee_rec
 }
 
 #[tokio::test]
+async fn test_check_fee_recipient() {
+    let mut logger =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
+    logger.format_timestamp_millis();
+    logger.init();
+    let _ = Database::new("/tmp/contract_database.db").unwrap();
+    let conn = Connection::open("/tmp/contract_database.db").unwrap();
+    let va_pk = hex::decode("82664f099bbd1a81ad878c2c2a3feb3c7caa3a623b5859018f6601da574e0ebd29432169610ed89b048f195f1fdcc024").unwrap();
+    let address: Address = Address::from_slice(&hex::decode("331d29ac25cb8b7e52b5a7de0ba8e863682eca80").unwrap());
+    assert_eq!(check_validator_fee_recipient(&conn, va_pk, address).unwrap(), true);
+}
+
+#[tokio::test]
 async fn test_fee_recipient() {
     use rand::RngCore;
     let mut logger =

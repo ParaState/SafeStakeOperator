@@ -417,6 +417,7 @@ impl<E: EthSpec> MessageHandler for DvfDutyCheckHandler<E> {
                                 }
                             };
                         let fee_recipient = block.body().execution_payload().unwrap().fee_recipient();
+                        info!("block proposal full block, va pubic key {}, fee recipient {}", hex::encode(check_msg.pubkey.clone()), format!("{0:0x}", fee_recipient));
                         if !self.db.check_validator_fee_recipient(check_msg.pubkey, fee_recipient).await.unwrap() {
                             reply(
                                 writer,
@@ -445,6 +446,7 @@ impl<E: EthSpec> MessageHandler for DvfDutyCheckHandler<E> {
                                 }
                             };
                         let fee_recipient = block.body().execution_payload().unwrap().fee_recipient();
+                        info!("block proposal blinded block, va pubic key {}, fee recipient {}", hex::encode(check_msg.pubkey.clone()), format!("{0:0x}", fee_recipient));
                         if !self.db.check_validator_fee_recipient(check_msg.pubkey, fee_recipient).await.unwrap() {
                             reply(
                                 writer,

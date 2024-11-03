@@ -50,7 +50,7 @@ use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
 use types::EthSpec;
 use validator_dir::insecure_keys::INSECURE_PASSWORD;
-use web3::types::H160;
+use web3::types::{H160, Address};
 
 const THRESHOLD: u64 = 3;
 pub const COMMITTEE_IP_HEARTBEAT_INTERVAL: u64 = 1800;
@@ -228,6 +228,7 @@ impl<T: EthSpec> Node<T> {
                                 operator_pks,
                                 shared_pks,
                                 encrypted_sks,
+                                fee_recipient
                             ) => {
                                 let va_id = validator.id;
                                 info!("StartValidator");
@@ -237,6 +238,7 @@ impl<T: EthSpec> Node<T> {
                                     operator_pks,
                                     shared_pks,
                                     encrypted_sks,
+                                    fee_recipient
                                 )
                                 .await
                                 {
@@ -530,6 +532,7 @@ pub async fn add_validator<T: EthSpec>(
     operator_public_keys: OperatorPublicKeys,
     shared_public_keys: SharedPublicKeys,
     encrypted_secret_keys: EncryptedSecretKeys,
+    fee_recipient: Address
 ) -> Result<(), String> {
     let node = node.read().await;
     let validator_dir = node.config.validator_dir.clone();
@@ -661,7 +664,7 @@ pub async fn add_validator<T: EthSpec>(
                     voting_keystore_share_password_path,
                     true,
                     None,
-                    Some(validator.owner_address),
+                    Some(fee_recipient),
                     None,
                     Some(node.config.builder_proposals),
                     node.config.builder_boost_factor,

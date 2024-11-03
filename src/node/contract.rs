@@ -139,6 +139,7 @@ pub enum ContractCommand {
         OperatorPublicKeys,
         SharedPublicKeys,
         EncryptedSecretKeys,
+        Address
     ),
     RemoveValidator(Validator),
     ActivateValidator(Validator),
@@ -814,7 +815,7 @@ pub async fn process_validator_registration(
         //send command to node
         let validator = Validator {
             id: validator_id,
-            owner_address: fee_recipient_address,
+            owner_address: address,
             public_key: va_pk.try_into().unwrap(),
             releated_operators: op_ids,
             active: true,
@@ -824,7 +825,7 @@ pub async fn process_validator_registration(
         // save validator in local database
         db.insert_validator(validator.clone(), registration_timestamp)
             .await;
-        let cmd = ContractCommand::StartValidator(validator, op_pk_bn, shared_pks, encrypted_sks);
+        let cmd = ContractCommand::StartValidator(validator, op_pk_bn, shared_pks, encrypted_sks, fee_recipient_address);
         db.insert_contract_command(validator_id, serde_json::to_string(&cmd).unwrap())
             .await;
     }

@@ -447,16 +447,6 @@ impl<E: EthSpec> MessageHandler for DvfDutyCheckHandler<E> {
                             };
                         let fee_recipient = block.body().execution_payload().unwrap().fee_recipient();
                         info!("block proposal blinded block, va pubic key {}, fee recipient {}", hex::encode(check_msg.pubkey.clone()), format!("{0:0x}", fee_recipient));
-                        if !self.db.check_validator_fee_recipient(check_msg.pubkey, fee_recipient).await.unwrap() {
-                            reply(
-                                writer,
-                                DutySafety::Invalid,
-                                format!("fee recipient is not consistent"),
-                            )
-                            .await;
-                            error!("fee recipient is not consistent");
-                            return Ok(());
-                        }
                         self.sign_block(writer, block, check_msg.domain_hash).await;
                     }
                 };

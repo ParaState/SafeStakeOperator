@@ -160,7 +160,7 @@ pub enum ContractCommand {
         Address,
     ),
     RemoveInitiator(Initiator, OperatorPublicKeys),
-    SetFeeRecipient(ValidatorPublicKey, Address),
+    SetFeeRecipient(u64, ValidatorPublicKey, Address),
 }
 
 #[derive(Clone)]
@@ -1208,7 +1208,7 @@ pub async fn process_fee_recipient_set(raw_log: Log, db: &Database) -> Result<()
 
     // public key is zero
     for v in db.query_validator_by_address(owner).await.unwrap().iter() {
-        let cmd = ContractCommand::SetFeeRecipient(v.public_key.clone(), fee_recipient_address);
+        let cmd = ContractCommand::SetFeeRecipient(v.id, v.public_key.clone(), fee_recipient_address);
         db.insert_contract_command(v.id, serde_json::to_string(&cmd).unwrap())
             .await;
     }

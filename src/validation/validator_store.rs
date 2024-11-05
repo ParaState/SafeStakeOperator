@@ -1176,7 +1176,7 @@ impl<T: SlotClock + 'static, E: EthSpec> ValidatorStore<T, E> {
             "pubkey" => format!("{:?}", pubkey));
         self.stop_validator_keystore(pubkey).await;
         // Cooling down
-        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
         self.start_validator_keystore(pubkey).await;
     }
 

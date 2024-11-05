@@ -389,9 +389,10 @@ impl<T: EthSpec> Node<T> {
                                     }
                                 }
                             }
-                            ContractCommand::SetFeeRecipient(va_pk, fee_recipient_address) => {
+                            ContractCommand::SetFeeRecipient(va_id, va_pk, fee_recipient_address) => {
                                 match set_validator_fee_recipient(
                                     node.clone(),
+                                    va_id,
                                     va_pk,
                                     fee_recipient_address,
                                 )
@@ -1091,6 +1092,7 @@ pub async fn restart_validator<T: EthSpec>(
 
 pub async fn set_validator_fee_recipient<T: EthSpec>(
     node: Arc<RwLock<Node<T>>>,
+    validator_id: u64,
     validator_pk: Vec<u8>,
     fee_recipient_address: H160,
 ) -> Result<(), DvfError> {
@@ -1103,13 +1105,19 @@ pub async fn set_validator_fee_recipient<T: EthSpec>(
         let node_ = node.read().await;
         node_.validator_store.clone()
     };
+    cleanup_handler(node.clone(), validator_id).await;
     match validator_store {
         Some(validator_store) => {
+            let validator_pk = BlsPublicKey::deserialize(&validator_pk).unwrap();
             validator_store
                 .set_fee_recipient_for_validator(
-                    &BlsPublicKey::deserialize(&validator_pk).unwrap(),
+                    &validator_pk,
                     fee_recipient_address,
                 )
+                .await;
+            
+            validator_store
+                .restart_validator_keystore(&validator_pk)
                 .await;
             Ok(())
         }

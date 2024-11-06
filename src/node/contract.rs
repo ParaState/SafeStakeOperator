@@ -317,9 +317,9 @@ impl TopicHandler for FeeRecipientSetHandler {
         db: &Database,
         _operator_pk_base64: &String,
         _config: &ContractConfig,
-        _web3: &Web3<WebSocket>,
+        web3: &Web3<WebSocket>,
     ) -> Result<(), ContractError> {
-        process_fee_recipient_set(log, db).await.map_err(|e| {
+        process_fee_recipient_set(log, db, web3).await.map_err(|e| {
             error!("error happens when process set fee recipient");
             e
         })
@@ -1169,7 +1169,7 @@ pub async fn process_minipool_ready(raw_log: Log, db: &Database) -> Result<(), C
     }
 }
 
-pub async fn process_fee_recipient_set(raw_log: Log, db: &Database) -> Result<(), ContractError> {
+pub async fn process_fee_recipient_set(raw_log: Log, db: &Database, web3: &Web3<WebSocket>,) -> Result<(), ContractError> {
     info!("process_fee_recipient_set");
     let fee_recipient_set_event = Event {
         name: CONTRACT_FEE_RECIPIENT_SET_EVENT_NAME.to_string(),
@@ -1203,11 +1203,13 @@ pub async fn process_fee_recipient_set(raw_log: Log, db: &Database) -> Result<()
         .clone()
         .into_address()
         .ok_or(ContractError::LogParseError)?;
-
+    let block_number = raw_log.block_number.unwrap();
+    let registration_timestamp = query_block_number_timestamp(block_number, web3).await?;
     db.upsert_owner_fee_recipient(owner, fee_recipient_address).await;
 
     // public key is zero
     for v in db.query_validator_by_address(owner).await.unwrap().iter() {
+        db.update_validator_registration_timestamp(v.public_key.clone(), registration_timestamp).await;
         let cmd = ContractCommand::SetFeeRecipient(v.id, v.public_key.clone(), fee_recipient_address);
         db.insert_contract_command(v.id, serde_json::to_string(&cmd).unwrap())
             .await;

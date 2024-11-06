@@ -43,7 +43,8 @@ pub enum DbCommand {
     QueryValidatorRegistrationTimestamp(String, oneshot::Sender<DbResult<u64>>),
     UpsertOwnerFeeRecipient(Address, Address),
     QueryOwnerFeeRecipient(Address, oneshot::Sender<DbResult<Option<Address>>>),
-    CheckValidatorFeeRecipient(Vec<u8>, Address, oneshot::Sender<DbResult<bool>>)
+    CheckValidatorFeeRecipient(Vec<u8>, Address, oneshot::Sender<DbResult<bool>>),
+    UpdateValidatorRegistrationTimestamp(Vec<u8>, u64)
 }
 
 #[derive(Clone, Debug)]
@@ -261,6 +262,9 @@ impl Database {
                     DbCommand::CheckValidatorFeeRecipient(pubkey, fee_recipient, sender) => {
                         let response = check_validator_fee_recipient(&mut conn, pubkey, fee_recipient);
                         let _ = sender.send(response);
+                    }
+                    DbCommand::UpdateValidatorRegistrationTimestamp(pubkey, timestamp) => {
+                        update_validator_registration_timestamp(&conn, pubkey, timestamp);
                     }
                 }
             }
@@ -684,6 +688,19 @@ impl Database {
         receiver
             .await
             .expect("Failed to receive reply of check validator fee recipient address from db")
+    }
+
+    pub async fn update_validator_registration_timestamp(
+        &self,
+        pubkey: Vec<u8>,
+        timestamp: u64
+    ) {
+        if let Err(e) = self.channel.send(DbCommand::UpdateValidatorRegistrationTimestamp(pubkey, timestamp)).await {
+            panic!(
+                "Failed to send update validator registration timestamp  {}",
+                e
+            );
+        }
     }
 }
 
@@ -1335,6 +1352,13 @@ pub fn check_validator_fee_recipient(conn: &Connection, pubkey: Vec<u8>, fee_rec
     Ok(false)
 }
 
+fn update_validator_registration_timestamp(conn: &Connection, pubkey: Vec<u8>, timestamp: u64) {
+    let pk = hex::encode(pubkey);
+    if let Err(e) = conn.execute("UPDATE validators_registration_timestamp SET registration_timestamp = ?1 WHERE public_key = ?2", params![timestamp, pk]) {
+        error!("Can't insert into owner fee recipient, error: {}", e);
+    }
+}
+
 #[tokio::test]
 async fn test_check_fee_recipient() {
     let mut logger =
@@ -1381,6 +1405,9 @@ async fn test_fee_recipient() {
     upsert_owner_fee_recipient(&conn, owner, new_fee_recipient);
     assert_eq!(query_owner_fee_recipient(&conn, owner), Ok(Some(new_fee_recipient)));
     assert_eq!(check_validator_fee_recipient(&conn, pubkey.clone(), new_fee_recipient).unwrap(), true);
+    update_validator_registration_timestamp(&conn, pubkey.clone(), 10);
+    let pk_str = hex::encode(pubkey.clone());
+    assert_eq!(query_validator_registration_timestamp(&conn, &pk_str).unwrap(), 10);
 }
 
 #[tokio::test]

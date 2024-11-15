@@ -50,7 +50,7 @@ impl StatusReport {
                         &metrics::SIGNED_ATTESTATIONS_TOTAL,
                         &[metrics::SUCCESS],
                     ) as usize,
-                    version: dvf_version::VERSION as usize,
+                    version: dvf_version::SOFTWARE_VERSION as usize,
                     connected_nodes: metrics::int_counter(&metrics::DVT_VC_CONNECTED_NODES)
                         as usize,
                     sign_hex: None,

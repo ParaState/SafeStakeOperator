@@ -819,7 +819,7 @@ pub async fn start_initiator<T: EthSpec>(
         secp256k1::SecretKey::from_slice(&secret.0).expect("Unable to load secret key");
     let node_public_key = secp256k1::PublicKey::from_secret_key(&secp, &node_secret_key);
     if operator_addrs.iter().any(|x| x.is_none()) {
-        sleep(Duration::from_secs(10)).await;
+        sleep(Duration::from_secs(5)).await;
         return Err("StartInitiator: Insufficient operators discovered for DKG".to_string());
     }
     let operator_addrs: Vec<SocketAddr> = operator_addrs.iter().map(|x| x.unwrap()).collect();

@@ -337,6 +337,7 @@ pub struct ContractConfig {
     pub fee_recipient_set_topic: String,
     pub safestake_network_abi_path: String,
     pub safestake_registry_abi_path: String,
+    pub safestake_config_abi_path: String
 }
 
 impl FromFile<ContractConfig> for ContractConfig {}
@@ -806,12 +807,7 @@ pub async fn process_validator_registration(
             .into_iter()
             .map(|s| base64::decode(s).unwrap())
             .collect();
-        let fee_recipient_address = match db.query_owner_fee_recipient(address.clone()).await.map_err(|_| {
-            ContractError::DatabaseError
-        })? {
-            Some(a) => a,
-            None => address
-        };
+        let fee_recipient_address = query_owner_fee_recipient(config, address.clone(), web3).await?;
         //send command to node
         let validator = Validator {
             id: validator_id,
@@ -1234,6 +1230,37 @@ pub async fn query_block_number_timestamp(
         }
         None => Ok(DEFAULT_REGISTRATION_TIMESTAMP),
     }
+}
+
+pub async fn query_owner_fee_recipient(
+    config: &ContractConfig,
+    owner: Address,
+    web3: &Web3<WebSocket>
+) -> Result<Address, ContractError> {
+    let raw_abi = std::fs::read_to_string(&config.safestake_config_abi_path)
+        .or_else(|e| {
+            error!(
+                "Can't read from {} {}",
+                &config.safestake_config_abi_path, e
+            );
+            Err(ContractError::FileError)
+        })
+        .unwrap();
+    let raw_json: Value = serde_json::from_str(&raw_abi).unwrap();
+    let abi = raw_json["abi"].to_string();
+    let address = Address::from_slice(&hex::decode(CONFIG_CONTRACT.get().unwrap()).unwrap());
+    let contract = EthContract::from_json(web3.eth(), address, abi.as_bytes())
+        .or_else(|e| {
+            error!("Can't create contract from json {}", e);
+            Err(ContractError::ContractParseError)
+        })
+        .unwrap();
+    let fee_recipient: Address = contract.query("getFeeRecipientAddress", (owner,), None, Options::default(), None).await
+    .or_else(|e| {
+        error!("Can't query from contract {}", e);
+        Err(ContractError::QueryError)
+    })?;
+    Ok(fee_recipient)
 }
 
 pub async fn query_operator_from_contract(

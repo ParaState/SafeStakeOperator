@@ -33,12 +33,12 @@ const CONTRACT_INI_REG_EVENT_NAME: &str = "InitiatorRegistration";
 const CONTRACT_MINIPOOL_CREATED_EVENT_NAME: &str = "InitiatorMiniPoolCreated";
 const CONTRACT_MINIPOOL_READY_EVENT_NAME: &str = "InitiatorMiniPoolReady";
 const CONTRACT_INI_RM_EVENT_NAME: &str = "InitiatorRemoval";
-const CONTRACT_FEE_RECIPIENT_SET_EVENT_NAME: &str = "FeeReceiptAddressSet";
+const CONTRACT_FEE_RECIPIENT_SET_EVENT_NAME: &str = "FeeRecipientAddressChanged";
 pub static SELF_OPERATOR_ID: OnceCell<u32> = OnceCell::const_new();
 pub static DEFAULT_TRANSPORT_URL: OnceCell<String> = OnceCell::const_new();
 pub static REGISTRY_CONTRACT: OnceCell<String> = OnceCell::const_new();
 pub static NETWORK_CONTRACT: OnceCell<String> = OnceCell::const_new();
-// pub static EXTRA_CONTRACT: OnceCell<String> = OnceCell::const_new();
+pub static CONFIG_CONTRACT: OnceCell<String> = OnceCell::const_new();
 pub static DATABASE: OnceCell<Database> = OnceCell::const_new();
 const QUERY_LOGS_INTERVAL: u64 = 60;
 const QUERY_BLOCK_INTERVAL: u64 = 500;
@@ -139,6 +139,7 @@ pub enum ContractCommand {
         OperatorPublicKeys,
         SharedPublicKeys,
         EncryptedSecretKeys,
+        Address
     ),
     RemoveValidator(Validator),
     ActivateValidator(Validator),
@@ -159,7 +160,7 @@ pub enum ContractCommand {
         Address,
     ),
     RemoveInitiator(Initiator, OperatorPublicKeys),
-    SetFeeRecipient(ValidatorPublicKey, Address),
+    SetFeeRecipient(u64, ValidatorPublicKey, Address),
 }
 
 #[derive(Clone)]
@@ -316,10 +317,10 @@ impl TopicHandler for FeeRecipientSetHandler {
         db: &Database,
         _operator_pk_base64: &String,
         _config: &ContractConfig,
-        _web3: &Web3<WebSocket>,
+        web3: &Web3<WebSocket>,
     ) -> Result<(), ContractError> {
-        process_fee_recipient_set(log, db).await.map_err(|e| {
-            error!("error happens when process initiator removal");
+        process_fee_recipient_set(log, db, web3).await.map_err(|e| {
+            error!("error happens when process set fee recipient");
             e
         })
     }
@@ -336,6 +337,7 @@ pub struct ContractConfig {
     pub fee_recipient_set_topic: String,
     pub safestake_network_abi_path: String,
     pub safestake_registry_abi_path: String,
+    pub safestake_config_abi_path: String
 }
 
 impl FromFile<ContractConfig> for ContractConfig {}
@@ -455,7 +457,7 @@ impl Contract {
         let va_filter_builder = FilterBuilder::default()
             .address(vec![
                 Address::from_slice(&hex::decode(NETWORK_CONTRACT.get().unwrap()).unwrap()),
-                // Address::from_slice(&hex::decode(EXTRA_CONTRACT.get().unwrap()).unwrap()),
+                Address::from_slice(&hex::decode(CONFIG_CONTRACT.get().unwrap()).unwrap()),
             ])
             .topics(
                 Some(vec![va_reg_topic, va_rm_topic, fee_receipient_set_topic]),
@@ -805,6 +807,7 @@ pub async fn process_validator_registration(
             .into_iter()
             .map(|s| base64::decode(s).unwrap())
             .collect();
+        let fee_recipient_address = query_owner_fee_recipient(config, address.clone(), web3).await?;
         //send command to node
         let validator = Validator {
             id: validator_id,
@@ -818,7 +821,7 @@ pub async fn process_validator_registration(
         // save validator in local database
         db.insert_validator(validator.clone(), registration_timestamp)
             .await;
-        let cmd = ContractCommand::StartValidator(validator, op_pk_bn, shared_pks, encrypted_sks);
+        let cmd = ContractCommand::StartValidator(validator, op_pk_bn, shared_pks, encrypted_sks, fee_recipient_address);
         db.insert_contract_command(validator_id, serde_json::to_string(&cmd).unwrap())
             .await;
     }
@@ -1162,7 +1165,7 @@ pub async fn process_minipool_ready(raw_log: Log, db: &Database) -> Result<(), C
     }
 }
 
-pub async fn process_fee_recipient_set(raw_log: Log, db: &Database) -> Result<(), ContractError> {
+pub async fn process_fee_recipient_set(raw_log: Log, db: &Database, web3: &Web3<WebSocket>,) -> Result<(), ContractError> {
     info!("process_fee_recipient_set");
     let fee_recipient_set_event = Event {
         name: CONTRACT_FEE_RECIPIENT_SET_EVENT_NAME.to_string(),
@@ -1170,21 +1173,11 @@ pub async fn process_fee_recipient_set(raw_log: Log, db: &Database) -> Result<()
             EventParam {
                 name: "owner".to_string(),
                 kind: ParamType::Address,
-                indexed: true,
-            },
-            EventParam {
-                name: "pubkey".to_string(),
-                kind: ParamType::Bytes,
                 indexed: false,
             },
             EventParam {
-                name: "feeReceiptAddress".to_string(),
+                name: "newAddress".to_string(),
                 kind: ParamType::Address,
-                indexed: true,
-            },
-            EventParam {
-                name: "updateCount".to_string(),
-                kind: ParamType::Uint(32),
                 indexed: false,
             },
         ],
@@ -1201,39 +1194,21 @@ pub async fn process_fee_recipient_set(raw_log: Log, db: &Database) -> Result<()
         .clone()
         .into_address()
         .ok_or(ContractError::LogParseError)?;
-    let pubkey = log.params[1]
-        .value
-        .clone()
-        .into_bytes()
-        .ok_or(ContractError::LogParseError)?;
-    let fee_recipient_address = log.params[2]
+    let fee_recipient_address = log.params[1]
         .value
         .clone()
         .into_address()
         .ok_or(ContractError::LogParseError)?;
+    let block_number = raw_log.block_number.unwrap();
+    let registration_timestamp = query_block_number_timestamp(block_number, web3).await?;
+    db.upsert_owner_fee_recipient(owner, fee_recipient_address).await;
 
-    if pubkey.iter().all(|&x| x == 0) {
-        // public key is zero
-        for v in db.query_validator_by_address(owner).await.unwrap().iter() {
-            let cmd = ContractCommand::SetFeeRecipient(v.public_key.clone(), fee_recipient_address);
-            db.insert_contract_command(v.id, serde_json::to_string(&cmd).unwrap())
-                .await;
-        }
-    } else {
-        match db
-            .query_validator_by_public_key(hex::encode(pubkey.clone()))
-            .await
-            .unwrap()
-        {
-            Some(v) => {
-                let cmd = ContractCommand::SetFeeRecipient(pubkey, fee_recipient_address);
-                db.insert_contract_command(v.id, serde_json::to_string(&cmd).unwrap())
-                    .await;
-            }
-            None => {
-                info!("set fee recipient not releated to this operator");
-            }
-        }
+    // public key is zero
+    for v in db.query_validator_by_address(owner).await.unwrap().iter() {
+        db.update_validator_registration_timestamp(v.public_key.clone(), registration_timestamp).await;
+        let cmd = ContractCommand::SetFeeRecipient(v.id, v.public_key.clone(), fee_recipient_address);
+        db.insert_contract_command(v.id, serde_json::to_string(&cmd).unwrap())
+            .await;
     }
 
     Ok(())
@@ -1255,6 +1230,37 @@ pub async fn query_block_number_timestamp(
         }
         None => Ok(DEFAULT_REGISTRATION_TIMESTAMP),
     }
+}
+
+pub async fn query_owner_fee_recipient(
+    config: &ContractConfig,
+    owner: Address,
+    web3: &Web3<WebSocket>
+) -> Result<Address, ContractError> {
+    let raw_abi = std::fs::read_to_string(&config.safestake_config_abi_path)
+        .or_else(|e| {
+            error!(
+                "Can't read from {} {}",
+                &config.safestake_config_abi_path, e
+            );
+            Err(ContractError::FileError)
+        })
+        .unwrap();
+    let raw_json: Value = serde_json::from_str(&raw_abi).unwrap();
+    let abi = raw_json["abi"].to_string();
+    let address = Address::from_slice(&hex::decode(CONFIG_CONTRACT.get().unwrap()).unwrap());
+    let contract = EthContract::from_json(web3.eth(), address, abi.as_bytes())
+        .or_else(|e| {
+            error!("Can't create contract from json {}", e);
+            Err(ContractError::ContractParseError)
+        })
+        .unwrap();
+    let fee_recipient: Address = contract.query("getFeeRecipientAddress", (owner,), None, Options::default(), None).await
+    .or_else(|e| {
+        error!("Can't query from contract {}", e);
+        Err(ContractError::QueryError)
+    })?;
+    Ok(fee_recipient)
 }
 
 pub async fn query_operator_from_contract(

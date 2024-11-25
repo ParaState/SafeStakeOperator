@@ -10,8 +10,8 @@ use std::net::SocketAddr;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use std::collections::HashMap;
-use std::sync::{Arc};
-use tokio::sync::{RwLock};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use crate::dvf_message::{DvfMessage, VERSION};
 use futures::SinkExt;
 use tokio::time::{sleep, Duration};
@@ -89,7 +89,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                 let version = dvf_message.version;
                                 if version != VERSION {
                                     let _ = writer.send(Bytes::from("Version mismatch")).await;
-                                    error!("[VA {}] Version mismatch: got ({}), expected ({})", validator_id, version, VERSION);
+                                    error!("[VA {}] Version mismatch: got ({}), expected version ({})", validator_id, version, VERSION);
                                     sleep(Duration::from_secs(INVALID_MESSAGE_DELAY)).await;
                                     // [zico] Should we kill the connection here? 
                                     // If we kill it, then a reliable sender can resend the message because the ACK is not normal, but it may cause the 

@@ -41,6 +41,10 @@ pub enum DbCommand {
     QueryInitiatorStore(u32, oneshot::Sender<DbResult<Option<InitiatorStoreRecord>>>),
     QueryAllValidatorPublicKeys(oneshot::Sender<DbResult<Vec<String>>>),
     QueryValidatorRegistrationTimestamp(String, oneshot::Sender<DbResult<u64>>),
+    UpsertOwnerFeeRecipient(Address, Address),
+    QueryOwnerFeeRecipient(Address, oneshot::Sender<DbResult<Option<Address>>>),
+    CheckValidatorFeeRecipient(Vec<u8>, Address, oneshot::Sender<DbResult<bool>>),
+    UpdateValidatorRegistrationTimestamp(Vec<u8>, u64)
 }
 
 #[derive(Clone, Debug)]
@@ -134,6 +138,11 @@ impl Database {
             CONSTRAINT initiator_store_constraint FOREIGN KEY (record_id) REFERENCES initiator_store_record(id) ON DELETE CASCADE
         )";
 
+        let create_owner_fee_recipient_sql = "CREATE TABLE IF NOT EXISTS owner_fee_recipient(
+            owner CHARACTER(40) NOT NULL PRIMARY KEY,
+            fee_recipient CHARACTER(40) NOT NULL
+        )";
+
         conn.execute(create_operators_sql, [])?;
         conn.execute(create_validators_sql, [])?;
         conn.execute(create_releation_sql, [])?;
@@ -145,6 +154,7 @@ impl Database {
         conn.execute(create_initiator_store_sql, [])?;
         conn.execute(create_initiator_store_oppk_sql, [])?;
         conn.execute(create_validators_registration_timestamp_sql, [])?;
+        conn.execute(create_owner_fee_recipient_sql, [])?;
         let (tx, mut rx) = channel(1000);
 
         tokio::spawn(async move {
@@ -241,6 +251,20 @@ impl Database {
                         let response =
                             query_validator_registration_timestamp(&mut conn, &public_key);
                         let _ = sender.send(response);
+                    }
+                    DbCommand::UpsertOwnerFeeRecipient(owner, fee_recipient) => {
+                        upsert_owner_fee_recipient(&mut conn, owner, fee_recipient);
+                    }
+                    DbCommand::QueryOwnerFeeRecipient(owner, sender) => {
+                        let response = query_owner_fee_recipient(&mut conn, owner);
+                        let _ = sender.send(response);
+                    }
+                    DbCommand::CheckValidatorFeeRecipient(pubkey, fee_recipient, sender) => {
+                        let response = check_validator_fee_recipient(&mut conn, pubkey, fee_recipient);
+                        let _ = sender.send(response);
+                    }
+                    DbCommand::UpdateValidatorRegistrationTimestamp(pubkey, timestamp) => {
+                        update_validator_registration_timestamp(&conn, pubkey, timestamp);
                     }
                 }
             }
@@ -616,6 +640,67 @@ impl Database {
         receiver
             .await
             .expect("Failed to receive reply of query validators registration timestamp from db")
+    }
+
+    pub async fn upsert_owner_fee_recipient(
+        &self,
+        owner: Address,
+        fee_recipient: Address 
+    ) {
+        
+        if let Err(e) = self
+            .channel
+            .send(DbCommand::UpsertOwnerFeeRecipient(owner, fee_recipient))
+            .await
+        {
+            panic!("Failed to send enable validator command to store: {}", e);
+        }
+    }
+
+    pub async fn query_owner_fee_recipient(
+        &self,
+        owner: Address,
+    ) -> DbResult<Option<Address>>{
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self.channel.send(DbCommand::QueryOwnerFeeRecipient(owner, sender)).await {
+            panic!(
+                "Failed to send query fee recipient address to store: {}",
+                e
+            );
+        }
+        receiver
+            .await
+            .expect("Failed to receive reply of query fee recipient address from db")
+    }
+
+    pub async fn check_validator_fee_recipient(
+        &self,
+        pubkey: Vec<u8>,
+        fee_recipient: Address
+    ) -> DbResult<bool> {
+        let (sender, receiver) = oneshot::channel();
+        if let Err(e) = self.channel.send(DbCommand::CheckValidatorFeeRecipient(pubkey, fee_recipient, sender)).await {
+            panic!(
+                "Failed to send check validator fee recipient address to store: {}",
+                e
+            );
+        }
+        receiver
+            .await
+            .expect("Failed to receive reply of check validator fee recipient address from db")
+    }
+
+    pub async fn update_validator_registration_timestamp(
+        &self,
+        pubkey: Vec<u8>,
+        timestamp: u64
+    ) {
+        if let Err(e) = self.channel.send(DbCommand::UpdateValidatorRegistrationTimestamp(pubkey, timestamp)).await {
+            panic!(
+                "Failed to send update validator registration timestamp  {}",
+                e
+            );
+        }
     }
 }
 
@@ -1207,6 +1292,122 @@ pub fn query_all_validator_publickeys(conn: &Connection) -> DbResult<Vec<String>
         }
     }
     Ok(public_keys)
+}
+
+pub fn upsert_owner_fee_recipient(conn: &Connection, owner: Address, fee_recipient: Address) {
+    let owner = format!("{0:0x}", owner);
+    let fee_recipient = format!("{0:0x}", fee_recipient);
+    if let Err(e) = conn.execute("insert into owner_fee_recipient(owner, fee_recipient) values(?1, ?2) ON conflict(owner) do update set fee_recipient = (?3)", params![owner, fee_recipient, fee_recipient]) {
+        error!("Can't insert into owner fee recipient, error: {}", e);
+    }
+}
+
+pub fn query_owner_fee_recipient(conn: &Connection, owner: Address) -> DbResult<Option<Address>> {
+    let owner = format!("{0:0x}", owner);
+    match conn.prepare("select fee_recipient from owner_fee_recipient where owner = (?)") {
+        Ok(mut stmt) => {
+            let mut rows = stmt.query([owner])?;
+            while let Some(row) = rows.next()? {
+                let fee_recipient: String = row.get(0)?;
+                return Ok(Some(Address::from_slice(&hex::decode(&fee_recipient).unwrap())));
+            }
+            return Ok(None);
+        }
+        Err(e) => {
+            error!("Can't prepare statement {}", e);
+            return Err(e);
+        }
+    }
+}
+
+pub fn check_validator_fee_recipient(conn: &Connection, pubkey: Vec<u8>, fee_recipient: Address) -> DbResult<bool> {
+    let pk = hex::encode(pubkey);
+    match conn.prepare("select owner_fee_recipient.fee_recipient from validators join owner_fee_recipient on validators.owner_address = owner_fee_recipient.owner where validators.public_key = (?)") {
+        Ok(mut stmt) => {
+            let mut rows = stmt.query([pk.clone()])?;
+            while let Some(row) = rows.next()? {
+                let res: String = row.get(0)?;
+                return Ok(res == format!("{0:0x}", fee_recipient));
+            }
+        }
+        Err(e) => {
+            error!("Can't prepare statement {}", e);
+            return Err(e);
+        }
+    }
+    match conn.prepare("select owner_address from validators where public_key = (?)") {
+        Ok(mut stmt) => {
+            let mut rows = stmt.query([pk])?;
+            while let Some(row) = rows.next()? {
+                let res: String = row.get(0)?;
+                return Ok(res == format!("{0:0x}", fee_recipient));
+            }
+        }
+        Err(e) => {
+            error!("Can't prepare statement {}", e);
+            return Err(e);
+        }
+    }
+
+    Ok(false)
+}
+
+fn update_validator_registration_timestamp(conn: &Connection, pubkey: Vec<u8>, timestamp: u64) {
+    let pk = hex::encode(pubkey);
+    if let Err(e) = conn.execute("UPDATE validators_registration_timestamp SET registration_timestamp = ?1 WHERE public_key = ?2", params![timestamp, pk]) {
+        error!("Can't insert into owner fee recipient, error: {}", e);
+    }
+}
+
+#[tokio::test]
+async fn test_check_fee_recipient() {
+    let mut logger =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
+    logger.format_timestamp_millis();
+    logger.init();
+    let _ = Database::new("/tmp/contract_database.db").unwrap();
+    let conn = Connection::open("/tmp/contract_database.db").unwrap();
+    let va_pk = hex::decode("82664f099bbd1a81ad878c2c2a3feb3c7caa3a623b5859018f6601da574e0ebd29432169610ed89b048f195f1fdcc024").unwrap();
+    let address: Address = Address::from_slice(&hex::decode("331d29ac25cb8b7e52b5a7de0ba8e863682eca80").unwrap());
+    assert_eq!(check_validator_fee_recipient(&conn, va_pk, address).unwrap(), true);
+}
+
+#[tokio::test]
+async fn test_fee_recipient() {
+    use rand::RngCore;
+    let mut logger =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
+    logger.format_timestamp_millis();
+    logger.init();
+    let _ = Database::new("/tmp/test.db").unwrap();
+    let mut conn = Connection::open("/tmp/test.db").unwrap();
+    let owner = Address::random();
+    let mut rng = rand::thread_rng();
+    let mut dest = [0u8; 48];
+    rng.fill_bytes(&mut dest);
+    let pubkey = dest.to_vec();
+    let validator = Validator {
+        id: 1,
+        owner_address: owner.clone(),
+        public_key: pubkey.clone(),
+        releated_operators: vec![],
+        active: true
+    };
+    insert_validator(&mut conn, validator, 0);
+    assert_eq!(check_validator_fee_recipient(&conn, pubkey.clone(), owner).unwrap(), true);
+    let fee_recipient = Address::random();
+    let new_fee_recipient = Address::random();
+    assert_eq!(check_validator_fee_recipient(&conn, pubkey.clone(), fee_recipient).unwrap(), false);
+    assert_eq!(query_owner_fee_recipient(&conn, owner), Ok(None));
+    upsert_owner_fee_recipient(&conn, owner, fee_recipient);
+    assert_eq!(check_validator_fee_recipient(&conn, pubkey.clone(), fee_recipient).unwrap(), true);
+    assert_eq!(query_owner_fee_recipient(&conn, owner), Ok(Some(fee_recipient)));
+    upsert_owner_fee_recipient(&conn, owner, new_fee_recipient);
+    assert_eq!(query_owner_fee_recipient(&conn, owner), Ok(Some(new_fee_recipient)));
+    assert_eq!(check_validator_fee_recipient(&conn, pubkey.clone(), new_fee_recipient).unwrap(), true);
+    update_validator_registration_timestamp(&conn, pubkey.clone(), 10);
+    let pk_str = hex::encode(pubkey.clone());
+    assert_eq!(query_validator_registration_timestamp(&conn, &pk_str).unwrap(), 10);
 }
 
 #[tokio::test]

@@ -50,7 +50,7 @@ use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
 use types::EthSpec;
 use validator_dir::insecure_keys::INSECURE_PASSWORD;
-use web3::types::H160;
+use web3::types::{H160, Address};
 
 const THRESHOLD: u64 = 3;
 pub const COMMITTEE_IP_HEARTBEAT_INTERVAL: u64 = 1800;
@@ -228,6 +228,7 @@ impl<T: EthSpec> Node<T> {
                                 operator_pks,
                                 shared_pks,
                                 encrypted_sks,
+                                fee_recipient
                             ) => {
                                 let va_id = validator.id;
                                 info!("StartValidator");
@@ -237,6 +238,7 @@ impl<T: EthSpec> Node<T> {
                                     operator_pks,
                                     shared_pks,
                                     encrypted_sks,
+                                    fee_recipient
                                 )
                                 .await
                                 {
@@ -387,9 +389,10 @@ impl<T: EthSpec> Node<T> {
                                     }
                                 }
                             }
-                            ContractCommand::SetFeeRecipient(va_pk, fee_recipient_address) => {
+                            ContractCommand::SetFeeRecipient(va_id, va_pk, fee_recipient_address) => {
                                 match set_validator_fee_recipient(
                                     node.clone(),
+                                    va_id,
                                     va_pk,
                                     fee_recipient_address,
                                 )
@@ -530,6 +533,7 @@ pub async fn add_validator<T: EthSpec>(
     operator_public_keys: OperatorPublicKeys,
     shared_public_keys: SharedPublicKeys,
     encrypted_secret_keys: EncryptedSecretKeys,
+    fee_recipient: Address
 ) -> Result<(), String> {
     let node = node.read().await;
     let validator_dir = node.config.validator_dir.clone();
@@ -651,6 +655,8 @@ pub async fn add_validator<T: EthSpec>(
         default_keystore_share_path(&keystore_share, validator_dir.clone());
     let voting_keystore_share_password_path =
         default_keystore_share_password_path(&keystore_share, secret_dir.clone());
+
+    
     match &node.validator_store {
         Some(validator_store) => {
             let _ = validator_store
@@ -659,7 +665,7 @@ pub async fn add_validator<T: EthSpec>(
                     voting_keystore_share_password_path,
                     true,
                     None,
-                    Some(validator.owner_address),
+                    Some(fee_recipient),
                     None,
                     Some(node.config.builder_proposals),
                     node.config.builder_boost_factor,
@@ -813,7 +819,7 @@ pub async fn start_initiator<T: EthSpec>(
         secp256k1::SecretKey::from_slice(&secret.0).expect("Unable to load secret key");
     let node_public_key = secp256k1::PublicKey::from_secret_key(&secp, &node_secret_key);
     if operator_addrs.iter().any(|x| x.is_none()) {
-        sleep(Duration::from_secs(10)).await;
+        sleep(Duration::from_secs(5)).await;
         return Err("StartInitiator: Insufficient operators discovered for DKG".to_string());
     }
     let operator_addrs: Vec<SocketAddr> = operator_addrs.iter().map(|x| x.unwrap()).collect();
@@ -1086,6 +1092,7 @@ pub async fn restart_validator<T: EthSpec>(
 
 pub async fn set_validator_fee_recipient<T: EthSpec>(
     node: Arc<RwLock<Node<T>>>,
+    _validator_id: u64,
     validator_pk: Vec<u8>,
     fee_recipient_address: H160,
 ) -> Result<(), DvfError> {
@@ -1100,9 +1107,10 @@ pub async fn set_validator_fee_recipient<T: EthSpec>(
     };
     match validator_store {
         Some(validator_store) => {
+            let validator_pk = BlsPublicKey::deserialize(&validator_pk).unwrap();
             validator_store
                 .set_fee_recipient_for_validator(
-                    &BlsPublicKey::deserialize(&validator_pk).unwrap(),
+                    &validator_pk,
                     fee_recipient_address,
                 )
                 .await;

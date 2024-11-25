@@ -33,8 +33,10 @@ use store::Store;
 use tokio::sync::RwLock;
 use types::{
     AbstractExecPayload, AttestationData, BeaconBlock, BlindedPayload, EthSpec, FullPayload,
-    Keypair,
+    Keypair, ExecPayload
 };
+use crate::node::db::Database;
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DvfInfo {
     pub validator_id: u64,
@@ -167,6 +169,7 @@ pub struct DvfDutyCheckHandler<E: EthSpec> {
     pub validator_pk: BlsPublicKey,
     pub operator_pks: HashMap<u64, hscrypto::PublicKey>,
     pub keypair: Keypair,
+    pub db: Database,
     _phantom: PhantomData<E>,
 }
 
@@ -412,6 +415,20 @@ impl<E: EthSpec> MessageHandler for DvfDutyCheckHandler<E> {
                                     return Ok(());
                                 }
                             };
+                        let fee_recipient = block.body().execution_payload().unwrap().fee_recipient();
+                        let pubkey = self.validator_pk.serialize().to_vec();
+                        info!("block proposal full block, va pubic key {}, fee recipient {}", hex::encode(&pubkey), format!("{0:0x}", fee_recipient));
+                        if !self.db.check_validator_fee_recipient(pubkey, fee_recipient).await.unwrap() {
+                            reply(
+                                writer,
+                                DutySafety::Invalid,
+                                format!("fee recipient is not consistent"),
+                            )
+                            .await;
+                            error!("fee recipient is not consistent");
+                            return Ok(());
+                        }
+                        
                         self.sign_block(writer, block, check_msg.domain_hash).await;
                     }
                     BlockType::Blinded => {
@@ -522,6 +539,7 @@ impl DvfSigner {
                 validator_pk: operator_committee.get_validator_pk(),
                 operator_pks,
                 keypair: keypair.clone(),
+                db: node.db.clone(),
                 _phantom: PhantomData,
             },
         );
@@ -589,7 +607,7 @@ impl DvfSigner {
             domain_hash,
             check_type,
             data: data.to_vec(),
-            sign_hex: None,
+            sign_hex: None
         };
         match msg.sign_digest(&self.node_secret) {
             Ok(sign_hex) => msg.sign_hex = Some(sign_hex),

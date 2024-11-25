@@ -139,7 +139,12 @@ sysinfo = "0.26"
 default = ["hotstuff_committee"]
 fake_committee = []
 hotstuff_committee = []
-
+spec-minimal = []
+gnosis = []
+jemalloc = []
+# Compiles the BLS crypto code so that the binary is portable across machines.
+portable = ["bls/supranational-portable"]
+modern = ["bls/supranational-force-adx"]
 [dev-dependencies]
 tokio-test = "*"
 

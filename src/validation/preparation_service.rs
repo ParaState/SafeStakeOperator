@@ -26,7 +26,7 @@ const PROPOSER_PREPARATION_LOOKAHEAD_EPOCHS: u64 = 2;
 const EPOCHS_PER_VALIDATOR_REGISTRATION_SUBMISSION: u64 = 1;
 
 /// The number of validator registrations to include per request to the beacon node.
-const VALIDATOR_REGISTRATION_BATCH_SIZE: usize = 500;
+const VALIDATOR_REGISTRATION_BATCH_SIZE: usize = 50;
 
 /// Builds an `PreparationService`.
 pub struct PreparationServiceBuilder<T: SlotClock + 'static, E: EthSpec> {
@@ -385,37 +385,6 @@ impl<T: SlotClock + 'static, E: EthSpec> PreparationService<T, E> {
 
         // Check if any have changed or it's been `EPOCHS_PER_VALIDATOR_REGISTRATION_SUBMISSION`.
         if let Some(slot) = self.slot_clock.now() {
-            // let epoch = slot.epoch(E::slots_per_epoch());
-            // let start_slot = epoch.start_slot(E::slots_per_epoch());
-            // let registration_duration = self.slot_clock.start_of(start_slot);
-            // match registration_duration {
-            //     Some(duration) => {
-            //         let registartion_timestamp = duration.as_secs();
-            //         if slot % (E::slots_per_epoch() * EPOCHS_PER_VALIDATOR_REGISTRATION_SUBMISSION)
-            //             == 0
-            //         {
-            //             self.publish_validator_registration_data(
-            //                 registration_keys,
-            //                 registartion_timestamp,
-            //                 epoch,
-            //             )
-            //             .await?;
-            //         } else if !changed_keys.is_empty() {
-            //             self.publish_validator_registration_data(
-            //                 changed_keys,
-            //                 registartion_timestamp,
-            //                 epoch,
-            //             )
-            //             .await?;
-            //         }
-            //     }
-            //     _ => {
-            //         error!(
-            //             log,
-            //             "Unable to calculate the regitration timestamp";
-            //         )
-            //     }
-            // }
             let epoch = slot.epoch(E::slots_per_epoch());
             if slot % (E::slots_per_epoch() * EPOCHS_PER_VALIDATOR_REGISTRATION_SUBMISSION) == 0 {
                 self.publish_validator_registration_data(registration_keys, epoch)

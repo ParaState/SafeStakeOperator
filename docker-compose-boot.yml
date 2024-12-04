@@ -9,7 +9,7 @@ services:
       - -c
       - |
         node_ip=$$(curl -s ifconfig.me) 
-        dvf_root_node ${OPERATOR_NETWORK} $$node_ip 9005 2>&1
+        dvf boot_node --ip $node_ip --port 9005 2>&1
     expose:
       - "9005"
     volumes:

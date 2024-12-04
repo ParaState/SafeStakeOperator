@@ -99,30 +99,6 @@ impl ShareBuilder {
         ValidatorDir::open(keystore_share_dir).map_err(BuilderError::UnableToOpenDir)
     }
 
-    ///// Generate the voting keystore share using a deterministic, well-known, **unsafe** keypair.
-    /////
-    ///// **NEVER** use these keys in production!
-    //fn insecure_voting_keypair_share(
-    //mut self,
-    //deterministic_key_index: usize,
-    //share_id: u64,
-    //) -> Result<Self, BuilderError> {
-    //let keypair = generate_deterministic_keypair(deterministic_key_index);
-
-    //let t = 5;
-    //let n = 10;
-    //let mut m_threshold = ThresholdSignature::new(t);
-    //let (kps, ids) = m_threshold.deterministic_key_split(&keypair.sk, n);
-
-    //let keystore = KeystoreBuilder::new(&kps[share_id as usize], INSECURE_PASSWORD, "".into())
-    //.map_err(|e| BuilderError::InsecureKeysError(format!("Unable to create keystore builder: {:?}", e)))?
-    //.kdf(insecure_kdf())
-    //.build()
-    //.map_err(|e| BuilderError::InsecureKeysError(format!("Unable to build keystore: {:?}", e)))?;
-    //let keystore_share = KeystoreShare::new(keystore, keypair.pk, deterministic_key_index as u64, share_idx);
-
-    //Ok(self.voting_keystore_share(keystore_share, INSECURE_PASSWORD))
-    //}
 
     /// Generate the voting keystore share using a deterministic, well-known, **unsafe** keypair.
     ///
@@ -292,36 +268,3 @@ pub fn build_deterministic_distributed_validator_dirs(
 
     Ok(())
 }
-
-//pub fn build_deterministic_committees_file(
-//committees_dir: PathBuf,
-//validator_ids: &[usize],
-//threshold: usize,
-//total_splits: usize,
-//) -> Result<(), String> {
-
-//let mut defs = Vec::<OperatorCommitteeDefinition>::new();
-//for i in 0..validator_ids.len() {
-//let keypair = generate_deterministic_keypair(validator_ids[i]);
-
-//let mut m_threshold = ThresholdSignature::new(threshold);
-//let (kps, ids) = m_threshold.deterministic_key_split(&keypair.sk, total_splits);
-
-//defs.push(
-//OperatorCommitteeDefinition {
-//total: total_splits as u64,
-//threshold: threshold as u64,
-//validator_id: validator_ids[i] as u64,
-//validator_public_key: keypair.pk.clone(),
-//operator_ids: ids,
-//operator_public_keys: kps.iter().map(|x| x.pk.clone()).collect(),
-//node_public_keys,
-//base_socket_addresses: (0..total_splits).map(|j| SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), (4000 + j) as u16)).collect(),
-//}
-//);
-//}
-//OperatorCommitteeDefinitions::from(defs)
-//.save(committees_dir)
-//.map_err(|e| format!("Unable to build committee definitions file: {:?}", e))?;
-//Ok(())
-//}

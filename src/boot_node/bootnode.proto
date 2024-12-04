@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package bootnode;
+
+message QueryNodeAddressRequest {
+    uint64 version = 1;
+    bytes operator_public_key = 2;
+}
+
+message QueryNodeAddressResponse {
+    bytes address = 1;
+    uint64 seq = 2;
+}
+
+service Bootnode {
+    rpc QueryNodeAddress(QueryNodeAddressRequest) returns(QueryNodeAddressResponse) {}
+}

@@ -56,8 +56,6 @@ const THRESHOLD: u64 = 3;
 pub const COMMITTEE_IP_HEARTBEAT_INTERVAL: u64 = 1800;
 pub const BALANCE_USED_UP: i64 = 1;
 pub const BALANCE_STILL_AVAILABLE: i64 = 0;
-// type InitiatorStore =
-//     Arc<RwLock<HashMap<u32, (BlsKeypair, BlsPublicKey, HashMap<u64, BlsPublicKey>)>>>;
 
 fn with_wildcard_ip(mut addr: SocketAddr) -> SocketAddr {
     addr.set_ip("0.0.0.0".parse().unwrap());
@@ -67,9 +65,6 @@ fn with_wildcard_ip(mut addr: SocketAddr) -> SocketAddr {
 pub struct Node<T: EthSpec> {
     pub config: NodeConfig,
     pub secret: Secret,
-    // pub tx_handler_map: Arc<RwLock<HashMap<u64, TxReceiverHandler>>>,
-    // pub mempool_handler_map: Arc<RwLock<HashMap<u64, MempoolReceiverHandler>>>,
-    // pub consensus_handler_map: Arc<RwLock<HashMap<u64, ConsensusReceiverHandler>>>,
     pub signature_handler_map: Arc<RwLock<HashMap<u64, DvfSignatureReceiverHandler>>>,
     pub duties_handler_map: Arc<RwLock<HashMap<u64, DvfDutyCheckHandler<T>>>>,
     pub active_handler_map: Arc<RwLock<HashMap<u64, DvfActiveReceiverHandler>>>,
@@ -89,18 +84,21 @@ impl<T: EthSpec> Node<T> {
         create_node_key_hex_backup(config.node_key_hex_path.clone(), &secret)?;
         info!("node public key {}", secret.name.encode_base64());
 
-        // let tx_handler_map = Arc::new(RwLock::new(HashMap::new()));
-        // let mempool_handler_map = Arc::new(RwLock::new(HashMap::new()));
-        // let consensus_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let signature_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let duties_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let active_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let duties_address = with_wildcard_ip(base_to_duties_addr(config.base_address));
         let active_address = with_wildcard_ip(base_to_active_addr(config.base_address));
+        let signature_address = with_wildcard_ip(base_to_signature_addr(config.base_address));
+        
         NetworkReceiver::spawn(
             duties_address,
             Arc::clone(&duties_handler_map),
             "duties consensus",
+        );
+        info!(
+            "Node {} listening to duties consensus on {}",
+            secret.name, duties_address
         );
 
         NetworkReceiver::spawn(
@@ -108,9 +106,10 @@ impl<T: EthSpec> Node<T> {
             Arc::clone(&active_handler_map),
             "active handler",
         );
+
         info!(
-            "Node {} listening to duties consensus on {}",
-            secret.name, duties_address
+            "Node {} listening to active messages on {}",
+            secret.name, active_address
         );
 
         // let transaction_address = with_wildcard_ip(base_to_transaction_addr(config.base_address));
@@ -141,8 +140,6 @@ impl<T: EthSpec> Node<T> {
         //     "Node {} listening to consensus messages on {}",
         //     secret.name, consensus_address
         // );
-
-        let signature_address = with_wildcard_ip(base_to_signature_addr(config.base_address));
         NetworkReceiver::spawn(
             signature_address,
             Arc::clone(&signature_handler_map),
@@ -175,9 +172,6 @@ impl<T: EthSpec> Node<T> {
         let node = Self {
             config,
             secret: secret.clone(),
-            // tx_handler_map: Arc::clone(&tx_handler_map),
-            // mempool_handler_map: Arc::clone(&mempool_handler_map),
-            // consensus_handler_map: Arc::clone(&consensus_handler_map),
             signature_handler_map: Arc::clone(&signature_handler_map),
             duties_handler_map: duties_handler_map,
             active_handler_map: active_handler_map,
@@ -1122,17 +1116,6 @@ pub async fn set_validator_fee_recipient<T: EthSpec>(
 
 pub async fn cleanup_handler<T: EthSpec>(node: Arc<RwLock<Node<T>>>, validator_id: u64) {
     let node_ = node.read().await;
-    // let _ = node_.tx_handler_map.write().await.remove(&validator_id);
-    // let _ = node_
-    //     .mempool_handler_map
-    //     .write()
-    //     .await
-    //     .remove(&validator_id);
-    // let _ = node_
-    //     .consensus_handler_map
-    //     .write()
-    //     .await
-    //     .remove(&validator_id);
     let _ = node_
         .signature_handler_map
         .write()

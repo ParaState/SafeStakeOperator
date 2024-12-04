@@ -21,7 +21,6 @@ use std::{
 use store::Store;
 use tokio::sync::RwLock;
 use tokio::sync::{mpsc, oneshot};
-use tokio::task::JoinHandle;
 use tokio::time::{timeout, Interval};
 pub const DEFAULT_DISCOVERY_IP_STORE: &str = "discovery_ip_store";
 pub const DISCOVER_HEARTBEAT_INTERVAL: u64 = 60 * 5;
@@ -32,15 +31,7 @@ pub struct Discovery {
     query_sender: mpsc::Sender<(NodeId, oneshot::Sender<()>)>,
     store: Store,
     boot_enrs: Vec<Enr<CombinedKey>>,
-    discv5_service_handle: JoinHandle<()>,
     base_port: u16,
-}
-
-impl Drop for Discovery {
-    fn drop(&mut self) {
-        info!("Shutting down discovery service");
-        self.discv5_service_handle.abort();
-    }
 }
 
 impl Discovery {
@@ -90,7 +81,7 @@ impl Discovery {
 
     pub async fn spawn(
         ip: IpAddr,
-        udp_port: u16,
+        base_port: u16,
         secret: Secret,
         boot_enrs: Vec<Enr<CombinedKey>>,
         base_dir: PathBuf,
@@ -116,20 +107,21 @@ impl Discovery {
             .await;
         info!("Node ENR seq updated to: {}", seq);
 
-        let mut secret_key = secret.secret.0[..].to_vec();
+        let mut secret_key = secret.secret.0.to_vec();
         let enr_key = CombinedKey::secp256k1_from_bytes(&mut secret_key[..]).unwrap();
 
+        let discovery_port = base_port.checked_add(DISCOVERY_PORT_OFFSET).unwrap();
         let local_enr = {
             let mut builder = Enr::builder();
             builder.ip(ip);
-            if udp_port != DEFAULT_BASE_PORT {
-                builder.udp4(udp_port.checked_add(DISCOVERY_PORT_OFFSET).unwrap());
+            if base_port != DEFAULT_BASE_PORT {
+                builder.udp4(discovery_port);
             }
             builder.seq(seq);
             builder.build(&enr_key).unwrap()
         };
-        let base_address = SocketAddr::new(ip, udp_port);
-        info!("Node ENR ip: {}, port: {}", ip, udp_port);
+        let base_address = SocketAddr::new(ip, base_port);
+        info!("Node ENR ip: {}, base port: {}", ip, base_port);
         info!("Node public key: {}", secret.name.encode_base64());
         info!("Node id: {}", base64::encode(local_enr.node_id().raw()));
         info!("Node ENR: {:?}", local_enr.to_base64());
@@ -137,7 +129,7 @@ impl Discovery {
         // default configuration without packet filtering
         let config = ConfigBuilder::new(ListenConfig::Ipv4 {
             ip: "0.0.0.0".parse().unwrap(),
-            port: udp_port.checked_add(DISCOVERY_PORT_OFFSET).unwrap(),
+            port: discovery_port,
         })
         .build();
 
@@ -160,10 +152,8 @@ impl Discovery {
             )
             .await;
 
-        let discv5_service_handle = tokio::spawn(async move {
+        tokio::spawn(async move {
             // start the discv5 service
-            // let listen_addr = SocketAddr::new("0.0.0.0".parse().expect("valid ip"), udp_port);
-            // let _ = discv5.start(listen_addr).await;
             let _ = discv5.start().await;
             let mut event_stream = discv5.event_stream().await.unwrap();
             loop {
@@ -219,8 +209,7 @@ impl Discovery {
             query_sender: tx,
             store: store_clone,
             boot_enrs,
-            discv5_service_handle,
-            base_port: udp_port,
+            base_port: base_port,
         };
 
         // immediately initiate a discover request to annouce ourself
@@ -239,19 +228,11 @@ impl Discovery {
     }
 
     pub async fn update_addr(&self, pk: &[u8]) -> Option<SocketAddr> {
-        // let curve_pk = secp256k1::PublicKey::from_slice(pk);
-        // if curve_pk.is_err() {
-        //     error!("Failed to construct secp256k1 public key from the slice");
-        //     return None;
-        // };
-        // let curve_pk = curve_pk.unwrap();
         let node_id = NodeId::parse(&keccak_hash::keccak(pk).0).unwrap();
         self.discover(node_id).await;
         // Randomly pick a boot node
         let boot_idx = rand::random::<usize>() % self.boot_enrs.len();
-        self.query_addr_from_boot(boot_idx, pk).await;
-
-        self.query_addr_from_local_store(pk).await
+        self.query_addr_from_boot(boot_idx, pk).await
     }
 
     pub async fn query_addrs(&self, pks: &Vec<Vec<u8>>) -> Vec<Option<SocketAddr>> {
@@ -270,7 +251,6 @@ impl Discovery {
         // 1. from local store
         // 2. initiate a discv5 find node
         // 3. from boot node
-        // TODO: do we need to add a discovery for random node ID?
 
         // No need to update for self IP
         if self.secret.name.0.as_slice() == pk {

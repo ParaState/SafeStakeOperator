@@ -1,0 +1,24 @@
+[package]
+name = "boot_node"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bincode = "1"
+clap = { version = "4.5.4", features = ["derive", "cargo", "wrap_help"] }
+clap_utils = { path = "../../lighthouse/common/clap_utils" }
+directory = { path = "../../lighthouse/common/directory" }
+dirs = "3"
+dvf_utils = { path = "../../lighthouse/common/dvf_utils" }
+lighthouse_network = { path = "../../lighthouse/beacon_node/lighthouse_network" }
+prost = "0.12"
+safestake_crypto = { path = "../../lighthouse/safestake_crypto" }
+safestake_operator ={ path = "../../lighthouse/validator_client/safestake_operator" }
+serde = { version = "1", features = ["derive"] }
+slashing_protection = { path = "../../lighthouse/validator_client/slashing_protection" }
+slog = { version = "2", features = ["max_level_debug", "release_max_level_debug", "nested-values"] }
+store = { path = "../../lighthouse/beacon_node/store" }
+task_executor = { path = "../../lighthouse/common/task_executor" }
+tonic = "0.11"
+[build-dependencies]
+tonic-build = { version = "0.11.0", features = ["prost"] }

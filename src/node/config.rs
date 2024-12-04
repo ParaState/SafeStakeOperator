@@ -14,10 +14,13 @@ use tokio::sync::OnceCell;
 pub const NODE_KEY_FILENAME: &str = "node_key.json";
 pub const NODE_KEY_HEX_FILENAME: &str = "node_key_hex.json";
 pub const DB_FILENAME: &str = "dvf_node_db";
+pub const BOOT_ENRS_CONFIG_FILE: &str = "boot_config/boot_enrs.yaml";
 
 pub const DEFAULT_BASE_PORT: u16 = 26_000;
 pub const TRANSACTION_PORT_OFFSET: u16 = 0;
+pub const DUTIES_PORT_OFFSET: u16 = 0;
 pub const MEMPOOL_PORT_OFFSET: u16 = 1;
+pub const ACTIVE_PORT_OFFSET: u16 = 1;
 pub const CONSENSUS_PORT_OFFSET: u16 = 2;
 pub const SIGNATURE_PORT_OFFSET: u16 = 3;
 pub const DISCOVERY_PORT_OFFSET: u16 = 4;
@@ -26,11 +29,10 @@ pub const BASE_ADDRESS: [u8; 4] = [127, 0, 0, 1];
 pub static API_ADDRESS: OnceCell<String> = OnceCell::const_new();
 pub const STATUS_REPORT_URL: &str = "status";
 pub const COLLECT_PERFORMANCE_URL: &str = "collect_performance";
+// TODO delete
 pub const VALIDATOR_PK_URL: &str = "validator_pk";
 pub const PRESTAKE_SIGNATURE_URL: &str = "prestake_signature";
 pub const STAKE_SIGNATURE_URL: &str = "stake_signature";
-pub const TOPIC_NODE_INFO: &str = "dvf/topic_node_info";
-pub const BOOT_ENRS_CONFIG_FILE: &str = "boot_config/boot_enrs.yaml";
 
 lazy_static! {
     // [Issue] SocketAddr::new is not yet a const fn in stable release.
@@ -86,7 +88,7 @@ pub fn base_to_duties_addr(base_addr: SocketAddr) -> SocketAddr {
     if is_addr_invalid(base_addr) {
         base_addr
     } else {
-        SocketAddr::new(base_addr.ip(), base_addr.port() + TRANSACTION_PORT_OFFSET)
+        SocketAddr::new(base_addr.ip(), base_addr.port() + DUTIES_PORT_OFFSET)
     }
 }
 
@@ -94,7 +96,7 @@ pub fn base_to_active_addr(base_addr: SocketAddr) -> SocketAddr {
     if is_addr_invalid(base_addr) {
         base_addr
     } else {
-        SocketAddr::new(base_addr.ip(), base_addr.port() + MEMPOOL_PORT_OFFSET)
+        SocketAddr::new(base_addr.ip(), base_addr.port() + ACTIVE_PORT_OFFSET)
     }
 }
 

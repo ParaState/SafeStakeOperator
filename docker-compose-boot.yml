@@ -8,8 +8,7 @@ services:
       - /bin/sh
       - -c
       - |
-        node_ip=$$(curl -s ifconfig.me) 
-        dvf boot_node --ip $node_ip --port 9005 2>&1
+        dvf boot_node --ip ${NODE_IP} --port 9005 2>&1
     expose:
       - "9005"
     volumes:

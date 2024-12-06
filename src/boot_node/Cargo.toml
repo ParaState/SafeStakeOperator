@@ -13,7 +13,7 @@ dvf_utils = { path = "../../lighthouse/common/dvf_utils" }
 lighthouse_network = { path = "../../lighthouse/beacon_node/lighthouse_network" }
 prost = "0.12"
 safestake_crypto = { path = "../../lighthouse/safestake_crypto" }
-safestake_operator ={ path = "../../lighthouse/validator_client/safestake_operator" }
+safestake_database ={ path = "../../lighthouse/validator_client/safestake_database" }
 serde = { version = "1", features = ["derive"] }
 slashing_protection = { path = "../../lighthouse/validator_client/slashing_protection" }
 slog = { version = "2", features = ["max_level_debug", "release_max_level_debug", "nested-values"] }

@@ -2,7 +2,7 @@ use crate::proto::bootnode_server::Bootnode;
 use crate::proto::*;
 use dvf_utils::VERSION;
 use safestake_crypto::secp::PublicKey;
-use safestake_operator::database::SafeStakeDatabase;
+use safestake_database::SafeStakeDatabase;
 use tonic::{Request, Response, Status};
 pub struct BootService {
     pub db: SafeStakeDatabase,

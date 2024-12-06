@@ -11,7 +11,7 @@ use lighthouse_network::discv5::{
 };
 use safestake_crypto::secp::PublicKey as SecpPublicKey;
 use safestake_crypto::secret::{Export, Secret};
-use safestake_operator::database::SafeStakeDatabase;
+use safestake_database::SafeStakeDatabase;
 use slog::{info, Logger};
 use std::net::{IpAddr, SocketAddr};
 use task_executor::TaskExecutor;

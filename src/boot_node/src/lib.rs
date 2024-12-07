@@ -12,7 +12,7 @@ use lighthouse_network::discv5::{
 use safestake_crypto::secp::PublicKey as SecpPublicKey;
 use safestake_crypto::secret::{Export, Secret};
 use safestake_database::SafeStakeDatabase;
-use slog::{info, Logger};
+use slog::{info, warn, Logger};
 use std::net::{IpAddr, SocketAddr};
 use task_executor::TaskExecutor;
 use tonic::transport::Server;
@@ -113,8 +113,17 @@ pub async fn run(config: Config, executor: &TaskExecutor, log: Logger) {
                             handle_enr(&secret.name, &db, enr);
                         }
                         Event::SocketUpdated(_) => {}
-                        Event::NodeInserted { .. } | Event::TalkRequest(_) => {} // Ignore all other discv5 server events
-                        _ => todo!(),
+                        Event::NodeInserted { .. }  => {}
+                        Event::TalkRequest(_) => {} // Ignore all other discv5 server events
+                        Event::UnverifiableEnr { enr, socket, .. } => {
+                            warn!(
+                                log,
+                                "unveriable enr";
+                                "enr" => %enr,
+                                "socket" => %socket
+                            );
+                        },
+                        _ => {}
                     };
                 }
             }

@@ -513,6 +513,15 @@ fn run<E: EthSpec>(
                         .with_extension("log"),
                 )
             }
+            Some(("boot_node", _)) => {
+                let base_path = 
+                    parse_path_or_default(matches, "datadir")?;
+                Some(
+                    base_path.parent().unwrap()
+                        .join("logs")
+                        .with_extension("log"),
+                )
+            }
             _ => None,
         };
     }

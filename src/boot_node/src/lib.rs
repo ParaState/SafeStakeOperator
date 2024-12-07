@@ -131,7 +131,7 @@ pub async fn run(config: Config, executor: &TaskExecutor, log: Logger) {
         "boot node",
     );
     let boot_service = BootService { db: db_backup };
-    let addr = format!("[::1]:{}", config.port).parse().unwrap();
+    let addr = format!("0.0.0.0:{}", config.port).parse().unwrap();
     Server::builder()
         .add_service(BootnodeServer::new(boot_service))
         .serve(addr)

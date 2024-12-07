@@ -55,7 +55,7 @@ slasher = { path = "lighthouse/slasher", default-features = false }
 logging = { path = "lighthouse/common/logging" }
 boot_node = { path = "src/boot_node" }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "signal", "macros"] }
-
+dvf_utils = { path = "lighthouse/common/dvf_utils" }
 [dev-dependencies]
 tempfile = "3"
 validator_dir = { path = "lighthouse/common/validator_dir" }

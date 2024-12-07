@@ -2274,6 +2274,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "clap_utils",
+ "dvf_utils",
  "eth2_network_config",
 ]
 
@@ -2401,6 +2402,7 @@ dependencies = [
  "clap",
  "clap_utils",
  "directory",
+ "dvf_utils",
  "environment",
  "eth1",
  "eth2",
@@ -7181,6 +7183,7 @@ dependencies = [
  "directory",
  "dirs",
  "dvf_utils",
+ "eth2",
  "eth2_keystore",
  "eth2_keystore_share",
  "hex",
@@ -7192,6 +7195,7 @@ dependencies = [
  "safestake_crypto",
  "safestake_database",
  "safestake_operator",
+ "sensitive_url",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -7205,6 +7209,7 @@ dependencies = [
  "tonic",
  "types",
  "validator_dir",
+ "validator_http_api",
  "validator_store",
  "warp_utils",
 ]

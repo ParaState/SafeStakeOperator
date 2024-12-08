@@ -7178,6 +7178,7 @@ dependencies = [
  "alloy-sol-macro",
  "alloy-sol-types",
  "alloy-transport-http",
+ "base64 0.22.1",
  "bincode",
  "bls",
  "directory",

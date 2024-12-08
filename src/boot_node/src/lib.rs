@@ -103,14 +103,15 @@ pub async fn run(config: Config, executor: &TaskExecutor, log: Logger) {
         async move {
             let _ = discv5.start().await;
             let mut event_stream = discv5.event_stream().await.unwrap();
+            let logger = log.clone();
             loop {
                 if let Some(event) = event_stream.recv().await {
                     match event {
                         Event::Discovered(enr) => {
-                            handle_enr(&secret.name, &db, enr);
+                            handle_enr(&secret.name, &db, enr, &logger);
                         }
                         Event::SessionEstablished(enr, _) => {
-                            handle_enr(&secret.name, &db, enr);
+                            handle_enr(&secret.name, &db, enr, &logger);
                         }
                         Event::SocketUpdated(_) => {}
                         Event::NodeInserted { .. }  => {}
@@ -120,7 +121,9 @@ pub async fn run(config: Config, executor: &TaskExecutor, log: Logger) {
                                 log,
                                 "unveriable enr";
                                 "enr" => %enr,
-                                "socket" => %socket
+                                "socket" => %socket,
+                                "enr ip" => %enr.ip4().unwrap(),
+                                "enr port" => format!("{:?}", enr.tcp4())
                             );
                         },
                         _ => {}
@@ -139,7 +142,7 @@ pub async fn run(config: Config, executor: &TaskExecutor, log: Logger) {
         .unwrap()
 }
 
-pub fn handle_enr(self_public_key: &SecpPublicKey, db: &SafeStakeDatabase, enr: Enr<CombinedKey>) {
+pub fn handle_enr(self_public_key: &SecpPublicKey, db: &SafeStakeDatabase, enr: Enr<CombinedKey>, logger: &Logger) {
     let node_public_key: [u8; 33] = enr.public_key().encode().try_into().unwrap();
     let public_key = SecpPublicKey(node_public_key);
     if public_key == *self_public_key {
@@ -150,8 +153,15 @@ pub fn handle_enr(self_public_key: &SecpPublicKey, db: &SafeStakeDatabase, enr: 
         Ok(seq) => seq,
         Err(_) => 0,
     };
+    
     if enr.seq() > seq {
-        let _ = db.with_transaction(|tx| {
+        info!(
+            logger,
+            "boot node";
+            "node" => %public_key,
+            "seq" => seq
+        );
+        if let Err(e) = db.with_transaction(|tx| {
             let ip = enr.ip4().unwrap();
             let port = match enr.udp4() {
                 Some(port) => port.checked_sub(DISCOVERY_PORT_OFFSET).unwrap(),
@@ -159,6 +169,14 @@ pub fn handle_enr(self_public_key: &SecpPublicKey, db: &SafeStakeDatabase, enr: 
             };
             let socket_address = SocketAddr::new(IpAddr::V4(ip), port);
             db.upsert_operator_socket_address(tx, &public_key, &socket_address, enr.seq())
-        });
+        }) {
+            warn!(
+                logger,
+                "failed to insert";
+                "node" => %public_key,
+                "seq" => seq,
+                "error" => %e
+            );
+        }
     }
 }

@@ -17,7 +17,7 @@ COPY ./src ./src
 # build for release
 ARG CPU_NUM=16
 RUN cargo build -j $CPU_NUM --release
-
+RUN cd dvf_key_tool && cargo build -j $CPU_NUM --release
 FROM ubuntu:22.04
 RUN apt-get update && apt-get -y upgrade && apt-get install -y --no-install-recommends \
   libssl-dev \
@@ -28,3 +28,4 @@ RUN apt-get update && apt-get -y upgrade && apt-get install -y --no-install-reco
 WORKDIR /app
 COPY --from=builder /app/boot_config /app/boot_config
 COPY --from=builder /app/target/release/dvf /usr/local/bin/dvf
+COPY --from=builder /app/src/dvf_key_tool/target/release/dvf_key_tool /usr/local/bin/dvf_key_tool

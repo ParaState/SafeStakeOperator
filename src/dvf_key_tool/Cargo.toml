@@ -1,0 +1,9 @@
+[package]
+name = "dvf_key_tool"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dvf_utils = { path = "../../lighthouse/common/dvf_utils" }
+safestake_crypto = { path = "../../lighthouse/safestake_crypto" }
+dirs = "3"

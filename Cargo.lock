@@ -7096,11 +7096,15 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "array-init",
+ "async-trait",
  "base64 0.22.1",
+ "bincode",
  "bls",
  "blst",
  "bytes",
  "dvf_utils",
+ "ethereum_hashing",
+ "futures",
  "hex",
  "lazy_static",
  "miracl_core",
@@ -7112,6 +7116,8 @@ dependencies = [
  "serde_json",
  "sha256",
  "slog",
+ "tokio",
+ "tokio-util",
  "types",
 ]
 

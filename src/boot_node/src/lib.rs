@@ -107,8 +107,8 @@ pub async fn run(config: Config, executor: &TaskExecutor, log: Logger) {
             loop {
                 if let Some(event) = event_stream.recv().await {
                     match event {
-                        Event::Discovered(enr) => {
-                            handle_enr(&secret.name, &db, enr, &logger);
+                        Event::Discovered(_) => {
+                            // handle_enr(&secret.name, &db, enr, &logger);
                         }
                         Event::SessionEstablished(enr, _) => {
                             handle_enr(&secret.name, &db, enr, &logger);

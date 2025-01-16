@@ -146,7 +146,7 @@ Now that we have open the `.env` file, we will update the values based on our ow
 **Update these variables with yours**
 
 ```bash
-WS_URL= #YOUR WS URL: ws://<geth/nethermind/besu node ip>:8546 or ws://<erigon node ip>:8545
+RPC_URL= #YOUR RPC URL: http://<geth/nethermind/besu/erigon node ip>:8545
 BEACON_NODE_ENDPOINT= # The beacon node endpoint. Depending on whether you are running single-node mode or multi-node mode, fill in the correct Lighthouse beacon node service url, e.g. http://127.0.0.1:5052 for a local node
 # public ipv4 ip of the server running your operator
 NODE_IP=<IP_ADDRESS>
@@ -269,10 +269,6 @@ graph TD;
     A[Operator is shown as \n inactive/idle in explorer] --> B{any validator chooses\nthe operator?};
     B --> |No| C[register a validator\n in our website and \n choose your operator];
     B --> |Yes| D[check if the following errors \nshown in the log of first 100 lines];
-    D --> |?| E[Wrong scheme: https];
-    E --> |solution| F["WS_URL in .env file should be set\n beginning with ws:// or wss:// instead of https://"];
-    F --> G[change the block number in the file\n /data/operator/v1/mainnet/contract_record.yml to \na block number before the registration of the validator];
-    G --> H[restart operator];
     D --> |?| K["Failed to connect to {ip}:26000"];
     K --> |solution| L[need to open the port 26000 to the internet,\n also carefully check if other firewall rules shown\n in the doc are set correctly in your server];
 ```

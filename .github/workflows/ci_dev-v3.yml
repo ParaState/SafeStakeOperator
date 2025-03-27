@@ -20,11 +20,28 @@ jobs:
       - name: Start EC2 runner
         id: start-ec2-runner
         uses: machulav/ec2-github-runner@v2.3.7
+        continue-on-error: true
         with:
           mode: start
           github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           ec2-image-id: ami-0a2d071e715c3a808
           ec2-instance-type: c6a.4xlarge
+          subnet-id: subnet-9aa9c8e1
+          security-group-id: sg-0c35d2e12fe165fbb
+          aws-resource-tags: > # optional, requires additional permissions
+            [
+              {"Key": "Name", "Value": "ec2-github-runner"},
+              {"Key": "GitHubRepository", "Value": "${{ github.repository }}"}
+            ]
+      - name: Re-try Start EC2 runner
+        id: re-try-start-ec2-runner
+        if: steps.start-ec2-runner.outcome == 'failure'
+        uses: machulav/ec2-github-runner@v2.3.7
+        with:
+          mode: start
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          ec2-image-id: ami-0a2d071e715c3a808
+          ec2-instance-type: m6a.4xlarge
           subnet-id: subnet-9aa9c8e1
           security-group-id: sg-0c35d2e12fe165fbb
           aws-resource-tags: > # optional, requires additional permissions

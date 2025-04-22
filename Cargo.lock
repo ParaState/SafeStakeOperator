@@ -2622,6 +2622,7 @@ dependencies = [
  "mediatype",
  "pretty_reqwest_error",
  "proto_array",
+ "rand 0.8.5",
  "reqwest 0.11.27",
  "reqwest-eventsource",
  "sensitive_url",
@@ -2630,6 +2631,7 @@ dependencies = [
  "slashing_protection",
  "ssz_types",
  "store",
+ "test_random_derive",
  "types",
  "zeroize",
 ]
@@ -7350,6 +7352,7 @@ dependencies = [
  "chrono",
  "dvf_utils",
  "filesystem",
+ "flate2",
  "futures",
  "hex",
  "keccak-hash",

@@ -2,7 +2,7 @@ name: do-the-job
 on:
   push:
     branches:
-      - dev-v2
+      - v4.0.0-mainnet-hoodi
 jobs:
   start-runner:
     name: Start self-hosted EC2 runner

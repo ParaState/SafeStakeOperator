@@ -20,5 +20,6 @@ slog = { version = "2", features = ["max_level_debug", "release_max_level_debug"
 store = { path = "../../lighthouse/beacon_node/store" }
 task_executor = { path = "../../lighthouse/common/task_executor" }
 tonic = "0.11"
+hex = "0.4"
 [build-dependencies]
 tonic-build = { version = "0.11.0", features = ["prost"] }

@@ -1,7 +1,6 @@
-version: '3'
 services:
   geth:
-    image: ethereum/client-go:v1.14.11
+    image: ethereum/client-go:v1.15.11
     pull_policy: always
     restart: unless-stopped
     network_mode: "host"
@@ -37,7 +36,7 @@ services:
       - "30303"
 
   mev-boost:
-    image: flashbots/mev-boost:1.8
+    image: flashbots/mev-boost:1.9
     network_mode: "host"
     pull_policy: always
     restart: unless-stopped
@@ -46,7 +45,7 @@ services:
       - "18550"
   lighthouse:
     network_mode: "host"
-    image: sigp/lighthouse:v6.0.1
+    image: sigp/lighthouse:v7.0.1
     pull_policy: always
     restart: unless-stopped
     volumes:

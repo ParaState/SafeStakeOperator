@@ -1,10 +1,14 @@
+mod cli;
 mod metrics;
 
 use account_utils::STDIN_INPUTS_FLAG;
+use clap::FromArgMatches;
 use clap::{Arg, ArgAction, ArgMatches, Command};
+use clap::Subcommand;
 use clap_utils::{
     flags::DISABLE_MALLOC_TUNING_FLAG, get_color_style, get_eth2_network_config, FLAG_HEADER,
 };
+use cli::LighthouseSubcommands;
 use directory::{parse_path_or_default, DEFAULT_VALIDATOR_DIR};
 use environment::{EnvironmentBuilder, LoggerConfig};
 use eth2_network_config::{Eth2NetworkConfig, DEFAULT_HARDCODED_NETWORK, HARDCODED_NET_NAMES};
@@ -391,9 +395,10 @@ fn main() {
             .display_order(0)
             .help_heading(FLAG_HEADER)
         )
-        .subcommand(validator_client::cli_app())
+        // .subcommand(validator_client::cli_app())
         .subcommand(boot_node::cli_app());
 
+    let cli = LighthouseSubcommands::augment_subcommands(cli);
     let matches = cli.get_matches();
 
     // Configure the allocator early in the process, before it has the chance to use the default values for
@@ -499,13 +504,13 @@ fn run<E: EthSpec>(
     let mut log_path: Option<PathBuf> = clap_utils::parse_optional(matches, "logfile")?;
     if log_path.is_none() {
         log_path = match matches.subcommand() {
-            Some(("validator_client", vc_matches)) => {
-                let base_path = if vc_matches.contains_id("validators-dir") {
-                    parse_path_or_default(vc_matches, "validators-dir")?
-                } else {
-                    parse_path_or_default(matches, "datadir")?.join(DEFAULT_VALIDATOR_DIR)
-                };
-
+            Some(("validator_client", _)) => {
+                // let base_path = if vc_matches.contains_id("validators-dir") {
+                //     parse_path_or_default(vc_matches, "validators-dir")?
+                // } else {
+                //     parse_path_or_default(matches, "datadir")?.join(DEFAULT_VALIDATOR_DIR)
+                // };
+                let base_path = parse_path_or_default(matches, "datadir")?.join(DEFAULT_VALIDATOR_DIR);
                 Some(
                     base_path
                         .join("logs")
@@ -623,35 +628,17 @@ fn run<E: EthSpec>(
         (Some(_), Some(_)) => panic!("CLI prevents both --network and --testnet-dir"),
     };
 
-    info!(log, "Lighthouse started"; "version" => VERSION);
-    info!(
-        log,
-        "Configured for network";
-        "name" => &network_name
-    );
-
-    match matches.subcommand() {
-        Some(("boot_node", matches)) => {
+    match LighthouseSubcommands::from_arg_matches(matches) {
+        Ok(LighthouseSubcommands::ValidatorClient(validator_client_config)) => {
             let context = environment.core_context();
             let log = context.log().clone();
             let executor = context.executor.clone();
-            let config = boot_node::config::Config::from_cli(matches, context.log()).map_err(|e| format!("Unable to initialize boot config: {}", e))?;
-            executor.clone().spawn(
-                async move {
-                    boot_node::run(config, &executor, log).await;
-                    let _ = executor
-                            .shutdown_sender()
-                            .try_send(ShutdownReason::Failure("Failed to start validator client"));
-                }
-            , "boot_node");
-        }
-
-        Some(("validator_client", matches)) => {
-            let context = environment.core_context();
-            let log = context.log().clone();
-            let executor = context.executor.clone();
-            let config = validator_client::Config::from_cli(matches, context.log())
-                .map_err(|e| format!("Unable to initialize validator config: {}", e))?;
+            let config = validator_client::Config::from_cli(
+                matches,
+                &validator_client_config,
+                context.log(),
+            )
+            .map_err(|e| format!("Unable to initialize validator config: {}", e))?;
             // Dump configs if `dump-config` or `dump-chain-config` flags are set
             clap_utils::check_dump_configs::<_, E>(matches, &config, &context.eth2_config.spec)?;
 
@@ -678,6 +665,33 @@ fn run<E: EthSpec>(
                 "validator_client",
             );
         }
+        Err(_) => (),
+    };
+
+    info!(log, "Lighthouse started"; "version" => VERSION);
+    info!(
+        log,
+        "Configured for network";
+        "name" => &network_name
+    );
+
+    match matches.subcommand() {
+        Some(("boot_node", matches)) => {
+            let context = environment.core_context();
+            let log = context.log().clone();
+            let executor = context.executor.clone();
+            let config = boot_node::config::Config::from_cli(matches, context.log()).map_err(|e| format!("Unable to initialize boot config: {}", e))?;
+            executor.clone().spawn(
+                async move {
+                    boot_node::run(config, &executor, log).await;
+                    let _ = executor
+                            .shutdown_sender()
+                            .try_send(ShutdownReason::Failure("Failed to start validator client"));
+                }
+            , "boot_node");
+        }
+
+        Some(("validator_client", _)) => (),
         _ => {
             crit!(log, "No subcommand supplied. See --help .");
             return Err("No subcommand supplied.".into());

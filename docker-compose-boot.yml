@@ -1,4 +1,3 @@
-version: '3'
 services:
   dvf_root_node:
     network_mode: "host"

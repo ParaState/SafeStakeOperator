@@ -7398,6 +7398,7 @@ dependencies = [
  "safestake_crypto",
  "safestake_database",
  "safestake_operator",
+ "secp256k1",
  "sensitive_url",
  "serde",
  "serde_json",

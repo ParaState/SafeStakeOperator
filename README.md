@@ -4,19 +4,16 @@
 
 ## What is SafeStake? <img src=".gitbook/assets/image (4).png" alt="" data-size="line">
 
-`SafeStake` is a decentralized staking framework and protocol that maximizes staker rewards by keeping validators secure and online to perform Ethereum Proof-of-Stake consensus (ETH2) duties. It splits a validator key into shares and distributes them over several nodes run by independent operators to achieve high levels of security and fault tolerance. Written in Rust, SafeStake runs on top of the ETH2/consensus client [Lighthouse](https://github.com/sigp/lighthouse) and uses [Hotstuff](https://github.com/asonnino/hotstuff) (a BFT consensus library) for consensus.
+`SafeStake` is a decentralized staking framework and protocol that maximizes staker rewards by keeping validators secure and online to perform Ethereum Proof-of-Stake consensus (ETH2) duties. It splits a validator key into shares and distributes them over several nodes run by independent operators to achieve high levels of security and fault tolerance. Written in Rust, SafeStake runs on top of the ETH2/consensus client [Lighthouse](https://github.com/sigp/lighthouse) and uses [Hotstuff](https://github.com/asonnino/hotstuff) (a BFT consensus library) for consensus. The referenced [thesis](https://eprint.iacr.org/2019/985). 
 
 <figure><img src=".gitbook/assets/image (2).png" alt=""><figcaption><p>SafeStake Network Architecture</p></figcaption></figure>
 
-### SafeStake makes earning staking rewards safe and easy for all ETH holders.&#x20;
+### SafeStake makes earning staking rewards safe and easy for all ETH holders.
 
-* `Stage 1 - Deposit 32 ETH` and choose a group of four operators to manage your validator.
-* `Stage 2 - Deposit 8 ETH` as an initializer to participate in running a 'Pooled Validator' and choose three additional operators to manage your validator.
-* `Stage 3 - Deposit ≥ 0.1 ETH but < 32 ETH` to participate in running a 'Pooled Validator.' Stake ETH in the SafeStake pool and get `sfETH` tokens in return. Your share of the pooled validator's rewards will be accrued automatically to your sfETH token balance and are completely liquid, allowing you the freedom to trade, buy, or sell your tokens any time you want.
+*  `Stage 1 - Deposit 32 ETH` and choose a group of four operators to manage your validator.
+*  `Stage 2` - Partnering with LST protocols to run 'Pooled Validator', empowring LST/LRT protocols to deploy validators on SafeStake platform to enhance security and improve performance resilience. 
 
-{% hint style="info" %}
 **SafeStake is the first ETH staking pool to implement distributed validator technology (DVT) written in Rust for increased decentralization, security, and reliability.**
-{% endhint %}
 
 ### Test Drive SafeStake
 
@@ -38,14 +35,15 @@ Read the SafeStake [white paper](https://docsend.com/view/22tth6krr9mnfhre?lt\_u
 
 ## Additional Information
 
-Check out [our website](https://www.parastate.io/safestake/) for more about SafeStake.
+Check out [our website](https://www.safestake.xyz/) for more about SafeStake.
 
 [Help test](https://testnet.safestake.xyz/) the SafeStake network!
 
-Twitter: [https://twitter.com/parastateio](https://twitter.com/parastateio)&#x20;
+Twitter: [https://twitter.com/safestakeDVT](https://twitter.com/safestakeDVT)
 
-Join our [Discord](http://discord.gg/zFS3Mnfpwj) chat channel!&#x20;
+Join our [Discord](http://discord.gg/zFS3Mnfpwj) chat channel!
 
 ## Beta Advisory
 
-Currently, the SafeStake project is in beta and is mainly for proof-of-concept, benchmarking, and evaluation purposes. It is still in active testing and not yet ready for production use. In addition, all possible implementations of SafeStake have not been fully reviewed and vetted.
+Currently, the SafeStake project is in public testnet stage. In addition, the smart contracts have been reviewed by the Nethermind Team and fulfilled audit by PeckShield. Please check the detailed [audit report](https://github.com/peckshield/publications/tree/master/audit_reports/PeckShield-Audit-Report-SafeStake-v1.0.pdf) and the Operator Networking Security Assessment Report by SigmaPrime. [Sigma_Prime_SafeStake_Operator_Security_Assessment_Report_v2_1.pdf](https://github.com/user-attachments/files/17098313/Sigma_Prime_SafeStake_Operator_Security_Assessment_Report_v2_1.pdf). 
+Stay tuned for the Stage1 mainnet launch!

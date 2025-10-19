@@ -10,18 +10,22 @@ use clap_utils::{
 };
 use cli::LighthouseSubcommands;
 use directory::{parse_path_or_default, DEFAULT_VALIDATOR_DIR};
+use environment::tracing_common;
 use environment::{EnvironmentBuilder, LoggerConfig};
 use eth2_network_config::{Eth2NetworkConfig, DEFAULT_HARDCODED_NETWORK, HARDCODED_NET_NAMES};
 use ethereum_hashing::have_sha_extensions;
 use futures::TryFutureExt;
 use lighthouse_version::VERSION;
+use logging::{build_workspace_filter, crit, MetricsLayer};
 use malloc_utils::configure_memory_allocator;
-use slog::{crit, info};
 use std::backtrace::Backtrace;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process::exit;
 use std::sync::LazyLock;
 use task_executor::ShutdownReason;
+use tracing::{info, warn, Level};
+use tracing_subscriber::{filter::EnvFilter, layer::SubscriberExt, util::SubscriberInitExt, Layer};
 use types::{EthSpec, EthSpecId};
 use validator_client::ProductionValidatorClient;
 
@@ -117,13 +121,19 @@ fn main() {
         .arg(
             Arg::new("logfile")
                 .long("logfile")
-                .value_name("FILE")
+                .value_name("PATH")
+                .help("DEPRECATED")
+                .action(ArgAction::Set)
+                .global(true)
+                .hide(true)
+                .display_order(0)
+        )
+        .arg(
+            Arg::new("logfile-dir")
+                .long("logfile-dir")
+                .value_name("DIR")
                 .help(
-                    "File path where the log file will be stored. Once it grows to the \
-                    value specified in `--logfile-max-size` a new log file is generated where \
-                    future logs are stored. \
-                    Once the number of log files exceeds the value specified in \
-                    `--logfile-max-number` the oldest log file will be overwritten.")
+                    "Directory path where the log file will be stored")
                 .action(ArgAction::Set)
                 .global(true)
                 .display_order(0)
@@ -210,12 +220,35 @@ fn main() {
         .arg(
             Arg::new("log-color")
                 .long("log-color")
-                .alias("log-colour")
-                .help("Force outputting colors when emitting logs to the terminal.")
+                .alias("log-color")
+                .help("Enables/Disables colors for logs in terminal. \
+                    Set it to false to disable colors.")
+                .num_args(0..=1)
+                .default_missing_value("true")
+                .default_value("true")
+                .value_parser(clap::value_parser!(bool))
+                .help_heading(FLAG_HEADER)
+                .global(true)
+                .display_order(0)
+        )
+        .arg(
+            Arg::new("logfile-color")
+                .long("logfile-color")
+                .alias("logfile-colour")
+                .help("Enables colors in logfile.")
                 .action(ArgAction::SetTrue)
                 .help_heading(FLAG_HEADER)
                 .global(true)
                 .display_order(0)
+        )
+        .arg(
+            Arg::new("log-extra-info")
+            .long("log-extra-info")
+            .action(ArgAction::SetTrue)
+            .help_heading(FLAG_HEADER)
+            .help("If present, show module,file,line in logs")
+            .global(true)
+            .display_order(0)
         )
         .arg(
             Arg::new("disable-log-timestamp")
@@ -471,10 +504,19 @@ fn run<E: EthSpec>(
 
     let log_format = matches.get_one::<String>("log-format");
 
-    let log_color = matches.get_flag("log-color");
+    let log_color = if std::io::stdin().is_terminal() {
+        matches
+            .get_one::<bool>("log-color")
+            .copied()
+            .unwrap_or(true)
+    } else {
+        // Disable color when in non-interactive mode.
+        false
+    };
 
+    let logfile_color = matches.get_flag("logfile-color");
     let disable_log_timestamp = matches.get_flag("disable-log-timestamp");
-
+    let extra_info = matches.get_flag("log-extra-info");
     let logfile_debug_level = matches
         .get_one::<String>("logfile-debug-level")
         .ok_or("Expected --logfile-debug-level flag")?;
@@ -501,7 +543,7 @@ fn run<E: EthSpec>(
     let logfile_restricted = !matches.get_flag("logfile-no-restricted-perms");
 
     // Construct the path to the log file.
-    let mut log_path: Option<PathBuf> = clap_utils::parse_optional(matches, "logfile")?;
+    let mut log_path: Option<PathBuf> = clap_utils::parse_optional(matches, "logfile-dir")?;
     if log_path.is_none() {
         log_path = match matches.subcommand() {
             Some(("validator_client", _)) => {
@@ -541,57 +583,116 @@ fn run<E: EthSpec>(
         }
     };
 
-    let logger_config = LoggerConfig {
-        path: log_path.clone(),
-        debug_level: String::from(debug_level),
-        logfile_debug_level: String::from(logfile_debug_level),
-        log_format: log_format.map(String::from),
-        logfile_format: logfile_format.map(String::from),
-        log_color,
-        disable_log_timestamp,
-        max_log_size: logfile_max_size * 1_024 * 1_024,
-        max_log_number: logfile_max_number,
-        compression: logfile_compress,
-        is_restricted: logfile_restricted,
-        sse_logging,
-    };
+    let (
+        builder,
+        logger_config,
+        stdout_logging_layer,
+        file_logging_layer,
+        sse_logging_layer_opt,
+        libp2p_discv5_layer,
+    ) = tracing_common::construct_logger(
+        LoggerConfig {
+            path: log_path.clone(),
+            debug_level: tracing_common::parse_level(debug_level),
+            logfile_debug_level: tracing_common::parse_level(logfile_debug_level),
+            log_format: log_format.map(String::from),
+            logfile_format: logfile_format.map(String::from),
+            log_color,
+            logfile_color,
+            disable_log_timestamp,
+            max_log_size: logfile_max_size,
+            max_log_number: logfile_max_number,
+            compression: logfile_compress,
+            is_restricted: logfile_restricted,
+            sse_logging,
+            extra_info,
+        },
+        matches,
+        environment_builder,
+    );
 
-    let builder = environment_builder.initialize_logger(logger_config.clone())?;
+    let workspace_filter = build_workspace_filter()?;
+
+    let mut logging_layers = Vec::new();
+
+    logging_layers.push(
+        stdout_logging_layer
+            .with_filter(logger_config.debug_level)
+            .with_filter(workspace_filter.clone())
+            .boxed(),
+    );
+
+    if let Some(file_logging_layer) = file_logging_layer {
+        logging_layers.push(
+            file_logging_layer
+                .with_filter(logger_config.logfile_debug_level)
+                .with_filter(workspace_filter)
+                .boxed(),
+        );
+    }
+
+    if let Some(sse_logging_layer) = sse_logging_layer_opt {
+        logging_layers.push(sse_logging_layer.boxed());
+    }
+
+    if let Some(libp2p_discv5_layer) = libp2p_discv5_layer {
+        logging_layers.push(
+            libp2p_discv5_layer
+                .with_filter(
+                    EnvFilter::builder()
+                        .with_default_directive(Level::DEBUG.into())
+                        .from_env_lossy(),
+                )
+                .boxed(),
+        );
+    }
+
+    logging_layers.push(MetricsLayer.boxed());
+
+    #[cfg(feature = "console-subscriber")]
+    {
+        let console_layer = console_subscriber::spawn();
+        logging_layers.push(console_layer.boxed());
+    }
+
+    let logging_result = tracing_subscriber::registry()
+        .with(logging_layers)
+        .try_init();
+
+    if let Err(e) = logging_result {
+        eprintln!("Failed to initialize logger: {e}");
+    }
 
     let mut environment = builder
         .multi_threaded_tokio_runtime()?
         .eth2_network_config(eth2_network_config)?
         .build()?;
 
-    let log = environment.core_context().log().clone();
 
     // Log panics properly.
     {
-        let log = log.clone();
         std::panic::set_hook(Box::new(move |info| {
             crit!(
-                log,
-                "Task panic. This is a bug!";
-                "location" => info.location().map(ToString::to_string),
-                "message" => info.payload().downcast_ref::<String>(),
-                "backtrace" => %Backtrace::capture(),
-                "advice" => "Please check above for a backtrace and notify the developers",
+                location = info.location().map(ToString::to_string),
+                message = info.payload().downcast_ref::<String>(),
+                backtrace = %Backtrace::capture(),
+                advice = "Please check above for a backtrace and notify the developers",
+                "Task panic. This is a bug!"
             );
         }));
     }
 
     // Allow Prometheus to export the time at which the process was started.
-    metrics::expose_process_start_time(&log);
+    metrics::expose_process_start_time();
 
     // Allow Prometheus access to the version and commit of the Lighthouse build.
     metrics::expose_lighthouse_version();
 
     #[cfg(all(feature = "modern", target_arch = "x86_64"))]
     if !std::is_x86_feature_detected!("adx") {
-        slog::warn!(
-            log,
-            "CPU seems incompatible with optimized Lighthouse build";
-            "advice" => "If you get a SIGILL, please try Lighthouse portable build"
+        tracing::warn!(
+            advice = "If you get a SIGILL, please try Lighthouse portable build",
+            "CPU seems incompatible with optimized Lighthouse build"
         );
     }
 
@@ -605,7 +706,7 @@ fn run<E: EthSpec>(
     ];
     for flag in deprecated_flags {
         if matches.get_one::<String>(flag).is_some() {
-            slog::warn!(log, "The {} flag is deprecated and does nothing", flag);
+            warn!("The {} flag is deprecated and does nothing", flag);
         }
     }
 
@@ -631,12 +732,10 @@ fn run<E: EthSpec>(
     match LighthouseSubcommands::from_arg_matches(matches) {
         Ok(LighthouseSubcommands::ValidatorClient(validator_client_config)) => {
             let context = environment.core_context();
-            let log = context.log().clone();
             let executor = context.executor.clone();
             let config = validator_client::Config::from_cli(
                 matches,
                 &validator_client_config,
-                context.log(),
             )
             .map_err(|e| format!("Unable to initialize validator config: {}", e))?;
             // Dump configs if `dump-config` or `dump-chain-config` flags are set
@@ -644,7 +743,7 @@ fn run<E: EthSpec>(
 
             let shutdown_flag = matches.get_flag("immediate-shutdown");
             if shutdown_flag {
-                info!(log, "Validator client immediate shutdown triggered.");
+                info!("Validator client immediate shutdown triggered.");
                 return Ok(());
             }
 
@@ -654,7 +753,7 @@ fn run<E: EthSpec>(
                         .and_then(|mut vc| async move { vc.start_service().await })
                         .await
                     {
-                        crit!(log, "Failed to start validator client"; "reason" => e);
+                        crit!(reason = e, "Failed to start validator client");
                         // Ignore the error since it always occurs during normal operation when
                         // shutting down.
                         let _ = executor
@@ -668,22 +767,21 @@ fn run<E: EthSpec>(
         Err(_) => (),
     };
 
-    info!(log, "Lighthouse started"; "version" => VERSION);
-    info!(
-        log,
-        "Configured for network";
-        "name" => &network_name
-    );
+    info!(version = VERSION, "Lighthouse started");
+    info!(network_name, "Configured network");
 
     match matches.subcommand() {
         Some(("boot_node", matches)) => {
             let context = environment.core_context();
-            let log = context.log().clone();
             let executor = context.executor.clone();
-            let config = boot_node::config::Config::from_cli(matches, context.log()).map_err(|e| format!("Unable to initialize boot config: {}", e))?;
+            let logger = slog::Logger::root(
+                slog::Discard,
+                slog::o!("key1" => "value1", "key2" => "value2"),
+           );
+            let config = boot_node::config::Config::from_cli(matches, &logger)?;
             executor.clone().spawn(
                 async move {
-                    boot_node::run(config, &executor, log).await;
+                    boot_node::run(config, &executor, logger).await;
                     let _ = executor
                             .shutdown_sender()
                             .try_send(ShutdownReason::Failure("Failed to start validator client"));
@@ -693,14 +791,14 @@ fn run<E: EthSpec>(
 
         Some(("validator_client", _)) => (),
         _ => {
-            crit!(log, "No subcommand supplied. See --help .");
+            crit!("No subcommand supplied. See --help .");
             return Err("No subcommand supplied.".into());
         }
     };
 
     // Block this thread until we get a ctrl-c or a task sends a shutdown signal.
     let shutdown_reason = environment.block_until_shutdown_requested()?;
-    info!(log, "Shutting down.."; "reason" => ?shutdown_reason);
+    info!(reason = ?shutdown_reason, "Shutting down..");
 
     environment.fire_signal();
 

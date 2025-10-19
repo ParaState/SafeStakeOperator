@@ -56,13 +56,19 @@ logging = { path = "lighthouse/common/logging" }
 boot_node = { path = "src/boot_node" }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "signal", "macros"] }
 dvf_utils = { path = "lighthouse/common/dvf_utils" }
+tracing = "0.1.40"
+tracing-appender = "0.2"
+tracing-core = "0.1"
+tracing-log = "0.2"
+tracing-opentelemetry = "0.31.0"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
 [dev-dependencies]
 tempfile = "3"
 validator_dir = { path = "lighthouse/common/validator_dir" }
 slashing_protection = { path = "lighthouse/validator_client/slashing_protection" }
 lighthouse_network = { path = "lighthouse/beacon_node/lighthouse_network" }
 sensitive_url = { path = "lighthouse/common/sensitive_url" }
-eth1 = { path = "lighthouse/beacon_node/eth1" }
 eth2 = { path = "lighthouse/common/eth2" }
 beacon_processor = { path = "lighthouse/beacon_node/beacon_processor" }
 beacon_node_fallback = { path = "lighthouse/validator_client/beacon_node_fallback" }

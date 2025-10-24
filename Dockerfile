@@ -1,4 +1,4 @@
-FROM rust:1.86.0 AS builder
+FROM rust:1.90.0 AS builder
 
 RUN apt-get update && apt-get -y upgrade \
    && apt-get install -y cmake libclang-dev protobuf-compiler

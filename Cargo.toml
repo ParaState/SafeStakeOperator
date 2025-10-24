@@ -50,7 +50,6 @@ serde_yaml = "0.9"
 task_executor = { path = "lighthouse/common/task_executor" }
 malloc_utils = { path = "lighthouse/common/malloc_utils" }
 directory = { path = "lighthouse/common/directory" }
-unused_port = { path = "lighthouse/common/unused_port" }
 slasher = { path = "lighthouse/slasher", default-features = false }
 logging = { path = "lighthouse/common/logging" }
 boot_node = { path = "src/boot_node" }

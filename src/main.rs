@@ -649,6 +649,11 @@ fn run<E: EthSpec>(
 
     logging_layers.push(MetricsLayer.boxed());
 
+    let mut environment = builder
+        .multi_threaded_tokio_runtime()?
+        .eth2_network_config(eth2_network_config)?
+        .build()?;
+
     #[cfg(feature = "console-subscriber")]
     {
         let console_layer = console_subscriber::spawn();
@@ -662,12 +667,6 @@ fn run<E: EthSpec>(
     if let Err(e) = logging_result {
         eprintln!("Failed to initialize logger: {e}");
     }
-
-    let mut environment = builder
-        .multi_threaded_tokio_runtime()?
-        .eth2_network_config(eth2_network_config)?
-        .build()?;
-
 
     // Log panics properly.
     {
@@ -694,20 +693,6 @@ fn run<E: EthSpec>(
             advice = "If you get a SIGILL, please try Lighthouse portable build",
             "CPU seems incompatible with optimized Lighthouse build"
         );
-    }
-
-    // Warn for DEPRECATED global flags. This code should be removed when we finish deleting these
-    // flags.
-    let deprecated_flags = [
-        "terminal-total-difficulty-override",
-        "terminal-block-hash-override",
-        "terminal-block-hash-epoch-override",
-        "safe-slots-to-import-optimistically",
-    ];
-    for flag in deprecated_flags {
-        if matches.get_one::<String>(flag).is_some() {
-            warn!("The {} flag is deprecated and does nothing", flag);
-        }
     }
 
     // Note: the current code technically allows for starting a beacon node _and_ a validator

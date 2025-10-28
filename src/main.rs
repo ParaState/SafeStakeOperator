@@ -69,12 +69,8 @@ fn bls_hardware_acceleration() -> bool {
     return std::arch::is_aarch64_feature_detected!("neon");
 }
 
-fn allocator_name() -> &'static str {
-    if cfg!(target_os = "windows") {
-        "system"
-    } else {
-        "jemalloc"
-    }
+fn allocator_name() -> String {
+    malloc_utils::allocator_name()
 }
 
 fn build_profile_name() -> String {
@@ -91,7 +87,12 @@ fn build_profile_name() -> String {
 fn main() {
     // Enable backtraces unless a RUST_BACKTRACE value has already been explicitly provided.
     if std::env::var("RUST_BACKTRACE").is_err() {
-        std::env::set_var("RUST_BACKTRACE", "1");
+        // `set_var` is marked unsafe because it is unsafe to use if there are multiple threads
+        // reading or writing from the environment. We are at the very beginning of execution and
+        // have not spun up any threads or the tokio runtime, so it is safe to use.
+        unsafe {
+            std::env::set_var("RUST_BACKTRACE", "1");
+        }
     }
 
     // Parse the CLI parameters.
@@ -119,16 +120,6 @@ fn main() {
                 .display_order(0),
         )
         .arg(
-            Arg::new("logfile")
-                .long("logfile")
-                .value_name("PATH")
-                .help("DEPRECATED")
-                .action(ArgAction::Set)
-                .global(true)
-                .hide(true)
-                .display_order(0)
-        )
-        .arg(
             Arg::new("logfile-dir")
                 .long("logfile-dir")
                 .value_name("DIR")
@@ -144,7 +135,7 @@ fn main() {
                 .value_name("LEVEL")
                 .help("The verbosity level used when emitting logs to the log file.")
                 .action(ArgAction::Set)
-                .value_parser(["info", "debug", "trace", "warn", "error", "crit"])
+                .value_parser(["info", "debug", "trace", "warn", "error"])
                 .default_value("debug")
                 .global(true)
                 .display_order(0)
@@ -265,9 +256,35 @@ fn main() {
                 .value_name("LEVEL")
                 .help("Specifies the verbosity level used when emitting logs to the terminal.")
                 .action(ArgAction::Set)
-                .value_parser(["info", "debug", "trace", "warn", "error", "crit"])
+                .value_parser(["info", "debug", "trace", "warn", "error"])
                 .global(true)
                 .default_value("info")
+                .display_order(0)
+        )
+        .arg(
+            Arg::new("telemetry-collector-url")
+                .long("telemetry-collector-url")
+                .value_name("URL")
+                .help(
+                    "URL of the OpenTelemetry collector to export tracing spans \
+                    (e.g., http://localhost:4317). If not set, tracing export is disabled.",
+                )
+                .action(ArgAction::Set)
+                .global(true)
+                .display_order(0)
+        )
+        .arg(
+            Arg::new("telemetry-service-name")
+                .long("telemetry-service-name")
+                .value_name("NAME")
+                .help(
+                    "Override the OpenTelemetry service name. \
+                    Defaults to 'lighthouse-bn' for beacon node, 'lighthouse-vc' for validator \
+                    client, or 'lighthouse' for other subcommands."
+                )
+                .requires("telemetry-collector-url")
+                .action(ArgAction::Set)
+                .global(true)
                 .display_order(0)
         )
         .arg(
@@ -352,48 +369,6 @@ fn main() {
                 .display_order(0)
         )
         .arg(
-            Arg::new("terminal-total-difficulty-override")
-                .long("terminal-total-difficulty-override")
-                .value_name("INTEGER")
-                .help("DEPRECATED")
-                .action(ArgAction::Set)
-                .global(true)
-                .display_order(0)
-                .hide(true)
-        )
-        .arg(
-            Arg::new("terminal-block-hash-override")
-                .long("terminal-block-hash-override")
-                .value_name("TERMINAL_BLOCK_HASH")
-                .help("DEPRECATED")
-                .requires("terminal-block-hash-epoch-override")
-                .action(ArgAction::Set)
-                .global(true)
-                .display_order(0)
-                .hide(true)
-        )
-        .arg(
-            Arg::new("terminal-block-hash-epoch-override")
-                .long("terminal-block-hash-epoch-override")
-                .value_name("EPOCH")
-                .help("DEPRECATED")
-                .requires("terminal-block-hash-override")
-                .action(ArgAction::Set)
-                .global(true)
-                .display_order(0)
-                .hide(true)
-        )
-        .arg(
-            Arg::new("safe-slots-to-import-optimistically")
-                .long("safe-slots-to-import-optimistically")
-                .value_name("INTEGER")
-                .help("DEPRECATED")
-                .action(ArgAction::Set)
-                .global(true)
-                .display_order(0)
-                .hide(true)
-        )
-        .arg(
             Arg::new("genesis-state-url")
                 .long("genesis-state-url")
                 .value_name("URL")
@@ -427,6 +402,7 @@ fn main() {
             .action(ArgAction::HelpLong)
             .display_order(0)
             .help_heading(FLAG_HEADER)
+            .global(true)
         )
         // .subcommand(validator_client::cli_app())
         .subcommand(boot_node::cli_app());
@@ -547,11 +523,6 @@ fn run<E: EthSpec>(
     if log_path.is_none() {
         log_path = match matches.subcommand() {
             Some(("validator_client", _)) => {
-                // let base_path = if vc_matches.contains_id("validators-dir") {
-                //     parse_path_or_default(vc_matches, "validators-dir")?
-                // } else {
-                //     parse_path_or_default(matches, "datadir")?.join(DEFAULT_VALIDATOR_DIR)
-                // };
                 let base_path = parse_path_or_default(matches, "datadir")?.join(DEFAULT_VALIDATOR_DIR);
                 Some(
                     base_path
@@ -626,13 +597,17 @@ fn run<E: EthSpec>(
         logging_layers.push(
             file_logging_layer
                 .with_filter(logger_config.logfile_debug_level)
-                .with_filter(workspace_filter)
+                .with_filter(workspace_filter.clone())
                 .boxed(),
         );
     }
 
     if let Some(sse_logging_layer) = sse_logging_layer_opt {
-        logging_layers.push(sse_logging_layer.boxed());
+        logging_layers.push(
+            sse_logging_layer
+                .with_filter(workspace_filter.clone())
+                .boxed(),
+        );
     }
 
     if let Some(libp2p_discv5_layer) = libp2p_discv5_layer {

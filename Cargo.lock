@@ -521,7 +521,7 @@ dependencies = [
  "alloy-rlp",
  "alloy-serde",
  "alloy-sol-types",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "serde",
  "serde_json",
  "serde_with",
@@ -2609,6 +2609,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "eip_3076"
+version = "0.1.0"
+dependencies = [
+ "ethereum_serde_utils",
+ "serde",
+ "serde_json",
+ "types",
+]
+
+[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2836,6 +2846,7 @@ name = "eth2"
 version = "0.1.0"
 dependencies = [
  "derivative",
+ "eip_3076",
  "either",
  "enr",
  "eth2_keystore",
@@ -2855,7 +2866,6 @@ dependencies = [
  "sensitive_url",
  "serde",
  "serde_json",
- "slashing_protection",
  "ssz_types",
  "test_random_derive",
  "types",
@@ -7319,6 +7329,8 @@ checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
 [[package]]
 name = "safe_arith"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b147bb6111014916d3ef9d4c85173124a8e12193a67f6176d67244afd558d6c1"
 
 [[package]]
 name = "safestake_crypto"
@@ -7961,6 +7973,7 @@ name = "slashing_protection"
 version = "0.1.0"
 dependencies = [
  "arbitrary",
+ "eip_3076",
  "ethereum_serde_utils",
  "filesystem",
  "r2d2",
